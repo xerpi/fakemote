@@ -29,6 +29,7 @@
 .macro syscall num name
 	.code 32
 	.global \name
+	.type \name STT_FUNC
 \name:
 	.long 0xE6000010 + (\num << 5)
 	bx lr
@@ -98,6 +99,7 @@
  */
 	.code 32
 	.global svc_write
+	.type svc_write STT_FUNC
 svc_write:
 	adds	r1, r0, #0
 	movs	r0, #4

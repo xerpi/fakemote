@@ -29,6 +29,7 @@
 
 /* Direct syscalls */
 	.global DCInvalidateRange
+	.type DCInvalidateRange STT_FUNC
 DCInvalidateRange:
 	mcr	p15, 0, r0, c7, c6, 1
 	add	r0, #0x20
@@ -37,6 +38,7 @@ DCInvalidateRange:
 	bx	lr
 
 	.global DCFlushRange
+	.type DCFlushRange STT_FUNC
 DCFlushRange:
 	mcr	p15, 0, r0, c7, c10, 1
 	add	r0, #0x20
@@ -45,6 +47,7 @@ DCFlushRange:
 	bx	lr
 
 	.global ICInvalidate
+	.type ICInvalidate STT_FUNC
 ICInvalidate:
 	mov	r0, #0
 	mcr	p15, 0, r0, c7, c5, 0
@@ -53,6 +56,7 @@ ICInvalidate:
 
 /* MLoad syscalls */
 	.global Swi_MLoad
+	.type Swi_MLoad STT_FUNC
 Swi_MLoad:
 	svc	0xcc
 	bx	lr
@@ -60,11 +64,13 @@ Swi_MLoad:
 
 /* ARM permissions */
 	.global Perms_Read
+	.type Perms_Read STT_FUNC
 Perms_Read:
 	mrc	p15, 0, r0, c3, c0
 	bx	lr
 
 	.global Perms_Write
+	.type Perms_Write STT_FUNC
 Perms_Write:
 	mcr	p15, 0, r0, c3, c0
 	bx	lr
@@ -72,6 +78,7 @@ Perms_Write:
 
 /* MEM2 routines */
 	.global MEM2_Prot
+	.type MEM2_Prot STT_FUNC
 MEM2_Prot:
 	ldr	r1, =0xD8B420A
 	strh	r0, [r1]
@@ -80,11 +87,13 @@ MEM2_Prot:
 
 /* Tools */
 	.global VirtToPhys
+	.type VirtToPhys STT_FUNC
 VirtToPhys:
 	and	r0, #0x7fffffff
 	bx	lr
 
 	.global PhysToVirt
+	.type PhysToVirt STT_FUNC
 PhysToVirt:
 	orr	r0, #0x80000000
 	bx	lr

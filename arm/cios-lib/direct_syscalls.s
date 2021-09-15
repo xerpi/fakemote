@@ -30,6 +30,7 @@
 	.align 4
 	.code 32
 	.global \name
+	.type \name STT_FUNC
 \name:
 	mov	r11, #(\num)
 	b	invoke_direct_syscall

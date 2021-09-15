@@ -24,7 +24,7 @@
 #include <string.h>
 #include <ogcsys.h>
 #include <gccore.h>
-#include "unistd.h"
+#include <unistd.h>
 
 #define MLOAD_MLOAD_THREAD_ID	0x4D4C4400
 #define MLOAD_GET_IOS_BASE	    0x4D4C4401

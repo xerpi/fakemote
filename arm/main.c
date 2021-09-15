@@ -37,8 +37,8 @@ int main(void)
 	// s32 ret;
 
 	/* Print info */
-	//svc_write("$IOSVersion: USBS:  " __DATE__ " " __TIME__ " 64M " __D2XL_VER__ " $\n");
-	
+	svc_write("$IOSVersion: TEST_MODULE:  " __DATE__ " " __TIME__ " 64M " __D2XL_VER__ " $\n");
+
 	while (1) {
 		///os_thread_stop(os_get_thread_id());
 		os_thread_yield();
