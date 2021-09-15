@@ -1,4 +1,4 @@
-/*   
+/*
 	Custom IOS Library
 
 	Copyright (C) 2008 neimod.
@@ -58,9 +58,9 @@ invoke_direct_syscall:
 	ldr	r12, [r12, r11, lsl#2]
 	nop
 	bx	r12
-	
+
 /*
- * Direct syscalls 
+ * Direct syscalls
  *
  * NOTE:
  * Direct syscalls are required when you have to call

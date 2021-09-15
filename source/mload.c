@@ -1,4 +1,4 @@
-/* mload.c (for PPC) (c) 2009, Hermes 
+/* mload.c (for PPC) (c) 2009, Hermes
 
   This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -44,7 +44,7 @@ int n;
 		return hid;
 		}
 
-	if(mload_fd>=0) 
+	if(mload_fd>=0)
 		{
 		return 0;
 		}
@@ -52,7 +52,7 @@ int n;
 	for(n=0;n<20;n++) // try 5 seconds
 	{
 		mload_fd=IOS_Open(mload_fs, 0);
-		
+
 		if(mload_fd>=0) break;
 
 		usleep(250*1000);
@@ -60,7 +60,7 @@ int n;
 
 	if(mload_fd<0)
 		{
-		
+
 		if(hid>=0)
 			{
 			iosDestroyHeap(hid);
@@ -86,9 +86,9 @@ int ret;
 		}
 
 	if(mload_fd<0) return -1;
-	
+
 	ret=IOS_Close(mload_fd);
-	
+
 	mload_fd=-1;
 
 return ret;
@@ -103,7 +103,7 @@ int mload_get_thread_id()
 int ret;
 
 	if(mload_init()<0) return -1;
-	
+
 	ret= IOS_IoctlvFormat(hid, mload_fd, MLOAD_MLOAD_THREAD_ID, ":");
 
 return ret;
@@ -119,7 +119,7 @@ int mload_get_load_base(u32 *starlet_base, int *size)
 int ret;
 
 	if(mload_init()<0) return -1;
-	
+
 	ret= IOS_IoctlvFormat(hid, mload_fd, MLOAD_GET_LOAD_BASE, ":ii",starlet_base, size);
 
 return ret;
@@ -146,31 +146,31 @@ void *buf=NULL;
 		}
 
 	hid = iosCreateHeap(len+0x800);
-    
+
 	if(hid<0) return hid;
 
 	buf= iosAlloc(hid, len);
 
 	if(!buf) {ret= -1;goto out;}
 
-	
+
 	memcpy(buf, addr,len);
 
 	ret = IOS_IoctlvFormat(hid, mload_fd, MLOAD_LOAD_MODULE, ":d", buf, len);
 
 	if(ret<0) goto out;
-	
+
 	ret=IOS_IoctlvFormat(hid, mload_fd, MLOAD_RUN_MODULE, ":");
 
 	if(ret<0) {ret= -666;goto out;}
-	
+
 out:
 	if(hid>=0)
 		{
 		iosDestroyHeap(hid);
 		hid=-1;
 		}
-	
+
 return ret;
 
 }
@@ -216,22 +216,22 @@ for(n=0; n<head->phnum; n++)
 			switch(getbe32(m))
 				{
 				case 0x9:
-					
+
 					data_elf->start= (void *) getbe32(m+4);
 					break;
 				case 0x7D:
-					
+
 					data_elf->prio= getbe32(m+4);
 					break;
 				case 0x7E:
-					
+
 					data_elf->size_stack= getbe32(m+4);
 					break;
 				case 0x7F:
-					
+
 					data_elf->stack= (void *) (getbe32(m+4));
 					break;
-				
+
 				}
 
 			}
@@ -246,7 +246,7 @@ for(n=0; n<head->phnum; n++)
 		if(mload_seek(entries->vaddr, SEEK_SET)<0) return -1;
 		//printf("before write\n");
 	    if(mload_write((void *) (elf + entries->offset), entries->filesz)<0) return -1;
-			
+
 		}
 	}
 
@@ -263,7 +263,7 @@ int ret;
 
 
 	if(mload_init()<0) return -1;
-	
+
 	ret= IOS_IoctlvFormat(hid, mload_fd, MLOAD_RUN_THREAD, "iiii:", starlet_addr,starlet_top_stack, stack_size, priority);
 
 
@@ -279,7 +279,7 @@ int mload_stop_thread(int id)
 int ret;
 
 	if(mload_init()<0) return -1;
-	
+
 	ret= IOS_IoctlvFormat(hid, mload_fd, MLOAD_STOP_THREAD, "i:", id);
 
 return ret;
@@ -297,7 +297,7 @@ int ret;
 	if(mload_init()<0) return -1;
 
 	ret= IOS_IoctlvFormat(hid, mload_fd, MLOAD_CONTINUE_THREAD, "i:", id);
-	
+
 return ret;
 
 }
@@ -305,7 +305,7 @@ return ret;
 
 // fix starlet address to read/write (uses SEEK_SET, etc as mode)
 
-int mload_seek(int offset, int mode) 
+int mload_seek(int offset, int mode)
 {
 	if(mload_init()<0) return -1;
 
@@ -316,7 +316,7 @@ int mload_seek(int offset, int mode)
 
 // read bytes from starlet (it update the offset)
 
-int mload_read(void* buf, u32 size) 
+int mload_read(void* buf, u32 size)
 {
 	if(mload_init()<0) return -1;
 
@@ -327,7 +327,7 @@ int mload_read(void* buf, u32 size)
 
 // write bytes from starlet (it update the offset)
 
-int mload_write(const void * buf, u32 size) 
+int mload_write(const void * buf, u32 size)
 {
 	if(mload_init()<0) return -1;
 
@@ -343,7 +343,7 @@ int mload_memset(void *starlet_addr, int set, int len)
 int ret;
 
 	if(mload_init()<0) return -1;
-	
+
 	ret= IOS_IoctlvFormat(hid, mload_fd, MLOAD_MEMSET, "iii:", starlet_addr, set, len);
 
 
@@ -359,7 +359,7 @@ void * mload_get_ehci_data()
 int ret;
 
 	if(mload_init()<0) return NULL;
-	
+
 	ret= IOS_IoctlvFormat(hid, mload_fd, MLOAD_GET_EHCI_DATA, ":");
 	if(ret<0) return NULL;
 
@@ -377,7 +377,7 @@ int ret;
 	if(mload_init()<0) return -1;
 
 	ret= IOS_IoctlvFormat(hid, mload_fd, MLOAD_SET_ES_IOCTLV, "i:", starlet_addr);
-	
+
 return ret;
 }
 
@@ -388,7 +388,7 @@ int mload_getw(const void * addr, u32 *dat)
 int ret;
 
 	if(mload_init()<0) return -1;
-	
+
 	ret= IOS_IoctlvFormat(hid, mload_fd, MLOAD_GETW, "i:i", addr, dat);
 
 return ret;
@@ -399,9 +399,9 @@ int mload_geth(const void * addr, u16 *dat)
 int ret;
 
 	if(mload_init()<0) return -1;
-	
+
 	ret= IOS_IoctlvFormat(hid, mload_fd, MLOAD_GETH, "i:h", addr, dat);
-	
+
 return ret;
 }
 
@@ -410,9 +410,9 @@ int mload_getb(const void * addr, u8 *dat)
 int ret;
 
 	if(mload_init()<0) return -1;
-	
+
 	ret= IOS_IoctlvFormat(hid, mload_fd, MLOAD_GETB, "i:b", addr, dat);
-	
+
 return ret;
 }
 
@@ -421,9 +421,9 @@ int mload_setw(const void * addr, u32 dat)
 int ret;
 
 	if(mload_init()<0) return -1;
-	
+
 	ret= IOS_IoctlvFormat(hid, mload_fd, MLOAD_SETW, "ii:", addr, dat);
-	
+
 return ret;
 }
 
@@ -432,7 +432,7 @@ int mload_seth(const void * addr, u16 dat)
 int ret;
 
 	if(mload_init()<0) return -1;
-	
+
 	ret= IOS_IoctlvFormat(hid, mload_fd, MLOAD_SETH, "ih:", addr, dat);
 
 return ret;
@@ -459,7 +459,7 @@ int mload_get_log()
 int ret;
 
 	if(mload_init()<0) return -1;
-	
+
 	ret= IOS_IoctlvFormat(hid, mload_fd, MLOAD_GET_LOG, ":");
 
 return ret;
@@ -476,7 +476,7 @@ int mload_get_IOS_base()
 int ret;
 
 	if(mload_init()<0) return -1;
-	
+
 	ret= IOS_IoctlvFormat(hid, mload_fd, MLOAD_GET_IOS_BASE, ":");
 
 return ret;

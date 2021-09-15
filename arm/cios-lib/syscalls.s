@@ -1,4 +1,4 @@
-/*   
+/*
 	Custom IOS Library
 
 	Copyright (C) 2008 neimod.
@@ -51,7 +51,7 @@
 	syscall 0x09, os_thread_set_priority
 	syscall 0x0a, os_message_queue_create
 	syscall 0x0b, os_message_queue_destroy
-	syscall 0x0c, os_message_queue_send 
+	syscall 0x0c, os_message_queue_send
 	syscall 0x0d, os_message_queue_send_now
 	syscall 0x0e, os_message_queue_receive
 	syscall 0x0f, os_register_event_handler

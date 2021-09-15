@@ -1,4 +1,4 @@
-/*   
+/*
 	Custom IOS Library
 
 	Copyright (C) 2008 neimod.
@@ -23,7 +23,7 @@
 */
 
 #ifndef _FAT_TOOLS_H_
-#define _FAT_TOOLS_H_ 
+#define _FAT_TOOLS_H_
 
 #include "types.h"
 

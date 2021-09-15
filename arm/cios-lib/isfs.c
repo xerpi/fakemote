@@ -1,4 +1,4 @@
-/*   
+/*
 	Custom IOS Library
 
 	Copyright (C) 2008 neimod.
@@ -126,13 +126,13 @@ s32 ISFS_SetMode(u32 mode, char *path)
 	strcpy(isfsBuf.fsconfig.path, path);
 
 	/* Setup vector */
-	isfsBuf.fsconfig.vector[0].data = &isfsBuf.fsconfig.mode; 
-	isfsBuf.fsconfig.vector[0].len  = sizeof(u32); 
-	isfsBuf.fsconfig.vector[1].data = isfsBuf.fsconfig.path; 
-	isfsBuf.fsconfig.vector[1].len  = sizeof(isfsBuf.fsconfig.path); 
+	isfsBuf.fsconfig.vector[0].data = &isfsBuf.fsconfig.mode;
+	isfsBuf.fsconfig.vector[0].len  = sizeof(u32);
+	isfsBuf.fsconfig.vector[1].data = isfsBuf.fsconfig.path;
+	isfsBuf.fsconfig.vector[1].len  = sizeof(isfsBuf.fsconfig.path);
 
 	/* Flush cache */
-	os_sync_after_write(&isfsBuf, sizeof(isfsBuf)); 
+	os_sync_after_write(&isfsBuf, sizeof(isfsBuf));
 
 	ret = os_ioctlv(fd, IOCTL_ISFS_SETMODE, 2, 0, isfsBuf.fsconfig.vector);
 
@@ -158,14 +158,14 @@ s32 ISFS_GetMode(u32 *mode, char *path)
 	isfsBuf.fsconfig.vector[1].len  = sizeof(isfsBuf.fsconfig.path);
 
 	/* Flush cache */
-	os_sync_after_write(&isfsBuf, sizeof(isfsBuf)); 
-                       
+	os_sync_after_write(&isfsBuf, sizeof(isfsBuf));
+
 	ret = os_ioctlv(fd, IOCTL_ISFS_GETMODE, 0, 2, isfsBuf.fsconfig.vector);
 
 	if(ret >= 0) {
 
 		/* Invalidate cache */
-		os_sync_before_read(&isfsBuf, sizeof(isfsBuf)); 
+		os_sync_before_read(&isfsBuf, sizeof(isfsBuf));
 
 		/* Set output values */
 		*mode = isfsBuf.fsconfig.mode;

@@ -1,4 +1,4 @@
-/*   
+/*
 	Custom IOS Library
 
 	Copyright (C) 2008 neimod.
@@ -44,7 +44,7 @@ char *strrev(char *str) {
 char *itoa(int n, char *s, int b) {
 	static char digits[] = "0123456789abcdefghijklmnopqrstuvwxyz";
 	int i=0, sign;
-    
+
 	if ((sign = n) < 0)
 		n = -n;
 

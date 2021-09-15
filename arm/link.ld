@@ -1,8 +1,8 @@
 OUTPUT_FORMAT("elf32-bigarm")
 OUTPUT_ARCH(arm)
 ENTRY(_start)
- 
-/* Sections area */ 
+
+/* Sections area */
 MEMORY {
 	table		: ORIGIN = 0x0, LENGTH = 0x4000
 	exe(rwx)	: ORIGIN = 0x13870000, LENGTH = 0x3000
@@ -12,7 +12,7 @@ MEMORY {
 __exe_start_phys__		= 0x13870000;
 __ram_start_phys__		= 0x13873000;
 
- 
+
 SECTIONS {
 	.ios_info_table :  {
 		KEEP (*(.ios_info_table))
@@ -23,12 +23,12 @@ SECTIONS {
 		. = ALIGN(4);
 	} > exe
 
-	.text : { 
-		*(.text*) 
-		*(.gnu.warning) 
-		*(.gnu.linkonce.t.*) 
-		*(.init) 
-		*(.glue_7) 
+	.text : {
+		*(.text*)
+		*(.gnu.warning)
+		*(.gnu.linkonce.t.*)
+		*(.init)
+		*(.glue_7)
 		*(.glue_7t)
 		. = ALIGN(4);
 	} > exe
@@ -40,11 +40,11 @@ SECTIONS {
 		. = ALIGN(4);
 	} > ram
 
-	.rodata : { 
+	.rodata : {
 		*(.rodata)
 		*all.rodata*(*)
 		*(.roda)
-		*(.rodata.*) 
+		*(.rodata.*)
 		*(.gnu.linkonce.r.*)
 		. = ALIGN(4);
 	} > ram

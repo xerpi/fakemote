@@ -50,7 +50,7 @@
 #define SDIOHCR_HOSTCONTROL_4BIT	0x02
 
 #define SDIO_DEFAULT_TIMEOUT		0xe
- 
+
 #define IOCTL_SDIO_WRITEHCREG		0x01
 #define IOCTL_SDIO_READHCREG		0x02
 #define IOCTL_SDIO_READCREG		0x03
@@ -65,12 +65,12 @@
 #define IOCTL_SDIO_GETOCR		0x0C
 #define IOCTL_SDIO_READDATA		0x0D
 #define IOCTL_SDIO_WRITEDATA		0x0E
- 
+
 #define SDIOCMD_TYPE_BC			1
 #define SDIOCMD_TYPE_BCR		2
 #define SDIOCMD_TYPE_AC			3
 #define SDIOCMD_TYPE_ADTC		4
- 
+
 #define SDIO_RESPONSE_NONE		0
 #define SDIO_RESPONSE_R1		1
 #define SDIO_RESPONSE_R1B		2
@@ -79,7 +79,7 @@
 #define SDIO_RESPONSE_R4		5
 #define SDIO_RESPONSE_R5		6
 #define SDIO_RESPONSE_R6		7
- 
+
 #define SDIO_CMD_GOIDLE			0x00
 #define	SDIO_CMD_ALL_SENDCID		0x02
 #define SDIO_CMD_SENDRCA		0x03
@@ -95,7 +95,7 @@
 #define SDIO_CMD_WRITEBLOCK		0x18
 #define SDIO_CMD_WRITEMULTIBLOCK	0x19
 #define SDIO_CMD_APPCMD			0x37
- 
+
 #define SDIO_ACMD_SETBUSWIDTH		0x06
 #define SDIO_ACMD_SENDSCR		0x33
 #define	SDIO_ACMD_SENDOPCOND		0x29
@@ -117,7 +117,7 @@ struct _sdiorequest
 	u32 isdma;
 	u32 pad0;
 };
- 
+
 struct _sdioresponse
 {
 	u32 rsp_fields[3];
@@ -168,7 +168,7 @@ static s32 __sdio_sendcommand(u32 cmd, u32 cmd_type, u32 rsp_type, u32 arg, u32 
 
 	if (buffer)
 		os_sync_after_write(buffer, blk_size * blk_cnt);
- 
+
 	/* DMA request */
 	if(request->isdma || __sd0_sdhc == 1) {
 		/* Prepare vector */
@@ -198,7 +198,7 @@ static s32 __sdio_sendcommand(u32 cmd, u32 cmd_type, u32 rsp_type, u32 arg, u32 
 
 	return ret;
 }
- 
+
 static s32 __sdio_setclock(u32 set)
 {
 	u32 *clock = (u32 *)__buffer1;
@@ -214,7 +214,7 @@ static s32 __sdio_getstatus(void)
 {
 	u32 *status = (u32 *)__buffer1;
 	s32 ret;
- 
+
 	os_sync_after_write(status, 4);
 
 	/* Send command */
@@ -224,12 +224,12 @@ static s32 __sdio_getstatus(void)
 
 	return *status;
 }
- 
+
 static s32 __sdio_resetcard(void)
 {
 	u32 *status = (u32 *)__buffer1;
 	s32 ret;
-    
+
 	os_sync_after_write(status, 4);
 
 	__sd0_rca = 0;
@@ -238,12 +238,12 @@ static s32 __sdio_resetcard(void)
 	ret = os_ioctl(__sd0_fd, IOCTL_SDIO_RESETCARD, NULL, 0, status, sizeof(u32));
 	if (ret < 0)
 		return ret;
- 
+
 	__sd0_rca = (u16)(*status >> 16);
 
 	return (*status & 0xffff);
 }
- 
+
 static s32 __sdio_gethcr(u8 reg, u8 size, u32 *val)
 {
 	u32 *hcr_value = (u32 *)__buffer1;
@@ -275,7 +275,7 @@ static s32 __sdio_gethcr(u8 reg, u8 size, u32 *val)
 
 	return ret;
 }
- 
+
 static s32 __sdio_sethcr(u8 reg, u8 size, u32 data)
 {
 	u32 *hcr_query = (u32 *)__buffer1;
@@ -287,7 +287,7 @@ static s32 __sdio_sethcr(u8 reg, u8 size, u32 data)
 	hcr_query[3] = size;
 	hcr_query[4] = data;
 	hcr_query[5] = 0;
-    
+
 	os_sync_after_write(hcr_query, sizeof(u32) * 6);
 
 	/* Send command */
@@ -314,33 +314,33 @@ static s32 __sdio_waithcr(u8 reg, u8 size, u8 unset, u32 mask)
 
 	return -1;
 }
- 
+
 static s32 __sdio_setbuswidth(u32 bus_width)
 {
 	s32 ret;
 	u32 hc_reg = 0;
- 
+
 	/* Get HCR */
 	ret = __sdio_gethcr(SDIOHCR_HOSTCONTROL, 1, &hc_reg);
 	if (ret < 0)
 		return ret;
- 
+
 	hc_reg &= 0xff;
 	hc_reg &= ~SDIOHCR_HOSTCONTROL_4BIT;
 	if (bus_width == 4)
 		hc_reg |= SDIOHCR_HOSTCONTROL_4BIT;
- 
+
 	/* Set HCR */
-	return __sdio_sethcr(SDIOHCR_HOSTCONTROL, 1, hc_reg);		
+	return __sdio_sethcr(SDIOHCR_HOSTCONTROL, 1, hc_reg);
 }
- 
+
 static s32 __sd0_getrca(void)
 {
 	s32 ret;
 	u32 rca;
- 
+
 	/* Send command */
-	ret = __sdio_sendcommand(SDIO_CMD_SENDRCA, 0, SDIO_RESPONSE_R5, 0, 0, 0, NULL, &rca, sizeof(rca));	
+	ret = __sdio_sendcommand(SDIO_CMD_SENDRCA, 0, SDIO_RESPONSE_R5, 0, 0, 0, NULL, &rca, sizeof(rca));
 	if (ret < 0)
 		return ret;
 
@@ -349,25 +349,25 @@ static s32 __sd0_getrca(void)
 
 	return (rca & 0xffff);
 }
- 
+
 static s32 __sd0_select(void)
 {
 	/* Send command */
 	return __sdio_sendcommand(SDIO_CMD_SELECT, SDIOCMD_TYPE_AC, SDIO_RESPONSE_R1B, (__sd0_rca << 16), 0, 0, NULL, NULL, 0);
 }
- 
+
 static s32 __sd0_deselect(void)
 {
 	/* Send command */
 	return __sdio_sendcommand(SDIO_CMD_DESELECT, SDIOCMD_TYPE_AC, SDIO_RESPONSE_R1B, 0, 0, 0, NULL, NULL, 0);
 }
- 
+
 static s32 __sd0_setblocklength(u32 blk_len)
 {
 	/* Send command */
 	return __sdio_sendcommand(SDIO_CMD_SETBLOCKLEN, SDIOCMD_TYPE_AC, SDIO_RESPONSE_R1, blk_len, 0, 0, NULL, NULL, 0);
 }
- 
+
 static s32 __sd0_setbuswidth(u32 bus_width)
 {
 	u16 val;
@@ -384,7 +384,7 @@ static s32 __sd0_setbuswidth(u32 bus_width)
 	/* Send command */
 	return __sdio_sendcommand(SDIO_ACMD_SETBUSWIDTH, SDIOCMD_TYPE_AC, SDIO_RESPONSE_R1, val, 0, 0, NULL, NULL, 0);
 }
- 
+
 static s32 __sd0_getcid(void)
 {
 	/* Send command */
@@ -417,7 +417,7 @@ static	bool __sd0_initio(void)
 		/* Open device */
 		__sd0_fd = os_open(_sd0_fs, 1);
 		if (__sd0_fd < 0)
-			return false; 
+			return false;
 
 		/* Reset the host controller */
 		if (__sdio_sethcr(SDIOHCR_SOFTWARERESET, 1, 7) < 0)
@@ -513,22 +513,22 @@ static	bool __sd0_initio(void)
 		__sd0_sdhc = 1;
 	else
 		__sd0_sdhc = 0;
- 
+
 	/* Set bus bandwidth */
 	ret = __sdio_setbuswidth(4);
 	if (ret < 0)
 		return false;
- 
+
 	/* Set clock */
 	ret = __sdio_setclock(1);
 	if (ret < 0)
 		return false;
- 
+
 	/* Select card */
 	ret = __sd0_select();
 	if (ret < 0)
 		return false;
- 
+
 	/* Set block length */
 	ret = __sd0_setblocklength(PAGE_SIZE512);
 	if (ret < 0) {
@@ -583,7 +583,7 @@ bool sdio_Startup(void)
 	/* Already initialized */
 	if (__sdio_initialized)
 		return true;
- 
+
 	/* Open device */
 	__sd0_fd = os_open(_sd0_fs, 1);
 
@@ -591,7 +591,7 @@ bool sdio_Startup(void)
 		sdio_Deinitialize();
 		return false;
 	}
- 
+
 	if (!__sd0_initio()) {
 		sdio_Deinitialize();
 		return false;
@@ -611,13 +611,13 @@ bool sdio_Shutdown(void)
 
 	/* Deinitialize */
 	sdio_Deinitialize();
- 
+
 	/* Set deinitialized */
 	__sd0_initialized = 0;
 
 	return true;
 }
- 
+
 bool sdio_ReadSectors(sec_t sector, sec_t numSectors,void* buffer)
 {
 	u32 i;
@@ -650,7 +650,7 @@ bool sdio_ReadSectors(sec_t sector, sec_t numSectors,void* buffer)
 
 	return false;
 }
- 
+
 bool sdio_WriteSectors(sec_t sector, sec_t numSectors,const void* buffer)
 {
 	u32 i;
@@ -680,15 +680,15 @@ bool sdio_WriteSectors(sec_t sector, sec_t numSectors,const void* buffer)
 		if (ret >= 0)
 			return true;
 	}
- 
+
 	return false;
 }
- 
+
 bool sdio_ClearStatus(void)
 {
 	return true;
 }
- 
+
 bool sdio_IsInserted(void)
 {
 	/* Check if card is inserted */

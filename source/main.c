@@ -38,7 +38,7 @@ static unsigned long arm_gen_branch_thumb2(unsigned long pc,
 	second = 0x9000 | (j1 << 13) | (j2 << 11) | imm11;
 	if (link)
 		second |= 1 << 14;
-		
+
 	first  = __builtin_bswap16(first);
 	second = __builtin_bswap16(second);
 
@@ -94,22 +94,22 @@ int main(int argc, char **argv)
 
 	printf("\x1b[2;0H");
 	printf("Hello World!\n");
-	
+
 	printf("test_module_elf_start: %p\n", test_module_elf_start);
 	printf("test_module_elf_size: 0x%x\n", test_module_elf_size);
-	
+
 	int ret = mload_init();
 	printf("mload_init(): %d\n", ret);
-	
+
 	//u32 starlet_base;
 	//int size;
 	//ret = mload_get_load_base(&starlet_base, &size);
 	//printf("base: 0x%08X, size: 0x%08X\n", starlet_base, size);
-	
+
 	// Copy module to heap
 	void *mod_heap = memalign(32, test_module_elf_size);
 	memcpy(mod_heap, test_module_elf_start, test_module_elf_size);
-	
+
 	data_elf info;
 	ret = mload_elf((void *)mod_heap, &info);
 	printf("mload_elf(): %d\n", ret);
@@ -119,9 +119,7 @@ int main(int argc, char **argv)
 	printf("  size_stack: 0x%x\n", info.size_stack);
 	int thid = mload_run_thread(info.start, info.stack, info.size_stack, info.prio);
 	printf("mload_run_thread(): %d\n", thid);
-	
-	//usleep(350 * 1000);
-	
+
 	#define BL_ADDR	0x138b23c6
 
 #if 0
@@ -132,23 +130,23 @@ int main(int argc, char **argv)
 	//u32 *data = (u32 *)memalign(32, 128);
 	int hid = iosCreateHeap(0x800);
 	u32 *data = iosAlloc(hid, 128);
-	
+
 	ret = starlet_read32(BL_ADDR, data);
 	printf("starlet_read32(): %d, data: 0x%08X\n", ret, *data);
 	orig_bl_insn = *data;
-	
+
 	*data = new_bl_insn;
 	//ret = starlet_write32(BL_ADDR, data);
 	printf("starlet_write32(): %d, data: 0x%08X\n", ret, *data);
-	
+
 	//free(data);
 #endif
-	int k = 0;
+
+	printf("\nEntering main loop\n");
+
 	while (run) {
-		printf("%d\n", k++);
+
 		WPAD_ScanPads();
-		if (k == 10)
-			mload_stop_thread(thid);
 
 		u32 pressed = WPAD_ButtonsDown(0);
 
@@ -159,10 +157,10 @@ int main(int argc, char **argv)
 	}
 
 	printf("\n\nExiting...\n");
-	
+
 	ret = mload_stop_thread(thid);
 	printf("mload_stop_thread(): %d\n", thid);
-	
+
 	ret = mload_close();
 	printf("mload_close(): %d\n", ret);
 

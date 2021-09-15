@@ -1,4 +1,4 @@
-/*   
+/*
 	Custom IOS Library
 
 	Copyright (C) 2008 neimod.
@@ -81,7 +81,7 @@ s32   os_create_timer(s32 time_us, s32 repeat_time_us, s32 message_queue, s32 me
 s32   os_destroy_timer(s32 time_id);
 s32   os_stop_timer(s32 timer_id);
 s32   os_restart_timer(s32 timer_id, s32 time_us, s32 repeat_time_us);
-s32   os_timer_now(s32 time_id); 
+s32   os_timer_now(s32 time_id);
 s32   os_register_event_handler(s32 device, s32 queue, s32 message);
 s32   os_unregister_event_handler(s32 device);
 s32   os_software_IRQ(s32 dev);

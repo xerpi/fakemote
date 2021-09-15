@@ -155,7 +155,7 @@ static void do_files(wiidisc_t*d)
         // fake read dol and partition
         partition_read(d,apl_offset, 0, apl_size,1);
         partition_read(d,dol_offset, 0,  (fst_offset - dol_offset)<<2,1);
-        
+
 
 	fst = wbfs_ioalloc(fst_size);
 	if (fst == 0)
@@ -228,7 +228,7 @@ static int test_parition_skip(u32 partition_type,partition_selector_t part_sel)
         default:
                 return (partition_type!=part_sel);
         }
-} 
+}
 static void do_disc(wiidisc_t*d)
 {
 	u8 *b = wbfs_ioalloc(0x100);
@@ -279,7 +279,7 @@ void wd_close_disc(wiidisc_t *d)
         wbfs_free(d);
 }
 // returns a buffer allocated with wbfs_ioalloc() or NULL if not found of alloc error
-// XXX pathname not implemented. files are extracted by their name. 
+// XXX pathname not implemented. files are extracted by their name.
 // first file found with that name is returned.
 u8 * wd_extract_file(wiidisc_t *d, partition_selector_t partition_type, char *pathname)
 {
@@ -308,8 +308,8 @@ void wd_build_disc_usage(wiidisc_t *d, partition_selector_t selector, u8* usage_
 void wd_fix_partition_table(wiidisc_t *d, partition_selector_t selector, u8* partition_table)
 {
         u8 *b = partition_table;
-	u32 partition_offset; 
-	u32 partition_type; 
+	u32 partition_offset;
+	u32 partition_type;
 	u32 n_partitions,i,j;
         u32 *b32;
         if(selector == ALL_PARTITIONS)
@@ -317,7 +317,7 @@ void wd_fix_partition_table(wiidisc_t *d, partition_selector_t selector, u8* par
 	n_partitions = _be32(b);
         if(_be32(b + 4)-(0x40000>>2) >0x50)
                 wbfs_fatal("cannot modify this partition table. Please report the bug.");
-        
+
         b += (_be32(b + 4)-(0x40000>>2))*4;
         j=0;
 	for (i = 0; i < n_partitions; i++){

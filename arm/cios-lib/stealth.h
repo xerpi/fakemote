@@ -1,4 +1,4 @@
-/*   
+/*
 	Custom IOS Library
 
 	Copyright (C) 2008 neimod.
@@ -23,7 +23,7 @@
 */
 
 #ifndef _STEALTH_H_
-#define _STEALTH_H_ 
+#define _STEALTH_H_
 
 #include "types.h"
 

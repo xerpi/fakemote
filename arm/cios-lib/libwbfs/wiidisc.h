@@ -35,7 +35,7 @@ typedef struct wiidisc_s
         u32 partition_data_offset;
         u32 partition_data_size;
         u32 partition_block;
-        
+
         u8 *tmp_buffer;
         u8 *tmp_buffer2;
         u8 disc_key[16];

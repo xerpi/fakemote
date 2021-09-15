@@ -1,4 +1,4 @@
-/*   
+/*
 	Custom IOS Library
 
 	Copyright (C) 2008 neimod.
@@ -23,7 +23,7 @@
 */
 
 #ifndef _TIMER_H_
-#define _TIMER_H_ 
+#define _TIMER_H_
 
 /* Macros */
 #define udelay(t)	Timer_Sleep(t)

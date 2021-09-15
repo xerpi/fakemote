@@ -1,4 +1,4 @@
-/*   
+/*
 	Custom IOS Library
 
 	Copyright (C) 2008 neimod.
@@ -46,7 +46,7 @@
 struct isfs
 {
 	char filepath[ISFS_MAXPATH];
-	
+
 	union {
 		struct {
 			char filepathOld[ISFS_MAXPATH];

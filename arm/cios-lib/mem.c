@@ -1,4 +1,4 @@
-/*   
+/*
 	Custom IOS Library
 
 	Copyright (C) 2008 neimod.
@@ -41,7 +41,7 @@ s32 Mem_Init(u32 *heapspace, u32 heapspaceSize)
 	hid = os_heap_create(heapspace, heapspaceSize);
 
 	return (hid < 0) ? hid : 0;
-} 
+}
 
 void *Mem_Alloc(u32 size)
 {

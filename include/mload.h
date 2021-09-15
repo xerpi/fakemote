@@ -1,4 +1,4 @@
-/* mload.c (for PPC) (c) 2009, Hermes 
+/* mload.c (for PPC) (c) 2009, Hermes
 
   This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -59,7 +59,7 @@ extern "C" {
 
 #define getbe32(x) ((adr[x]<<24) | (adr[x+1]<<16) | (adr[x+2]<<8) | (adr[x+3]))
 
-typedef struct 
+typedef struct
 {
         u32		ident0;
 		u32		ident1;
@@ -79,7 +79,7 @@ typedef struct
         u16     shtrndx;
 } elfheader;
 
-typedef struct 
+typedef struct
 {
        u32      type;
        u32      offset;
@@ -128,7 +128,7 @@ int mload_get_load_base(u32 *starlet_base, int *size);
 // load and run a module from starlet (it need to allocate MEM2 to send the elf file)
 // the module must be a elf made with stripios
 
-int mload_module(void *addr, int len); 
+int mload_module(void *addr, int len);
 
 /*--------------------------------------------------------------------------------------------------------------*/
 
@@ -147,13 +147,13 @@ int mload_run_thread(void *starlet_addr, void *starlet_top_stack, int stack_size
 
 // stops one starlet thread
 
-int mload_stop_thread(int id); 
+int mload_stop_thread(int id);
 
 /*--------------------------------------------------------------------------------------------------------------*/
 
 // continue one stopped starlet thread
 
-int mload_continue_thread(int id); 
+int mload_continue_thread(int id);
 
 /*--------------------------------------------------------------------------------------------------------------*/
 

@@ -1,4 +1,4 @@
-/*   
+/*
 	Custom IOS Library
 
 	Copyright (C) 2008 neimod.
@@ -62,7 +62,7 @@ typedef struct ipcmessage {
 	u32 result;
 	u32 fd;
 
-	union 
+	union
 	{
 		struct
 		{
@@ -70,20 +70,20 @@ typedef struct ipcmessage {
 			u32   mode;
 			u32   resultfd;
 		} open;
-	
-		struct 
+
+		struct
 		{
 			void *data;
 			u32   length;
 		} read, write;
-		
-		struct 
+
+		struct
 		{
 			s32 offset;
 			s32 origin;
 		} seek;
-		
-		struct 
+
+		struct
 		{
 			u32 command;
 
@@ -92,7 +92,7 @@ typedef struct ipcmessage {
 			u32 *buffer_io;
 			u32  length_io;
 		} ioctl;
-		struct 
+		struct
 		{
 			u32 command;
 

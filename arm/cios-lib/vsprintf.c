@@ -310,11 +310,11 @@ int svc_printf( const char *fmt, ...)
 
 	va_list args;
 	int len;
-				
+
 	va_start(args, fmt);
 	len = vsprintf(buffer, fmt, args);
 	va_end(args);
-  
+
 	svc_write(buffer);
 
 	return len;

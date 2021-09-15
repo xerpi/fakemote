@@ -1,4 +1,4 @@
-/*   
+/*
 	Custom IOS Library
 
 	Copyright (C) 2008 neimod.
@@ -35,7 +35,7 @@
 /* IOS information */
 iosInfo ios = { 0, 0, 0, 0, 0 };
 
-/* 
+/*
  * NOTE:
  * This function MUST execute in supervisor mode.
  * It means you can't use svc_write or any other supervisor call

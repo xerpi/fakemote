@@ -1,4 +1,4 @@
-/*   
+/*
 	Custom IOS Library
 
 	Copyright (C) 2008 neimod.
@@ -70,18 +70,18 @@ s32 FAT_Unescape(char *path)
 
 		/* Check character */
 		if (c == '&') {
-			if      (!strncmp(src, "qt;", 3)) c = '"'; // Unescape double quote     
-			else if (!strncmp(src, "st;", 3)) c = '*'; // Unescape star             
-			else if (!strncmp(src, "cl;", 3)) c = ':'; // Unescape colon            
-			else if (!strncmp(src, "lt;", 3)) c = '<'; // Unescape lesser than      
-			else if (!strncmp(src, "gt;", 3)) c = '>'; // Unescape greater than     
-			else if (!strncmp(src, "qm;", 3)) c = '?'; // Unescape question mark    
-			else if (!strncmp(src, "vb;", 3)) c = '|'; // Unescape vertical bar     
+			if      (!strncmp(src, "qt;", 3)) c = '"'; // Unescape double quote
+			else if (!strncmp(src, "st;", 3)) c = '*'; // Unescape star
+			else if (!strncmp(src, "cl;", 3)) c = ':'; // Unescape colon
+			else if (!strncmp(src, "lt;", 3)) c = '<'; // Unescape lesser than
+			else if (!strncmp(src, "gt;", 3)) c = '>'; // Unescape greater than
+			else if (!strncmp(src, "qm;", 3)) c = '?'; // Unescape question mark
+			else if (!strncmp(src, "vb;", 3)) c = '|'; // Unescape vertical bar
 
 			/* Skip matched escape sequence */
 			if (c != '&')
 				src += 3;
-		} 
+		}
 
 		/* Copy character */
 		*(dst++) = c;

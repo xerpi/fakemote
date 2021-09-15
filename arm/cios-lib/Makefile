@@ -47,7 +47,7 @@ OBJS	=	direct_syscalls.o	\
 		tools.o			\
 		usbstorage.o		\
 		vsprintf.o
-		
+
 OBJS2	=	libwbfs/libwbfs.o	\
 		libwbfs/rijndael.o	\
 		libwbfs/wiidisc.o
@@ -55,7 +55,7 @@ OBJS2	=	libwbfs/libwbfs.o	\
 
 $(TARGET).a: $(OBJS) $(OBJS2)
 	@echo -e " AR\t$@"
-	@$(AR) $(ARFLAGS) $@ $(OBJS) $(OBJS2) 
+	@$(AR) $(ARFLAGS) $@ $(OBJS) $(OBJS2)
 
 %.o: %.s
 	@echo -e " CC\t$@"

@@ -3,9 +3,9 @@
    Written by Mike Scott 21st April 1999
    mike@compapp.dcu.ie
 
-   Permission for free direct or derivative use is granted subject 
-   to compliance with any conditions that the originators of the 
-   algorithm place on its exploitation.  
+   Permission for free direct or derivative use is granted subject
+   to compliance with any conditions that the originators of the
+   algorithm place on its exploitation.
 
 */
 
@@ -81,14 +81,14 @@ static u32 SubByte(u32 a)
     b[1]=fbsub[b[1]];
     b[2]=fbsub[b[2]];
     b[3]=fbsub[b[3]];
-    return pack(b);    
+    return pack(b);
 }
 
 static u8 product(u32 x,u32 y)
 { /* dot product of two 4-byte arrays */
     u8 xb[4],yb[4];
     unpack(x,xb);
-    unpack(y,yb); 
+    unpack(y,yb);
     return bmul(xb[0],yb[0])^bmul(xb[1],yb[1])^bmul(xb[2],yb[2])^bmul(xb[3],yb[3]);
 }
 
@@ -129,13 +129,13 @@ void gentables(void)
 
     ltab[0]=0;
     ptab[0]=1;  ltab[1]=0;
-    ptab[1]=3;  ltab[3]=1; 
+    ptab[1]=3;  ltab[3]=1;
     for (i=2;i<256;i++)
     {
         ptab[i]=ptab[i-1]^xtime(ptab[i-1]);
         ltab[ptab[i]]=i;
     }
-    
+
   /* affine transformation:- each bit is xored with itself shifted one bit */
 
     fbsub[0]=0x63;
@@ -175,7 +175,7 @@ void gkey(int nb,int nk,char *key)
     int i,j,k,m,N;
     int C1,C2,C3;
     u32 CipherKey[8];
-    
+
     Nb=nb; Nk=nk;
 
   /* Nr is number of rounds */
@@ -198,7 +198,7 @@ void gkey(int nb,int nk,char *key)
     }
 
     N=Nb*(Nr+1);
-    
+
     for (i=j=0;i<Nk;i++,j+=4)
     {
         CipherKey[i]=pack((u8 *)&key[j]);
@@ -225,7 +225,7 @@ void gkey(int nb,int nk,char *key)
 
  /* now for the expanded decrypt key in reverse order */
 
-    for (j=0;j<Nb;j++) rkey[j+N-Nb]=fkey[j]; 
+    for (j=0;j<Nb;j++) rkey[j+N-Nb]=fkey[j];
     for (i=Nb;i<N-Nb;i+=Nb)
     {
         k=N-Nb-i;
@@ -237,7 +237,7 @@ void gkey(int nb,int nk,char *key)
 
 /* There is an obvious time/space trade-off possible here.     *
  * Instead of just one ftable[], I could have 4, the other     *
- * 3 pre-rotated to save the ROTL8, ROTL16 and ROTL24 overhead */ 
+ * 3 pre-rotated to save the ROTL8, ROTL16 and ROTL24 overhead */
 
 void encrypt(char *buff)
 {
@@ -256,7 +256,7 @@ void encrypt(char *buff)
     for (i=1;i<Nr;i++)
     { /* Nr is number of rounds. May be odd. */
 
-/* if Nb is fixed - unroll this next 
+/* if Nb is fixed - unroll this next
    loop and hard-code in the values of fi[]  */
 
         for (m=j=0;j<Nb;j++,m+=3)
@@ -270,14 +270,14 @@ void encrypt(char *buff)
         t=x; x=y; y=t;      /* swap pointers */
     }
 
-/* Last Round - unroll if possible */ 
+/* Last Round - unroll if possible */
     for (m=j=0;j<Nb;j++,m+=3)
     {
         y[j]=fkey[k++]^(u32)fbsub[(u8)x[j]]^
              ROTL8((u32)fbsub[(u8)(x[fi[m]]>>8)])^
              ROTL16((u32)fbsub[(u8)(x[fi[m+1]]>>16)])^
              ROTL24((u32)fbsub[x[fi[m+2]]>>24]);
-    }   
+    }
     for (i=j=0;i<Nb;i++,j+=4)
     {
         unpack(y[i],(u8 *)&buff[j]);
@@ -303,7 +303,7 @@ void decrypt(char *buff)
     for (i=1;i<Nr;i++)
     { /* Nr is number of rounds. May be odd. */
 
-/* if Nb is fixed - unroll this next 
+/* if Nb is fixed - unroll this next
    loop and hard-code in the values of ri[]  */
 
         for (m=j=0;j<Nb;j++,m+=3)
@@ -316,14 +316,14 @@ void decrypt(char *buff)
         t=x; x=y; y=t;      /* swap pointers */
     }
 
-/* Last Round - unroll if possible */ 
+/* Last Round - unroll if possible */
     for (m=j=0;j<Nb;j++,m+=3)
     {
         y[j]=rkey[k++]^(u32)rbsub[(u8)x[j]]^
              ROTL8((u32)rbsub[(u8)(x[ri[m]]>>8)])^
              ROTL16((u32)rbsub[(u8)(x[ri[m+1]]>>16)])^
              ROTL24((u32)rbsub[x[ri[m+2]]>>24]);
-    }        
+    }
     for (i=j=0;i<Nb;i++,j+=4)
     {
         unpack(y[i],(u8 *)&buff[j]);
@@ -358,8 +358,8 @@ void aes_decrypt(u8 *iv, u8 *inbuf, u8 *outbuf, unsigned long long len) {
     u8 *ctext_ptr;
     if (blockno == 0) ctext_ptr = iv;
     else ctext_ptr = inbuf + (blockno-1) * sizeof(block);
-    
-    for(i=0; i < fraction; i++) 
+
+    for(i=0; i < fraction; i++)
       outbuf[blockno * sizeof(block) + i] =
 	ctext_ptr[i] ^ block[i];
     //    debug_printf("Block %d output: ", blockno);
@@ -367,7 +367,7 @@ void aes_decrypt(u8 *iv, u8 *inbuf, u8 *outbuf, unsigned long long len) {
   }
 }
 
-// CBC mode encryption      
+// CBC mode encryption
 void aes_encrypt(u8 *iv, u8 *inbuf, u8 *outbuf, unsigned long long len) {
   u8 block[16];
   unsigned int blockno = 0, i;
@@ -384,10 +384,10 @@ void aes_encrypt(u8 *iv, u8 *inbuf, u8 *outbuf, unsigned long long len) {
 
     //    debug_printf("block %d: fraction = %d\n", blockno, fraction);
     memcpy(block, inbuf + blockno * sizeof(block), fraction);
-        
-    for(i=0; i < fraction; i++) 
+
+    for(i=0; i < fraction; i++)
       block[i] = inbuf[blockno * sizeof(block) + i] ^ iv[i];
-    
+
     encrypt((char*)block);
     memcpy(iv, block, sizeof(block));
     memcpy(outbuf + blockno * sizeof(block), block, sizeof(block));
@@ -395,4 +395,4 @@ void aes_encrypt(u8 *iv, u8 *inbuf, u8 *outbuf, unsigned long long len) {
     //    hexdump(outbuf + blockno*sizeof(block), 16);
   }
 }
-      
+
