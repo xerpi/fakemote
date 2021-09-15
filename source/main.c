@@ -101,6 +101,9 @@ int main(int argc, char **argv)
 	int ret = mload_init();
 	printf("mload_init(): %d\n", ret);
 
+	ret = mload_set_log_mode(DEBUG_BUFFER);
+	printf("mload_set_log_mode(): %d\n", ret);
+
 	//u32 starlet_base;
 	//int size;
 	//ret = mload_get_load_base(&starlet_base, &size);
@@ -120,9 +123,20 @@ int main(int argc, char **argv)
 	int thid = mload_run_thread(info.start, info.stack, info.size_stack, info.prio);
 	printf("mload_run_thread(): %d\n", thid);
 
-	#define BL_ADDR	0x138b23c6
+	usleep(10 * 1000);
+
+	char *log_buf = memalign(32, 4096);
+	ret = mload_get_log_buffer(log_buf, 4096);
+	printf("mload_get_log_buffer(): %d\n", ret);
+	if (ret > 0) {
+		DCInvalidateRange(log_buf, 4096);
+		printf("  > ", log_buf);
+	}
+
 
 #if 0
+	#define BL_ADDR	0x138b23c6
+
 	u32 orig_bl_insn;
 	u32 new_bl_insn = arm_gen_branch_thumb2(BL_ADDR, 0x138b365c, true);
 	printf("new_bl_insn: 0x%08X\n", new_bl_insn);

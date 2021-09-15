@@ -483,4 +483,27 @@ return ret;
 
 }
 
+int mload_set_log_mode(u32 mode)
+{
+	int ret;
+
+	if (mload_init() < 0)
+		return -1;
+
+	ret = IOS_IoctlvFormat(hid, mload_fd, MLOAD_SET_LOG_MODE, "i:", mode);
+
+	return ret;
+}
+
+int mload_get_log_buffer(void *addr, u32 max_size)
+{
+	int ret;
+
+	if (mload_init() < 0)
+		return -1;
+
+	ret = IOS_IoctlvFormat(hid, mload_fd, MLOAD_GET_LOG_BUFFER, "ii:", addr, max_size);
+
+	return ret;
+}
 

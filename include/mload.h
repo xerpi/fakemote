@@ -50,6 +50,25 @@
 #define MLOAD_SETH				0x4D4C44C4
 #define MLOAD_SETB				0x4D4C44C5
 
+/* IOCTL commands */
+#define MLOAD_GET_IOS_INFO		0x4D4C4401
+#define MLOAD_GET_MLOAD_VERSION		0x4D4C4402
+#define MLOAD_LOAD_ELF			0x4D4C4480
+#define MLOAD_RUN_ELF			0x4D4C4481
+#define MLOAD_RUN_THREAD		0x4D4C4482
+#define MLOAD_STOP_THREAD		0x4D4C4484
+#define MLOAD_CONTINUE_THREAD		0x4D4C4485
+#define MLOAD_GET_LOAD_BASE		0x4D4C4490
+#define MLOAD_MEMSET			0x4D4C4491
+#define MLOAD_SET_LOG_MODE		0x4D4C44D0
+#define MLOAD_GET_LOG_BUFFER		0x4D4C44D1
+#define MLOAD_SET_STEALTH_MODE		0x4D4C44E0
+
+/* Constants */
+#define DEBUG_NONE	0
+#define DEBUG_BUFFER	1
+#define DEBUG_GECKO	2
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -215,6 +234,9 @@ int mload_getb(const void * addr, u8 *dat);
 int mload_setw(const void * addr, u32 dat);
 int mload_seth(const void * addr, u16 dat);
 int mload_setb(const void * addr, u8 dat);
+
+int mload_set_log_mode(u32 mode);
+int mload_get_log_buffer(void *addr, u32 max_size);
 
 #ifdef __cplusplus
   }
