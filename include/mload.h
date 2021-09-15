@@ -154,7 +154,7 @@ int mload_module(void *addr, int len);
 // load a module from the PPC
 // the module must be a elf made with stripios
 
-int mload_elf(void *my_elf, data_elf *data_elf);
+int mload_elf(const void *my_elf, data_elf *data_elf);
 
 /*--------------------------------------------------------------------------------------------------------------*/
 

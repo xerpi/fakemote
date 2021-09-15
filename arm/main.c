@@ -37,10 +37,7 @@ int main(void)
 	// s32 ret;
 
 	/* Print info */
-	//svc_write("Hello world!\n");
-	svc_write("$IOSVersion: TEST:  " __DATE__ " " __TIME__ " 64M " __D2XL_VER__ " $\n");
-	//svc_write("Hello world!\n");
-
+	svc_write("Hello world from Starlet!\n");
 
 	while (1) {
 		///os_thread_stop(os_get_thread_id());

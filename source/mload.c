@@ -180,7 +180,7 @@ return ret;
 // load a module from the PPC
 // the module must be a elf made with stripios
 
-int mload_elf(void *my_elf, data_elf *data_elf)
+int mload_elf(const void *my_elf, data_elf *data_elf)
 {
 int n,m;
 int p;
@@ -502,7 +502,7 @@ int mload_get_log_buffer(void *addr, u32 max_size)
 	if (mload_init() < 0)
 		return -1;
 
-	ret = IOS_IoctlvFormat(hid, mload_fd, MLOAD_GET_LOG_BUFFER, "ii:", addr, max_size);
+	ret = IOS_IoctlvFormat(hid, mload_fd, MLOAD_GET_LOG_BUFFER, "d:", addr, max_size);
 
 	return ret;
 }

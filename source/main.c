@@ -95,9 +95,6 @@ int main(int argc, char **argv)
 	printf("\x1b[2;0H");
 	printf("Hello World!\n");
 
-	printf("test_module_elf_start: %p\n", test_module_elf_start);
-	printf("test_module_elf_size: 0x%x\n", test_module_elf_size);
-
 	int ret = mload_init();
 	printf("mload_init(): %d\n", ret);
 
@@ -109,12 +106,8 @@ int main(int argc, char **argv)
 	//ret = mload_get_load_base(&starlet_base, &size);
 	//printf("base: 0x%08X, size: 0x%08X\n", starlet_base, size);
 
-	// Copy module to heap
-	void *mod_heap = memalign(32, test_module_elf_size);
-	memcpy(mod_heap, test_module_elf_start, test_module_elf_size);
-
 	data_elf info;
-	ret = mload_elf((void *)mod_heap, &info);
+	ret = mload_elf(test_module_elf_start, &info);
 	printf("mload_elf(): %d\n", ret);
 	printf("  start: %p\n", info.start);
 	printf("  prio: %d\n", info.prio);
@@ -122,17 +115,6 @@ int main(int argc, char **argv)
 	printf("  size_stack: 0x%x\n", info.size_stack);
 	int thid = mload_run_thread(info.start, info.stack, info.size_stack, info.prio);
 	printf("mload_run_thread(): %d\n", thid);
-
-	usleep(10 * 1000);
-
-	char *log_buf = memalign(32, 4096);
-	ret = mload_get_log_buffer(log_buf, 4096);
-	printf("mload_get_log_buffer(): %d\n", ret);
-	if (ret > 0) {
-		DCInvalidateRange(log_buf, 4096);
-		printf("  > ", log_buf);
-	}
-
 
 #if 0
 	#define BL_ADDR	0x138b23c6
@@ -158,19 +140,31 @@ int main(int argc, char **argv)
 
 	printf("\nEntering main loop\n");
 
+	#define LOG_SIZE 4096
+	char *log = memalign(32, LOG_SIZE);
+	u32 i = 0;
+
 	while (run) {
-
 		WPAD_ScanPads();
-
 		u32 pressed = WPAD_ButtonsDown(0);
-
 		if (pressed & WPAD_BUTTON_HOME)
 			run = 0;
 
-		VIDEO_WaitVSync();
+		ret = mload_get_log_buffer(log, LOG_SIZE);
+		if (ret > 0) {
+			if (ret != i) {
+				DCInvalidateRange(log, LOG_SIZE);
+				printf("  > %s", &log[i]);
+				i = (i + ret) % LOG_SIZE;
+			}
+		}
+
+		//VIDEO_WaitVSync();
 	}
 
 	printf("\n\nExiting...\n");
+
+	free(log);
 
 	ret = mload_stop_thread(thid);
 	printf("mload_stop_thread(): %d\n", thid);
