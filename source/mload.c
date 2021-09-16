@@ -15,6 +15,7 @@
  *  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
+#include <elf.h>
 #include "mload.h"
 
 static s32 iosDestroyHeap(int heapid)
@@ -173,35 +174,32 @@ int mload_elf(const void *my_elf, data_elf *data_elf)
 	int p;
 	u8 *adr;
 	u32 elf = (u32)my_elf;
+	const Elf32_Ehdr *head = my_elf;
 
 	if (elf & 3)
 		return -1; // aligned to 4 please!
 
-	elfheader *head = (void *)elf;
-	elfphentry *entries;
-
-	if (head->ident0 != 0x7F454C46)
+	if ((head->e_ident[EI_MAG0] != ELFMAG0) ||
+	    (head->e_ident[EI_MAG1] != ELFMAG1) ||
+	    (head->e_ident[EI_MAG2] != ELFMAG2) ||
+	    (head->e_ident[EI_MAG3] != ELFMAG3)) {
 		return -1;
-	if (head->ident1 != 0x01020161)
-		return -1;
-	if (head->ident2 != 0x01000000)
-		return -1;
+	}
 
-	p = head->phoff;
+	p = head->e_phoff;
+	data_elf->start = (void *)head->e_entry;
 
-	data_elf->start = (void *)head->entry;
+	for (n = 0; n < head->e_phnum; n++) {
+		Elf32_Phdr *phdr = (void *)(elf + p);
+		p += sizeof(Elf32_Phdr);
 
-	for (n = 0; n < head->phnum; n++) {
-		entries = (void *)(elf + p);
-		p += sizeof(elfphentry);
-
-		if (entries->type == 4) {
-			adr = (void *)(elf + entries->offset);
+		if (phdr->p_type == PT_NOTE) {
+			adr = (void *)(elf + phdr->p_offset);
 
 			if (getbe32(0) != 0)
 				return -2; // bad info (sure)
 
-			for (m = 4; m < entries->memsz; m += 8) {
+			for (m = 4; m < phdr->p_memsz; m += 8) {
 				switch (getbe32(m)) {
 				case 0x9:
 					data_elf->start = (void *)getbe32(m + 4);
@@ -217,15 +215,15 @@ int mload_elf(const void *my_elf, data_elf *data_elf)
 					break;
 				}
 			}
-		} else if (entries->type == 1 && entries->memsz != 0 && entries->vaddr != 0) {
-			//printf("before memset: 0x%08X, 0x%x\n", entries->vaddr, entries->memsz);
-			if (mload_memset((void *)entries->vaddr, 0, entries->memsz) < 0)
+		} else if (phdr->p_type == PT_LOAD && phdr->p_memsz != 0 && phdr->p_vaddr != 0) {
+			//printf("before memset: 0x%08X, 0x%x\n", phdr->p_vaddr, phdr->p_memsz);
+			if (mload_memset((void *)phdr->p_vaddr, 0, phdr->p_memsz) < 0)
 				return -1;
 			//printf("before seek\n");
-			if (mload_seek(entries->vaddr, SEEK_SET) < 0)
+			if (mload_seek(phdr->p_vaddr, SEEK_SET) < 0)
 				return -1;
 			//printf("before write\n");
-			if (mload_write((void *)(elf + entries->offset), entries->filesz) < 0)
+			if (mload_write((void *)(elf + phdr->p_offset), phdr->p_filesz) < 0)
 				return -1;
 		}
 	}

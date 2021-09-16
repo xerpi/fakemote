@@ -28,74 +28,42 @@
 
 #include "ipc.h"
 #include "mem.h"
-#include "stealth.h"
 #include "syscalls.h"
 #include "vsprintf.h"
-#include "timer.h"
 #include "tools.h"
 #include "types.h"
 
-#define printf svc_printf
+#define OH1_SYSCALL_RECEIVE_MESSAGE_ADDR1 0x138b365c
+#define OH1_SYSCALL_RECEIVE_MESSAGE_ADDR2 0x138b366c
+#define OH1_DEV_OH1_QUEUEID_ADDR          0x138b5004
 
-char *moduleName = "TEST";
+char *moduleName = "TST";
 
-static unsigned long arm_gen_branch_thumb2(unsigned long pc,
-					   unsigned long addr, bool link)
+static int OH1_IOS_ReceiveMessage_hook(int queueid, ipcmessage **message, u32 flags)
 {
-	unsigned long s, j1, j2, i1, i2, imm10, imm11;
-	unsigned long first, second;
-	long offset;
+	int ret = os_message_queue_receive(queueid, (void *)message, flags);
 
-	offset = (long)addr - (long)(pc + 4);
-	if (offset < -16777216 || offset > 16777214)
-		return 0;
+	svc_printf("Hook!: %d vs %d\n", queueid, *(int *)OH1_DEV_OH1_QUEUEID_ADDR);
 
-	s	= (offset >> 24) & 0x1;
-	i1	= (offset >> 23) & 0x1;
-	i2	= (offset >> 22) & 0x1;
-	imm10	= (offset >> 12) & 0x3ff;
-	imm11	= (offset >>  1) & 0x7ff;
-
-	j1 = (!i1) ^ s;
-	j2 = (!i2) ^ s;
-
-	first = 0xf000 | (s << 10) | imm10;
-	second = 0x9000 | (j1 << 13) | (j2 << 11) | imm11;
-	if (link)
-		second |= 1 << 14;
-
-	first  = __builtin_bswap16(first);
-	second = __builtin_bswap16(second);
-
-	return __builtin_bswap32(first | (second << 16));
+	return ret;
 }
 
-static void hook()
+static s32 Patch_OH1UsbModule(void)
 {
-	while (1)
-		printf("Hook!\n");
-}
+	u32 addr;
 
-s32 Patch_UsbModule(void)
-{
-	svc_write("Patching USB module...\n");
+	/* Check version */
+	u32 bytes = *(u16 *)OH1_SYSCALL_RECEIVE_MESSAGE_ADDR1;
+	if (bytes == 0x4778)
+		addr = OH1_SYSCALL_RECEIVE_MESSAGE_ADDR1;
+	else if (bytes == 0xbd00)
+		addr = OH1_SYSCALL_RECEIVE_MESSAGE_ADDR2;
+	else
+		return -1;
 	
-	#define BL_ADDR	0x138b23c6
-
-	u32 orig_bl_insn = *(vu32 *)BL_ADDR;
-	svc_printf("orig_bl_insn: 0x%08X\n", orig_bl_insn);
-
-	// 0x138b365c
-	printf("hook addr: 0x%08X\n", (uintptr_t)&hook);
-	u32 new_bl_insn = arm_gen_branch_thumb2(BL_ADDR, (uintptr_t)&hook, true);
-	printf("new_bl_insn: 0x%08X\n", new_bl_insn);
-
-	printf("Before hook\n");
-
-	DCWrite32(BL_ADDR, new_bl_insn);
-	ICInvalidate();
-
-	printf("USB module patches done!\n");
+	/* Patch syscall handler to jump to our function */
+	DCWrite32(addr    , 0x4B004718);
+	DCWrite32(addr + 4, (u32)OH1_IOS_ReceiveMessage_hook);
 
 	return 0;
 }
@@ -103,95 +71,30 @@ s32 Patch_UsbModule(void)
 int main(void)
 {
 	int ret;
-	int i = 0;
+	u32 i = 0;
 
 	/* Print info */
 	svc_write("Hello world from Starlet!\n");
 	
 	/* System patchers */
-	static patcher patchers[] = {
-		{Patch_UsbModule, 0},
+	patcher patchers[] = {
+		{Patch_OH1UsbModule, 0},
 	};
-
+	
 	/* Initialize plugin */
 	ret = IOS_InitSystem(patchers, sizeof(patchers));
-	printf("IOS_InitSystem(): %d\n", ret);
+	svc_printf("IOS_InitSystem(): %d\n", ret);
+	
+	svc_printf("Patch status: %d\n", patchers[0].status);
 
 	svc_write("System patches applied\n");
 
 	while (1) {
-		///os_thread_stop(os_get_thread_id());
-		/*if (i == 200000) {
-			svc_printf("i value: %d\n", i);
-			i = 0;
+		if ((i++ % (256*1024)) == 0) {
+			//svc_printf("Ping: %d\r\n", i >> 17);
 		}
-		i++;*/
 		os_thread_yield();
 	}
 
-#if 0
-	/* Initialize module */
-	ret = __USB_Initialize();
-	if (ret < 0)
-		return ret;
-
-	/* Main loop */
-	while (1) {
-		ipcmessage *message = NULL;
-
-		/* Wait for message */
-		os_message_queue_receive(queuehandle, (void *)&message, 0);
-
-		/* Check callback */
-		ret = __USB_Callback((u32)message);
-		if (!ret)
-			continue;
-
-		switch (message->command) {
-		case IOS_OPEN: {
-
-			/* Block opening request if a title is running */
-			ret = Stealth_CheckRunningTitle(NULL);
-			if (ret) {
-				ret = IPC_ENOENT;
-				break;
-			}
-
-			/* Check device path */
-			if (!strcmp(message->open.device, DEVICE_NAME))
-				ret = message->open.resultfd;
-			else
-				ret = IPC_ENOENT;
-
-			break;
-		}
-
-		case IOS_CLOSE: {
-			/* Do nothing */
-			ret = 0;
-			break;
-		}
-
-		case IOS_IOCTLV: {
-			ioctlv *vector = message->ioctlv.vector;
-			u32     inlen  = message->ioctlv.num_in;
-			u32     iolen  = message->ioctlv.num_io;
-			u32     cmd    = message->ioctlv.command;
-
-			/* Parse IOCTLV message */
-			ret = __USB_Ioctlv(cmd, vector, inlen, iolen);
-
-			break;
-		}
-
-		default:
-			/* Unknown command */
-			ret = IPC_EINVAL;
-		}
-
-		/* Acknowledge message */
-		os_message_queue_ack(message, ret);
-	}
-#endif
 	return 0;
 }

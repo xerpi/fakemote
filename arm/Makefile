@@ -18,15 +18,9 @@ else
     BUILD_TIME ?= $(shell LC_ALL=C date "+'%T'")
 endif
 
-ifdef D2XL_VER_COMPILE
-   D2XL_VER ?= $(D2XL_VER_COMPILE)
-else
-   D2XL_VER ?= "unknown"
-endif
-
 # Flags
 ARCH	=	-mcpu=arm926ej-s -mthumb -mthumb-interwork -mbig-endian
-CFLAGS	=	$(ARCH) -I. -Icios-lib -fomit-frame-pointer -Os -Wall -Wstrict-prototypes -ffunction-sections -D__TIME__=\"$(BUILD_TIME)\" -D__DATE__=\"$(BUILD_DATE)\" -D__D2XL_VER__=\"$(D2XL_VER)\" -Wno-builtin-macro-redefined -nostdlib
+CFLAGS	=	$(ARCH) -I. -Icios-lib -fomit-frame-pointer -Os -g3 -Wall -Wstrict-prototypes -ffunction-sections -D__TIME__=\"$(BUILD_TIME)\" -D__DATE__=\"$(BUILD_DATE)\" -Wno-builtin-macro-redefined -nostdlib
 LDFLAGS	=	$(ARCH) -nostartfiles -nostdlib -Wl,-T,link.ld,-Map,$(TARGET).map -Wl,--gc-sections -Wl,-static
 
 # Libraries

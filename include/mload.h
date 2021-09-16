@@ -18,7 +18,6 @@
 #ifndef __MLOAD_H__
 #define __MLOAD_H__
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -54,41 +53,6 @@ extern "C" {
 // from IOS ELF stripper of neimod
 
 #define getbe32(x) ((adr[x]<<24) | (adr[x+1]<<16) | (adr[x+2]<<8) | (adr[x+3]))
-
-typedef struct  {
-        u32 head;
-        u32 tail;
-} mload_ringbuf_ctrl_t;
-
-typedef struct {
-        u32	ident0;
-	u32	ident1;
-	u32	ident2;
-	u32	ident3;
-        u32	machinetype;
-        u32	version;
-        u32	entry;
-        u32     phoff;
-        u32     shoff;
-        u32	flags;
-        u16     ehsize;
-        u16     phentsize;
-        u16     phnum;
-        u16     shentsize;
-        u16     shnum;
-        u16     shtrndx;
-} elfheader;
-
-typedef struct {
-       u32      type;
-       u32      offset;
-       u32      vaddr;
-       u32      paddr;
-       u32      filesz;
-       u32      memsz;
-       u32      flags;
-       u32      align;
-} elfphentry;
 
 typedef struct {
 	void *start;

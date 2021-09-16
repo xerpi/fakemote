@@ -50,7 +50,7 @@
  */
 	.align 4
 	.code 32
-
+	.type invoke_direct_syscall STT_FUNC
 invoke_direct_syscall:
 	ldr	r12, =syscall_base
 	ldr	r12, [r12]

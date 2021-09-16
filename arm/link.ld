@@ -5,12 +5,12 @@ ENTRY(_start)
 /* Sections area */
 MEMORY {
 	table		: ORIGIN = 0x0, LENGTH = 0x4000
-	exe(rwx)	: ORIGIN = 0x13870000, LENGTH = 0x3000
-	ram(rw)		: ORIGIN = 0x13873000, LENGTH = 0xB000
+	exe(rwx)	: ORIGIN = 0x13970000, LENGTH = 0x3000
+	ram(rw)		: ORIGIN = 0x13973000, LENGTH = 0xB000
 }
 
-__exe_start_phys__		= 0x13870000;
-__ram_start_phys__		= 0x13873000;
+__exe_start_phys__		= 0x13970000;
+__ram_start_phys__		= 0x13973000;
 
 
 SECTIONS {
