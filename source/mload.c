@@ -502,7 +502,7 @@ int mload_get_log_buffer(void *addr, u32 max_size)
 	if (mload_init() < 0)
 		return -1;
 
-	ret = IOS_IoctlvFormat(hid, mload_fd, MLOAD_GET_LOG_BUFFER, "d:", addr, max_size);
+	ret = IOS_IoctlvFormat(hid, mload_fd, MLOAD_GET_LOG_BUFFER, ":d", addr, max_size);
 
 	return ret;
 }

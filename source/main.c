@@ -142,24 +142,27 @@ int main(int argc, char **argv)
 
 	#define LOG_SIZE 4096
 	char *log = memalign(32, LOG_SIZE);
+	//char last[LOG_SIZE];
 	u32 i = 0;
 
 	while (run) {
-		WPAD_ScanPads();
-		u32 pressed = WPAD_ButtonsDown(0);
-		if (pressed & WPAD_BUTTON_HOME)
-			run = 0;
+		//WPAD_ScanPads();
+		//u32 pressed = WPAD_ButtonsDown(0);
+		//if (pressed & WPAD_BUTTON_HOME)
+		//	run = 0;
 
 		ret = mload_get_log_buffer(log, LOG_SIZE);
+		//printf("mload_get_log_buffer(): %d\n", ret);
 		if (ret > 0) {
 			if (ret != i) {
 				DCInvalidateRange(log, LOG_SIZE);
-				printf("  > %s", &log[i]);
-				i = (i + ret) % LOG_SIZE;
+				printf("  > %s", log);
+				//i = (i + ret) % LOG_SIZE;
+				i = ret;
 			}
 		}
 
-		//VIDEO_WaitVSync();
+		VIDEO_WaitVSync();
 	}
 
 	printf("\n\nExiting...\n");

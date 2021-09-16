@@ -26,6 +26,7 @@
 #define _IOS_TYPES_H_
 
 #include <stdint.h>
+#include <stdbool.h>
 
 /* NULL constant */
 #ifndef NULL
@@ -46,11 +47,11 @@ typedef volatile unsigned int	vu32;
 
 typedef uint32_t		sec_t;
 
-typedef int			bool;
+//typedef int			bool;
 
 /* Boolean constants */
-#define true			1
-#define false			0
+//#define true			1
+//#define false			0
 
 /* Attributes */
 #ifndef ATTRIBUTE_ALIGN

@@ -26,8 +26,8 @@ endif
 
 # Flags
 ARCH	=	-mcpu=arm926ej-s -mthumb -mthumb-interwork -mbig-endian
-CFLAGS	=	$(ARCH) -I. -Icios-lib -fomit-frame-pointer -Os -Wall -Wstrict-prototypes -ffunction-sections -D__TIME__=\"$(BUILD_TIME)\" -D__DATE__=\"$(BUILD_DATE)\" -D__D2XL_VER__=\"$(D2XL_VER)\" -Wno-builtin-macro-redefined
-LDFLAGS	=	$(ARCH) -nostartfiles -Wl,-T,link.ld,-Map,$(TARGET).map -Wl,--gc-sections -Wl,-static
+CFLAGS	=	$(ARCH) -I. -Icios-lib -fomit-frame-pointer -Os -Wall -Wstrict-prototypes -ffunction-sections -D__TIME__=\"$(BUILD_TIME)\" -D__DATE__=\"$(BUILD_DATE)\" -D__D2XL_VER__=\"$(D2XL_VER)\" -Wno-builtin-macro-redefined -nostdlib
+LDFLAGS	=	$(ARCH) -nostartfiles -nostdlib -Wl,-T,link.ld,-Map,$(TARGET).map -Wl,--gc-sections -Wl,-static
 
 # Libraries
 LIBS	=	cios-lib/cios-lib.a
@@ -36,11 +36,11 @@ LIBS	=	cios-lib/cios-lib.a
 TARGET	=	test-module
 
 # Objects
-OBJS	= start.o main.o
+OBJS	= start.o main.o libc.o
 
 $(TARGET).elf: $(OBJS) $(LIBS)
 	@echo -e " LD\t$@"
-	@$(LD) $(LDFLAGS) $(OBJS) $(LIBS) -o $@.orig
+	@$(LD) $(LDFLAGS) $(OBJS) $(LIBS) -lgcc -o $@.orig
 	@$(STRIP) $@.orig $@
 
 $(TARGET).elf: link.ld

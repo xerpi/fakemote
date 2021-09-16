@@ -22,25 +22,29 @@
 	Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
+#include <stdio.h>
 #include <string.h>
+#include <stdarg.h>
 
 #include "ipc.h"
 #include "mem.h"
 #include "stealth.h"
 #include "syscalls.h"
+#include "vsprintf.h"
 #include "timer.h"
 #include "types.h"
-
 
 int main(void)
 {
 	// s32 ret;
+	int i = 0;
 
 	/* Print info */
 	svc_write("Hello world from Starlet!\n");
 
 	while (1) {
 		///os_thread_stop(os_get_thread_id());
+		svc_printf("i: %d\n", i++);
 		os_thread_yield();
 	}
 
