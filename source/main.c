@@ -4,7 +4,31 @@
 #include <malloc.h>
 #include <gccore.h>
 #include <wiiuse/wpad.h>
+#include <ogc/machine/processor.h>
 #include "mload.h"
+
+/* From linux/circ_buf.h */
+/* Return count in buffer.  */
+#define CIRC_CNT(head,tail,size) (((head) - (tail)) & ((size)-1))
+
+/* Return space available, 0..size-1.  We always leave one free char
+   as a completely full buffer has head == tail, which is the same as
+   empty.  */
+#define CIRC_SPACE(head,tail,size) CIRC_CNT((tail),((head)+1),(size))
+
+/* Return count up to the end of the buffer.  Carefully avoid
+   accessing head and tail more than once, so they can change
+   underneath us without returning inconsistent results.  */
+#define CIRC_CNT_TO_END(head,tail,size) \
+	({int end = (size) - (tail); \
+	  int n = ((head) + end) & ((size)-1); \
+	  n < end ? n : end;})
+
+/* Return space available up to the end of the buffer.  */
+#define CIRC_SPACE_TO_END(head,tail,size) \
+	({int end = (size) - 1 - (head); \
+	  int n = (end + (tail)) & ((size)-1); \
+	  n <= end ? n : end+1;})
 
 extern void *_binary____arm_test_module_elf_start;
 extern void *_binary____arm_test_module_elf_size;
@@ -66,8 +90,26 @@ int main(int argc, char **argv)
 
 	int ret = mload_init();
 	printf("mload_init(): %d\n", ret);
+	
+	u32 *rb_head = memalign(32, sizeof(u32));
+	u32 *rb_tail = memalign(32, sizeof(u32));
+	u32 *rb_head_uc = (void *)((uintptr_t)rb_head | SYS_BASE_UNCACHED);
+	u32 *rb_tail_uc = (void *)((uintptr_t)rb_tail | SYS_BASE_UNCACHED);
+	u32 rb_size = 4096;
+	u8 *rb_data = memalign(32, rb_size);
+	
+	*rb_head_uc = 0;
+	*rb_tail_uc = 0;
+	memset(rb_data, 0, rb_size);
+	DCFlushRange(rb_data, rb_size);
 
-	ret = mload_set_log_mode(DEBUG_BUFFER);
+	ret = mload_set_log_ringbuf(MEM_VIRTUAL_TO_PHYSICAL(rb_head),
+	                            MEM_VIRTUAL_TO_PHYSICAL(rb_tail),
+	                            MEM_VIRTUAL_TO_PHYSICAL(rb_data),
+	                            rb_size);
+	printf("mload_set_log_ringbuf(): %d\n", ret);
+
+	ret = mload_set_log_mode(DEBUG_RINGBUF);
 	printf("mload_set_log_mode(): %d\n", ret);
 
 	//u32 starlet_base;
@@ -109,10 +151,10 @@ int main(int argc, char **argv)
 
 	printf("\nEntering main loop\n");
 
-	#define LOG_SIZE 4096
-	char *log = memalign(32, LOG_SIZE);
+	//#define LOG_SIZE 4096
+	//char *log = memalign(32, LOG_SIZE);
 	//char last[LOG_SIZE];
-	u32 i = 0;
+	//u32 i = 0;
 
 	while (run) {
 		WPAD_ScanPads();
@@ -120,7 +162,26 @@ int main(int argc, char **argv)
 		if (pressed & WPAD_BUTTON_HOME)
 			run = 0;
 
-		ret = mload_get_log_buffer(log, LOG_SIZE);
+		/* Log ringbuffer consumer */
+		u32 head = read32((uintptr_t)rb_head_uc);
+		u32 tail = read32((uintptr_t)rb_tail_uc);
+		u32 cnt_to_end = CIRC_CNT_TO_END(head, tail, rb_size);
+		
+		if (cnt_to_end != 0) {
+			static char buf[4096+1];
+			
+			DCInvalidateRange(rb_data + tail, cnt_to_end);
+			memcpy(buf, rb_data + tail, cnt_to_end);
+			buf[cnt_to_end + 1] = '\0';
+			
+			//printf("head: 0x%x, tail: 0x%x  ->  cnt_to_end: 0x%x\n", head, tail, cnt_to_end);
+			puts(buf);
+			
+			tail = (tail + cnt_to_end) & (rb_size - 1);
+			write32((uintptr_t)rb_tail_uc, tail);
+		}
+
+		/*ret = mload_get_log_buffer(log, LOG_SIZE);
 		//printf("mload_get_log_buffer(): %d\n", ret);
 		if (ret > 0) {
 			if (ret != i) {
@@ -129,20 +190,24 @@ int main(int argc, char **argv)
 				//i = (i + ret) % LOG_SIZE;
 				i = ret;
 			}
-		}
+		}*/
 
-		VIDEO_WaitVSync();
+		//VIDEO_WaitVSync();
 	}
 
 	printf("\n\nExiting...\n");
 
-	free(log);
+	//free(log);
 
 	ret = mload_stop_thread(thid);
 	printf("mload_stop_thread(): %d\n", thid);
 
 	ret = mload_close();
 	printf("mload_close(): %d\n", ret);
+	
+	free(rb_head);
+	free(rb_tail);
+	free(rb_data);
 
 	return 0;
 }

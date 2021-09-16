@@ -26,30 +26,6 @@
 #include <gccore.h>
 #include <unistd.h>
 
-#define MLOAD_MLOAD_THREAD_ID	0x4D4C4400
-#define MLOAD_GET_IOS_BASE	    0x4D4C4401
-#define MLOAD_LOAD_MODULE		0x4D4C4480
-#define MLOAD_RUN_MODULE		0x4D4C4481
-#define MLOAD_RUN_THREAD        0x4D4C4482
-
-#define MLOAD_STOP_THREAD		0x4D4C4484
-#define MLOAD_CONTINUE_THREAD   0x4D4C4485
-
-#define MLOAD_GET_LOAD_BASE     0x4D4C4490
-#define MLOAD_MEMSET			0x4D4C4491
-
-#define MLOAD_GET_EHCI_DATA		0x4D4C44A0
-#define MLOAD_GET_LOG			0x4D4C44A1
-
-#define MLOAD_SET_ES_IOCTLV		0x4D4C44B0
-
-#define MLOAD_GETW				0x4D4C44C0
-#define MLOAD_GETH				0x4D4C44C1
-#define MLOAD_GETB				0x4D4C44C2
-#define MLOAD_SETW				0x4D4C44C3
-#define MLOAD_SETH				0x4D4C44C4
-#define MLOAD_SETB				0x4D4C44C5
-
 /* IOCTL commands */
 #define MLOAD_GET_IOS_INFO		0x4D4C4401
 #define MLOAD_GET_MLOAD_VERSION		0x4D4C4402
@@ -62,34 +38,39 @@
 #define MLOAD_MEMSET			0x4D4C4491
 #define MLOAD_SET_LOG_MODE		0x4D4C44D0
 #define MLOAD_GET_LOG_BUFFER		0x4D4C44D1
+#define MLOAD_SET_LOG_RINGBUFFER	0x4D4C44D2
 #define MLOAD_SET_STEALTH_MODE		0x4D4C44E0
 
 /* Constants */
 #define DEBUG_NONE	0
 #define DEBUG_BUFFER	1
 #define DEBUG_GECKO	2
+#define DEBUG_RINGBUF	3
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-
 // from IOS ELF stripper of neimod
 
 #define getbe32(x) ((adr[x]<<24) | (adr[x+1]<<16) | (adr[x+2]<<8) | (adr[x+3]))
 
-typedef struct
-{
-        u32		ident0;
-		u32		ident1;
-		u32		ident2;
-		u32		ident3;
-        u32		machinetype;
-        u32		version;
-        u32		entry;
+typedef struct  {
+        u32 head;
+        u32 tail;
+} mload_ringbuf_ctrl_t;
+
+typedef struct {
+        u32	ident0;
+	u32	ident1;
+	u32	ident2;
+	u32	ident3;
+        u32	machinetype;
+        u32	version;
+        u32	entry;
         u32     phoff;
         u32     shoff;
-        u32		flags;
+        u32	flags;
         u16     ehsize;
         u16     phentsize;
         u16     phnum;
@@ -98,8 +79,7 @@ typedef struct
         u16     shtrndx;
 } elfheader;
 
-typedef struct
-{
+typedef struct {
        u32      type;
        u32      offset;
        u32      vaddr;
@@ -110,8 +90,7 @@ typedef struct
        u32      align;
 } elfphentry;
 
-typedef struct
-{
+typedef struct {
 	void *start;
 	int prio;
 	void *stack;
@@ -129,12 +108,6 @@ int mload_init();
 // to close the device (remember call it when rebooting the IOS!)
 
 int mload_close();
-
-/*--------------------------------------------------------------------------------------------------------------*/
-
-// to get the thread id of mload
-
-int mload_get_thread_id();
 
 /*--------------------------------------------------------------------------------------------------------------*/
 
@@ -200,26 +173,6 @@ int mload_memset(void *starlet_addr, int set, int len);
 
 /*--------------------------------------------------------------------------------------------------------------*/
 
-// get the ehci datas ( ehcmodule.elf uses this address)
-
-void * mload_get_ehci_data();
-
-/*--------------------------------------------------------------------------------------------------------------*/
-
-// set the dev/es ioctlv in routine
-
-int mload_set_ES_ioctlv_vector(void *starlet_addr);
-
-/*--------------------------------------------------------------------------------------------------------------*/
-
-
-// to get log buffer
-// this function return the size of the log buffer and prepare it to read with mload_read() the datas
-
-int mload_get_log();
-
-/*--------------------------------------------------------------------------------------------------------------*/
-
 
 // to get IOS base for dev/es  to create the cIOS
 
@@ -227,20 +180,12 @@ int mload_get_IOS_base();
 
 /*--------------------------------------------------------------------------------------------------------------*/
 
-int mload_getw(const void * addr, u32 *dat);
-int mload_geth(const void * addr, u16 *dat);
-int mload_getb(const void * addr, u8 *dat);
-
-int mload_setw(const void * addr, u32 dat);
-int mload_seth(const void * addr, u16 dat);
-int mload_setb(const void * addr, u8 dat);
-
 int mload_set_log_mode(u32 mode);
 int mload_get_log_buffer(void *addr, u32 max_size);
+int mload_set_log_ringbuf(u32 head_paddr, u32 tail_paddr, u32 data_paddr, u32 size);
 
 #ifdef __cplusplus
-  }
+}
 #endif
-
 
 #endif

@@ -37,6 +37,8 @@
 
 #define printf svc_printf
 
+char *moduleName = "TEST";
+
 static unsigned long arm_gen_branch_thumb2(unsigned long pc,
 					   unsigned long addr, bool link)
 {
@@ -68,28 +70,20 @@ static unsigned long arm_gen_branch_thumb2(unsigned long pc,
 	return __builtin_bswap32(first | (second << 16));
 }
 
-static inline u32 read32(u32 addr)
-{
-	return *(vu32 *)addr;
-}
-
 static void hook()
 {
 	while (1)
 		printf("Hook!\n");
 }
 
-int main(void)
+s32 Patch_UsbModule(void)
 {
-	int i = 0;
-
-	/* Print info */
-	svc_write("Hello world from Starlet!\n");
-
+	svc_write("Patching USB module...\n");
+	
 	#define BL_ADDR	0x138b23c6
 
-	u32 orig_bl_insn = read32(BL_ADDR);
-	printf("orig_bl_insn: 0x%08X\n", orig_bl_insn);
+	u32 orig_bl_insn = *(vu32 *)BL_ADDR;
+	svc_printf("orig_bl_insn: 0x%08X\n", orig_bl_insn);
 
 	// 0x138b365c
 	printf("hook addr: 0x%08X\n", (uintptr_t)&hook);
@@ -98,17 +92,40 @@ int main(void)
 
 	printf("Before hook\n");
 
-	u32 perms = Perms_Read();
-	Perms_Write(0xFFFFFFFF);
 	DCWrite32(BL_ADDR, new_bl_insn);
 	ICInvalidate();
-	Perms_Write(perms);
 
-	printf("Hooked!\n");
+	printf("USB module patches done!\n");
+
+	return 0;
+}
+
+int main(void)
+{
+	int ret;
+	int i = 0;
+
+	/* Print info */
+	svc_write("Hello world from Starlet!\n");
+	
+	/* System patchers */
+	static patcher patchers[] = {
+		{Patch_UsbModule, 0},
+	};
+
+	/* Initialize plugin */
+	ret = IOS_InitSystem(patchers, sizeof(patchers));
+	printf("IOS_InitSystem(): %d\n", ret);
+
+	svc_write("System patches applied\n");
 
 	while (1) {
 		///os_thread_stop(os_get_thread_id());
-		//svc_printf("i: %d\n", i++);
+		/*if (i == 200000) {
+			svc_printf("i value: %d\n", i);
+			i = 0;
+		}
+		i++;*/
 		os_thread_yield();
 	}
 
