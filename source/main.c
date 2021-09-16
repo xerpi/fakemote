@@ -14,37 +14,6 @@ static const u32 test_module_elf_size = (u32)&_binary____arm_test_module_elf_siz
 
 static int run = 1;
 
-static unsigned long arm_gen_branch_thumb2(unsigned long pc,
-					   unsigned long addr, bool link)
-{
-	unsigned long s, j1, j2, i1, i2, imm10, imm11;
-	unsigned long first, second;
-	long offset;
-
-	offset = (long)addr - (long)(pc + 4);
-	if (offset < -16777216 || offset > 16777214)
-		return 0;
-
-	s	= (offset >> 24) & 0x1;
-	i1	= (offset >> 23) & 0x1;
-	i2	= (offset >> 22) & 0x1;
-	imm10	= (offset >> 12) & 0x3ff;
-	imm11	= (offset >>  1) & 0x7ff;
-
-	j1 = (!i1) ^ s;
-	j2 = (!i2) ^ s;
-
-	first = 0xf000 | (s << 10) | imm10;
-	second = 0x9000 | (j1 << 13) | (j2 << 11) | imm11;
-	if (link)
-		second |= 1 << 14;
-
-	first  = __builtin_bswap16(first);
-	second = __builtin_bswap16(second);
-
-	return __builtin_bswap32(first | (second << 16));
-}
-
 static void button_pressed()
 {
 	run = 0;
@@ -146,10 +115,10 @@ int main(int argc, char **argv)
 	u32 i = 0;
 
 	while (run) {
-		//WPAD_ScanPads();
-		//u32 pressed = WPAD_ButtonsDown(0);
-		//if (pressed & WPAD_BUTTON_HOME)
-		//	run = 0;
+		WPAD_ScanPads();
+		u32 pressed = WPAD_ButtonsDown(0);
+		if (pressed & WPAD_BUTTON_HOME)
+			run = 0;
 
 		ret = mload_get_log_buffer(log, LOG_SIZE);
 		//printf("mload_get_log_buffer(): %d\n", ret);

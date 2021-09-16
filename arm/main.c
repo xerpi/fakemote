@@ -32,19 +32,83 @@
 #include "syscalls.h"
 #include "vsprintf.h"
 #include "timer.h"
+#include "tools.h"
 #include "types.h"
+
+#define printf svc_printf
+
+static unsigned long arm_gen_branch_thumb2(unsigned long pc,
+					   unsigned long addr, bool link)
+{
+	unsigned long s, j1, j2, i1, i2, imm10, imm11;
+	unsigned long first, second;
+	long offset;
+
+	offset = (long)addr - (long)(pc + 4);
+	if (offset < -16777216 || offset > 16777214)
+		return 0;
+
+	s	= (offset >> 24) & 0x1;
+	i1	= (offset >> 23) & 0x1;
+	i2	= (offset >> 22) & 0x1;
+	imm10	= (offset >> 12) & 0x3ff;
+	imm11	= (offset >>  1) & 0x7ff;
+
+	j1 = (!i1) ^ s;
+	j2 = (!i2) ^ s;
+
+	first = 0xf000 | (s << 10) | imm10;
+	second = 0x9000 | (j1 << 13) | (j2 << 11) | imm11;
+	if (link)
+		second |= 1 << 14;
+
+	first  = __builtin_bswap16(first);
+	second = __builtin_bswap16(second);
+
+	return __builtin_bswap32(first | (second << 16));
+}
+
+static inline u32 read32(u32 addr)
+{
+	return *(vu32 *)addr;
+}
+
+static void hook()
+{
+	while (1)
+		printf("Hook!\n");
+}
 
 int main(void)
 {
-	// s32 ret;
 	int i = 0;
 
 	/* Print info */
 	svc_write("Hello world from Starlet!\n");
 
+	#define BL_ADDR	0x138b23c6
+
+	u32 orig_bl_insn = read32(BL_ADDR);
+	printf("orig_bl_insn: 0x%08X\n", orig_bl_insn);
+
+	// 0x138b365c
+	printf("hook addr: 0x%08X\n", (uintptr_t)&hook);
+	u32 new_bl_insn = arm_gen_branch_thumb2(BL_ADDR, (uintptr_t)&hook, true);
+	printf("new_bl_insn: 0x%08X\n", new_bl_insn);
+
+	printf("Before hook\n");
+
+	u32 perms = Perms_Read();
+	Perms_Write(0xFFFFFFFF);
+	DCWrite32(BL_ADDR, new_bl_insn);
+	ICInvalidate();
+	Perms_Write(perms);
+
+	printf("Hooked!\n");
+
 	while (1) {
 		///os_thread_stop(os_get_thread_id());
-		svc_printf("i: %d\n", i++);
+		//svc_printf("i: %d\n", i++);
 		os_thread_yield();
 	}
 
