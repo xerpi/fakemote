@@ -82,6 +82,10 @@
 	syscall 0x28, os_ioctl_async
 	syscall 0x29, os_ioctlv_async
 	syscall 0x2a, os_message_queue_ack
+	syscall 0x2b, os_set_uid
+	syscall 0x2c, os_get_uid
+	syscall 0x2d, os_set_gid
+	syscall 0x2e, os_get_gid
 	syscall 0x34, os_software_IRQ
 	syscall 0x3f, __os_sync_before_read
 	syscall 0x40, __os_sync_after_write

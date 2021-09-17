@@ -216,13 +216,11 @@ int mload_elf(const void *my_elf, data_elf *data_elf)
 				}
 			}
 		} else if (phdr->p_type == PT_LOAD && phdr->p_memsz != 0 && phdr->p_vaddr != 0) {
-			//printf("before memset: 0x%08X, 0x%x\n", phdr->p_vaddr, phdr->p_memsz);
+			// printf("Segment: p_memsz: 0x%04x, p_filesz: 0x%04x\n", phdr->p_memsz, phdr->p_filesz);
 			if (mload_memset((void *)phdr->p_vaddr, 0, phdr->p_memsz) < 0)
 				return -1;
-			//printf("before seek\n");
 			if (mload_seek(phdr->p_vaddr, SEEK_SET) < 0)
 				return -1;
-			//printf("before write\n");
 			if (mload_write((void *)(elf + phdr->p_offset), phdr->p_filesz) < 0)
 				return -1;
 		}
@@ -369,6 +367,18 @@ int mload_get_log_buffer(void *addr, u32 max_size)
 		return -1;
 
 	ret = IOS_IoctlvFormat(hid, mload_fd, MLOAD_GET_LOG_BUFFER, ":d", addr, max_size);
+
+	return ret;
+}
+
+int mload_get_log_buffer_and_empty(void *addr, u32 max_size)
+{
+	int ret;
+
+	if (mload_init() < 0)
+		return -1;
+
+	ret = IOS_IoctlvFormat(hid, mload_fd, MLOAD_GET_LOG_BUFFER_AND_EMPTY, ":d", addr, max_size);
 
 	return ret;
 }

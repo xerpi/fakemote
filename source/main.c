@@ -105,18 +105,17 @@ int main(int argc, char **argv)
 		VIDEO_WaitVSync();
 
 	printf("\x1b[2;0H");
-	printf("Hello World!\n");
 
 	int ret = mload_init();
 	printf("mload_init(): %d\n", ret);
-	
+
 	u32 *rb_head = memalign(32, sizeof(u32));
 	u32 *rb_tail = memalign(32, sizeof(u32));
 	u32 *rb_head_uc = (void *)((uintptr_t)rb_head | SYS_BASE_UNCACHED);
 	u32 *rb_tail_uc = (void *)((uintptr_t)rb_tail | SYS_BASE_UNCACHED);
 	u32 rb_size = 4096;
 	u8 *rb_data = memalign(32, rb_size);
-	
+
 	*rb_head_uc = 0;
 	*rb_tail_uc = 0;
 	memset(rb_data, 0, rb_size);
@@ -126,63 +125,30 @@ int main(int argc, char **argv)
 	                            MEM_VIRTUAL_TO_PHYSICAL(rb_tail),
 	                            MEM_VIRTUAL_TO_PHYSICAL(rb_data),
 	                            rb_size);
-	printf("mload_set_log_ringbuf(): %d\n", ret);
+	//printf("mload_set_log_ringbuf(): %d\n", ret);
 
 	ret = mload_set_log_mode(DEBUG_BUFFER);
-	printf("mload_set_log_mode(): %d\n", ret);
-
-	//u32 starlet_base;
-	//int size;
-	//ret = mload_get_load_base(&starlet_base, &size);
-	//printf("base: 0x%08X, size: 0x%08X\n", starlet_base, size);
+	//printf("mload_set_log_mode(): %d\n", ret);
 
 	data_elf info;
 	ret = mload_elf(test_module_elf_start, &info);
 	printf("mload_elf(): %d\n", ret);
-	printf("  start: %p\n", info.start);
+	/*printf("  start: %p\n", info.start);
 	printf("  prio: %d\n", info.prio);
 	printf("  stack: %p\n", info.stack);
-	printf("  size_stack: 0x%x\n", info.size_stack);
+	printf("  size_stack: 0x%x\n", info.size_stack);*/
 	int thid = mload_run_thread(info.start, info.stack, info.size_stack, info.prio);
 	printf("mload_run_thread(): %d\n", thid);
 
-#if 0
-	#define BL_ADDR	0x138b23c6
+	printf("Entering main loop\n");
+	//for (int i = 0; i < 30; i++) puts("");
 
-	u32 orig_bl_insn;
-	u32 new_bl_insn = arm_gen_branch_thumb2(BL_ADDR, 0x138b365c, true);
-	printf("new_bl_insn: 0x%08X\n", new_bl_insn);
-
-	//u32 *data = (u32 *)memalign(32, 128);
-	int hid = iosCreateHeap(0x800);
-	u32 *data = iosAlloc(hid, 128);
-
-	ret = starlet_read32(BL_ADDR, data);
-	printf("starlet_read32(): %d, data: 0x%08X\n", ret, *data);
-	orig_bl_insn = *data;
-
-	*data = new_bl_insn;
-	//ret = starlet_write32(BL_ADDR, data);
-	printf("starlet_write32(): %d, data: 0x%08X\n", ret, *data);
-
-	//free(data);
-#endif
-
-	//         138b23c6     f0 01 f9 49     bl         IOS_ReceiveMessage 
-	#define PC 0x138b23c6
-	//uint32_t insn = 0xf001f949;
-	/*uint32_t insn = 0xf949f001;
-	u32 *data = (u32 *)memalign(32, 128);
-	starlet_read32(PC, data);
-	printf("Insn: 0x%08X\n", *data);
-	s32 offset = arm_decode_bl_offset_thumb2(*data);
-	printf("Offset: 0x%08X\n", offset);
-	printf("Target: 0x%08X\n", PC + offset);*/
-
-	printf("\nEntering main loop\n");
-
-	#define LOG_SIZE (2*4096)
+	#define LOG_SIZE (4096)
 	char *log = memalign(32, LOG_SIZE);
+	if (!log) run = 0;
+	char prev_log[LOG_SIZE];
+	memset(log, 0, LOG_SIZE);
+	memset(prev_log, 0, sizeof(prev_log));
 	u32 last_len = 0;
 
 	while (run) {
@@ -191,47 +157,43 @@ int main(int argc, char **argv)
 		if (pressed & WPAD_BUTTON_HOME)
 			run = 0;
 
-#if 0
-		/* Log ringbuffer consumer */
-		u32 cnt_to_end;
-		do {
-			u32 head = read32((uintptr_t)rb_head_uc);
-			u32 tail = read32((uintptr_t)rb_tail_uc);
+		if (0) {
+			/* Log ringbuffer consumer */
+			u32 cnt_to_end;
+			do {
+				u32 head = read32((uintptr_t)rb_head_uc);
+				u32 tail = read32((uintptr_t)rb_tail_uc);
 
-			cnt_to_end = CIRC_CNT_TO_END(head, tail, rb_size);
-			
-			if (cnt_to_end != 0) {
-				static char buf[4096+1];
-				
-				memset(buf, 0, sizeof(buf));
-				//DCInvalidateRange(rb_data + tail, cnt_to_end);
-				DCInvalidateRange(rb_data, rb_size);
-				memcpy(buf, rb_data + tail, cnt_to_end);
-				//buf[cnt_to_end + 1] = '\0';
-				
-				//printf("head: 0x%x, tail: 0x%x  ->  cnt_to_end: 0x%x\n", head, tail, cnt_to_end);
-				printf("%s\n", buf);
-				
-				tail = (tail + cnt_to_end) & (rb_size - 1);
-				write32((uintptr_t)rb_tail_uc, tail);
-			}
-		} while (cnt_to_end > 0);
-#endif
+				cnt_to_end = CIRC_CNT_TO_END(head, tail, rb_size);
 
-		memset(log, 0, LOG_SIZE);
-		ret = mload_get_log_buffer(log, LOG_SIZE);
-		//printf("mload_get_log_buffer(): %d\n", ret);
-		if (ret >= 0) {
-			u32 len = strlen(log);
-			if (last_len != len) {
-				//DCInvalidateRange(log, LOG_SIZE);
-				printf("%s", &log[last_len]);
-				//i = (i + ret) % LOG_SIZE;
-				last_len = len;
+				if (cnt_to_end != 0) {
+					static char buf[4096+1];
+
+					memset(buf, 0, sizeof(buf));
+					//DCInvalidateRange(rb_data + tail, cnt_to_end);
+					DCInvalidateRange(rb_data, rb_size);
+					memcpy(buf, rb_data + tail, cnt_to_end);
+					//buf[cnt_to_end + 1] = '\0';
+
+					//printf("head: 0x%x, tail: 0x%x  ->  cnt_to_end: 0x%x\n", head, tail, cnt_to_end);
+					printf("%s\n", buf);
+
+					tail = (tail + cnt_to_end) & (rb_size - 1);
+					write32((uintptr_t)rb_tail_uc, tail);
+				}
+			} while (cnt_to_end > 0);
+		} else {
+			memset(log, 0, LOG_SIZE);
+			DCFlushRange(log, LOG_SIZE);
+			ret = mload_get_log_buffer_and_empty(log, LOG_SIZE);
+			if (ret > 0) {
+				DCInvalidateRange(log, LOG_SIZE);
+				printf("%s", log);
 			}
+			usleep(1000);
 		}
 
-		//VIDEO_WaitVSync();
+		VIDEO_WaitVSync();
 	}
 
 	printf("\n\nExiting...\n");
@@ -243,7 +205,7 @@ int main(int argc, char **argv)
 
 	ret = mload_close();
 	printf("mload_close(): %d\n", ret);
-	
+
 	free(rb_head);
 	free(rb_tail);
 	free(rb_data);

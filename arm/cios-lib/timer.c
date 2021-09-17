@@ -82,7 +82,7 @@ void Timer_Sleep(u32 time)
 #endif
 
 	/* Send message */
-	os_message_queue_send(queuehandle, 0x555, 0);
+	os_message_queue_send(queuehandle, (void *)0x555, 0);
 
 	/* Restart timer */
 	os_restart_timer(timerId, time, 0);

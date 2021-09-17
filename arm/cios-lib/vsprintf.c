@@ -292,6 +292,7 @@ int vsprintf(char *buf, const char *fmt, va_list args)
 	*str = '\0';
 	return str-buf;
 }
+
 int sprintf( char *astr, const char *fmt, ...)
 {
 	va_list args;
@@ -306,7 +307,7 @@ int sprintf( char *astr, const char *fmt, ...)
 
 int svc_printf( const char *fmt, ...)
 {
-	static char buffer[512] ATTRIBUTE_ALIGN(32) = " ";
+	char buffer[128] ATTRIBUTE_ALIGN(32) = " ";
 
 	va_list args;
 	int len;

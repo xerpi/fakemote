@@ -67,5 +67,10 @@ invoke_direct_syscall:
  * a syscall from inside a syscall.
  */
 	direct_syscall 0x03, direct_os_get_thread_id
+	direct_syscall 0x04, direct_os_get_parent_thread_id
+	direct_syscall 0x2b, direct_os_set_uid
+	direct_syscall 0x2c, direct_os_get_uid
+	direct_syscall 0x2d, direct_os_set_gid
+	direct_syscall 0x2e, direct_os_get_gid
 	direct_syscall 0x3f, direct_os_sync_before_read
 	direct_syscall 0x40, direct_os_sync_after_write

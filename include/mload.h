@@ -37,7 +37,8 @@
 #define MLOAD_MEMSET			0x4D4C4491
 #define MLOAD_SET_LOG_MODE		0x4D4C44D0
 #define MLOAD_GET_LOG_BUFFER		0x4D4C44D1
-#define MLOAD_SET_LOG_RINGBUFFER	0x4D4C44D2
+#define MLOAD_GET_LOG_BUFFER_AND_EMPTY	0x4D4C44D2
+#define MLOAD_SET_LOG_RINGBUFFER	0x4D4C44D3
 #define MLOAD_SET_STEALTH_MODE		0x4D4C44E0
 
 /* Constants */
@@ -146,6 +147,7 @@ int mload_get_IOS_base();
 
 int mload_set_log_mode(u32 mode);
 int mload_get_log_buffer(void *addr, u32 max_size);
+int mload_get_log_buffer_and_empty(void *addr, u32 max_size);
 int mload_set_log_ringbuf(u32 head_paddr, u32 tail_paddr, u32 data_paddr, u32 size);
 
 #ifdef __cplusplus
