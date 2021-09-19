@@ -46,7 +46,7 @@ s32 Timer_Init(void)
 	/* Alloc queue space */
 	queuespace = Mem_Alloc(0x40);
 	if (!queuespace)
-		return IPC_ENOMEM;
+		return IOS_ENOMEM;
 
 	/* Create queue */
 	queuehandle = os_message_queue_create(queuespace, 16);

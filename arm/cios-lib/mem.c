@@ -31,7 +31,7 @@
 static s32 hid = -1;
 
 
-s32 Mem_Init(u32 *heapspace, u32 heapspaceSize)
+s32 Mem_Init(void *heapspace, u32 heapspaceSize)
 {
 	/* Heap already created */
 	if (hid >= 0)

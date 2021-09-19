@@ -81,7 +81,7 @@ s32 ISFS_CreateFile(const char *filename)
 {
 	/* Not opened */
 	if (fd < 0)
-		return IPC_ENOENT;
+		return IOS_ENOENT;
 
 	/* Set filename */
 	strcpy(isfsBuf.fsattr.filepath, filename);
@@ -101,7 +101,7 @@ s32 ISFS_Delete(const char *filename)
 {
 	/* Not opened */
 	if (fd < 0)
-		return IPC_ENOENT;
+		return IOS_ENOENT;
 
 	/* Set filename */
 	strcpy(isfsBuf.fsdelete.filepath, filename);

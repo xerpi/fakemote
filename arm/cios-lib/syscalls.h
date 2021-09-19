@@ -38,6 +38,24 @@
 #define os_sync_after_write(P, S) __os_sync_after_write(P, S)
 #endif
 
+/* Open modes */
+#define IOS_OPEN_NONE		0
+#define IOS_OPEN_READ		1
+#define IOS_OPEN_WRITE		2
+#define IOS_OPEN_RW		(IOS_OPEN_READ|IOS_OPEN_WRITE)
+
+/* IOS error codes */
+#define IOS_OK			0
+#define IOS_ENOENT		-6
+#define IOS_EINVAL		-4
+#define IOS_ENOHEAP		-5
+#define IOS_EQUEUEEMPTY		-7
+#define IOS_EQUEUEFULL		-8
+#define IOS_ENOMEM		-22
+
+/* Message send/receive flags */
+#define IOS_MESSAGE_BLOCK	0
+#define IOS_MESSAGE_NOBLOCK	1
 
 /* IOS syscalls */
 s32   os_thread_create(u32 (*entry)(void *arg), void *arg, void *stack, u32 stacksize, u32 priority, s32 autostart);

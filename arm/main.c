@@ -78,15 +78,18 @@
 
 /* Private definitions */
 
-#define MAX_CHANNEL_MAP	4
+#define MAX_CHANNEL_MAP	32
 #define THREAD_STACK_SIZE 4096
 
 typedef struct {
 	bool active;
-	u16 local_cid;
 	u16 psm;
+	u16 local_cid;
 	u16 remote_cid;
 } channel_map_t;
+
+/* Heap for dynamic memory */
+static u8 heapspace[0x1000] ATTRIBUTE_ALIGN(32);
 
 /* Global state */
 char *moduleName = "TST";
@@ -96,12 +99,34 @@ static int thread_initialized = 0;
 static ipcmessage *new_msg_queue[8] ATTRIBUTE_ALIGN(32);
 static int new_msg_queueid;
 static int orig_msg_queueid;
+
+/* List of pending HCI events to deliver to the BT SW stack (USB INTR) */
+static void *pending_hci_event_queue[8] ATTRIBUTE_ALIGN(32);
+static int pending_hci_event_queueid;
+
+/* List of pending ACL (L2CAP) command to deliver to the BT SW stack (USB BULK IN) */
+static void *pending_acl_in_event_queue[8] ATTRIBUTE_ALIGN(32);
+static int pending_acl_in_event_queueid;
+
+/* Fake devices */
+// 00:21:BD:2D:57:FF Name: Nintendo RVL-CNT-01
+static bdaddr_t fake_dev_baddr = {.b = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66}};
+static int con_req_sent = 0;
+static int fake_sync_pressed_sent = 1; // Disable for now
 static channel_map_t channels[MAX_CHANNEL_MAP];
 
-/* HCI status */
+/* HCI snooped status (requested by SW BT stack) */
 static u8 hci_unit_class[HCI_CLASS_SIZE];
 static int hci_page_scan_enabled = 0;
-static int con_req_sent = 0;
+
+#define CON_HANDLE (0x100 + 1)
+
+static u16 generate_l2cap_channel_id(void)
+{
+	// "Identifiers from 0x0001 to 0x003F are reserved"
+	static u16 starting_id = 0x40;
+	return starting_id++;
+}
 
 static channel_map_t *channels_get(u16 local_cid)
 {
@@ -112,18 +137,200 @@ static channel_map_t *channels_get(u16 local_cid)
 	return NULL;
 }
 
-static bool channels_register(u16 local_cid, u16 remote_cid)
+static channel_map_t *channels_get_free_slot(void)
 {
 	for (int i = 0; i < MAX_CHANNEL_MAP; i++) {
 		if (!channels[i].active) {
-			channels[i].local_cid = local_cid;
-			channels[i].remote_cid = remote_cid;
 			channels[i].active = true;
-			return true;
+			return &channels[i];
 		}
 	}
-	return false;
+	return NULL;
 }
+
+/* L2CAP helpers */
+
+static int enqueue_acl_in_command(bdaddr_t baddr, const void *data, u16 size)
+{
+	int ret;
+	u16 con_handle = CON_HANDLE; // TODO: Get from baddr
+
+	hci_acldata_hdr_t *hdr = Mem_Alloc(sizeof(hci_acldata_hdr_t) + size);
+	if (!hdr)
+		return IOS_ENOMEM;
+
+	hdr->con_handle = HCI_MK_CON_HANDLE(con_handle, HCI_PACKET_START, HCI_POINT2POINT);
+	hdr->length = size;
+	memcpy((u8 *)hdr + sizeof(hci_acldata_hdr_t), data, size);
+
+	ret = os_message_queue_send(pending_acl_in_event_queueid, hdr, IOS_MESSAGE_NOBLOCK);
+	if (ret) {
+		Mem_Free(hdr);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int l2cap_send_command_to_acl(u8 ident, u8 code, u8 command_length, const void *command_data)
+{
+	int ret;
+
+	l2cap_hdr_t *hdr = Mem_Alloc(sizeof(l2cap_hdr_t) + sizeof(l2cap_cmd_hdr_t) + command_length);
+	if (!hdr)
+		return IOS_ENOMEM;
+
+	hdr->length = sizeof(l2cap_cmd_hdr_t) + command_length;
+	hdr->dcid = L2CAP_SIGNAL_CID;
+
+	l2cap_cmd_hdr_t *cmd = (void *)hdr + sizeof(l2cap_hdr_t);
+	cmd->code = code;
+	cmd->ident = ident;
+	cmd->length = command_length;
+
+	memcpy((void *)cmd + sizeof(l2cap_cmd_hdr_t), command_data, command_length);
+
+	ret = enqueue_acl_in_command(fake_dev_baddr, hdr, sizeof(l2cap_hdr_t) + hdr->length);
+
+	Mem_Free(hdr);
+
+	return ret;
+}
+
+static int l2cap_send_psm_connect_req(u16 psm)
+{
+	channel_map_t *chn = channels_get_free_slot();
+	if (!chn)
+		return IOS_ENOMEM;
+
+	chn->psm = psm;
+	chn->local_cid = generate_l2cap_channel_id();
+
+	l2cap_con_req_cp cr;
+	cr.psm = psm;
+	cr.scid = chn->local_cid;
+
+	return l2cap_send_command_to_acl(L2CAP_CONNECT_REQ, L2CAP_CONNECT_REQ, sizeof(cr), &cr);
+}
+
+/* HCI "pending event" queue enqueue helper */
+static int enqueue_hci_event_command_status(u16 opcode)
+{
+	int ret;
+	u16 size = sizeof(hci_event_hdr_t) + sizeof(hci_command_status_ep);
+	hci_event_hdr_t *hdr;
+	hci_command_status_ep *stat;
+
+	hdr = Mem_Alloc(size);
+	if (!hdr)
+		return IOS_ENOMEM;
+
+	/* Fill event data */
+	stat = (void *)hdr + sizeof(hci_event_hdr_t);
+	hdr->event = HCI_EVENT_COMMAND_STATUS;
+	hdr->length = sizeof(hci_command_status_ep);
+	stat->status = 0;
+	stat->num_cmd_pkts = 1;
+	stat->opcode = bswap16(opcode);
+
+	ret = os_message_queue_send(pending_hci_event_queueid, hdr, IOS_MESSAGE_NOBLOCK);
+	if (ret) {
+		Mem_Free(hdr);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int enqueue_hci_event_con_req(bdaddr_t bdaddr)
+{
+	int ret;
+	u16 size = sizeof(hci_event_hdr_t) + sizeof(hci_con_req_ep);
+	hci_event_hdr_t *hdr;
+	hci_con_req_ep *con;
+
+	hdr = Mem_Alloc(size);
+	if (!hdr)
+		return IOS_ENOMEM;
+
+	/* Fill event data */
+	con = (void *)hdr + sizeof(hci_event_hdr_t);
+	hdr->event = HCI_EVENT_CON_REQ;
+	hdr->length = sizeof(hci_con_req_ep);
+	con->bdaddr = bdaddr;
+	con->uclass[0] = WIIMOTE_HCI_CLASS_0;
+	con->uclass[1] = WIIMOTE_HCI_CLASS_1;
+	con->uclass[2] = WIIMOTE_HCI_CLASS_2;
+	con->link_type = HCI_LINK_ACL;
+
+	ret = os_message_queue_send(pending_hci_event_queueid, hdr, IOS_MESSAGE_NOBLOCK);
+	if (ret) {
+		Mem_Free(hdr);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int enqueue_hci_event_con_compl(bdaddr_t bdaddr, u8 status)
+{
+	int ret;
+	u16 size = sizeof(hci_event_hdr_t) + sizeof(hci_con_compl_ep);
+	hci_event_hdr_t *hdr;
+	hci_con_compl_ep *con;
+
+	hdr = Mem_Alloc(size);
+	if (!hdr)
+		return IOS_ENOMEM;
+
+	/* Fill event data */
+	con = (void *)hdr + sizeof(hci_event_hdr_t);
+	hdr->event = HCI_EVENT_CON_COMPL;
+	hdr->length = sizeof(hci_con_compl_ep);
+	con->status = status;
+	con->con_handle = bswap16(CON_HANDLE); // TODO: assign bdaddr to con handle
+	con->bdaddr = bdaddr;
+	con->link_type = HCI_LINK_ACL;
+	con->encryption_mode = HCI_ENCRYPTION_MODE_NONE;
+
+	ret = os_message_queue_send(pending_hci_event_queueid, hdr, IOS_MESSAGE_NOBLOCK);
+	if (ret) {
+		Mem_Free(hdr);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int enqueue_hci_event_role_change(bdaddr_t bdaddr, u8 role)
+{
+	int ret;
+	u16 size = sizeof(hci_event_hdr_t) + sizeof(hci_role_change_ep);
+	hci_event_hdr_t *hdr;
+	hci_role_change_ep *chg;
+
+	hdr = Mem_Alloc(size);
+	if (!hdr)
+		return IOS_ENOMEM;
+
+	/* Fill event data */
+	chg = (void *)hdr + sizeof(hci_event_hdr_t);
+	hdr->event = HCI_EVENT_ROLE_CHANGE;
+	hdr->length = sizeof(hci_role_change_ep);
+	chg->status = 0;
+	chg->bdaddr = bdaddr;
+	chg->role = role;
+
+	ret = os_message_queue_send(pending_hci_event_queueid, hdr, IOS_MESSAGE_NOBLOCK);
+	if (ret) {
+		Mem_Free(hdr);
+		return ret;
+	}
+
+	return 0;
+}
+
+/* Handlers */
 
 static int handle_l2cap_signal_channel_in(void *data, u32 size)
 {
@@ -193,27 +400,39 @@ static int handle_hid_intr(void *data, u32 size)
 	return 0;
 }
 
-static int handle_acl_data_in_l2cap(u16 acl_con_handle, u16 dcid, void *data, u32 size)
+static int handle_acl_data_in_l2cap(void *data, u32 size, int *fwd_to_usb)
 {
-	//svc_printf("  l2cap  in: len: 0x%x, dcid: 0x%x, data: 0x%08x\n",
-	//	size, dcid, *(u32 *)data);
+	int ret;
+	svc_printf("  l2cap  in:");
 
-	if (dcid == L2CAP_SIGNAL_CID) {
-		return handle_l2cap_signal_channel_in(data, size);
+	//if (kk++ < 10)
+	//svc_printf("INT: bEndpoint 0x%x, wLength: 0x%x\n", bEndpoint, wLength);
+	//svc_printf("  data: 0x%x 0x%x\n", *(u32 *)data, *(u32 *)(data + 4));
+
+	hci_acldata_hdr_t *hdr;
+	ret = os_message_queue_receive(pending_acl_in_event_queueid, &hdr,
+				       IOS_MESSAGE_NOBLOCK);
+	if (ret == 0) {
+		u16 length = sizeof(hci_acldata_hdr_t) + hdr->length;
+		svc_printf("We have a pending ACL DATA_IN event, size: %d!\n", length);
+		memcpy(data, hdr, length);
+		Mem_Free(hdr);
+		*fwd_to_usb = 0;
+		return length;
 	}
+
+	*fwd_to_usb = 1;
 
 	return 0;
 
-	channel_map_t *chn = channels_get(dcid);
+	/* channel_map_t *chn = channels_get(dcid);
 	if (!chn)
 		return 0;
 
 	if (chn->psm == L2CAP_PSM_HID_CNTL)
 		svc_printf("PSM HID CNTL\n");
 	else if (chn->psm == L2CAP_PSM_HID_INTR)
-		return handle_hid_intr(data, size);
-
-	return 0;
+		return handle_hid_intr(data, size);*/
 }
 
 static int handle_acl_data_out_l2cap(u16 acl_con_handle, u16 dcid, void *data, u32 size)
@@ -228,51 +447,125 @@ static int handle_acl_data_out_l2cap(u16 acl_con_handle, u16 dcid, void *data, u
 	return 0;
 }
 
-static int handle_oh1_dev_bulk_message(u8 bEndpoint, u16 wLength, void *data)
+static int handle_oh1_dev_bulk_message(u8 bEndpoint, u16 wLength, void *data, int *fwd_to_usb)
 {
-	//svc_printf("BLK: bEndpoint 0x%x, wLength: 0x%x\n", bEndpoint, wLength);
+	svc_printf("BLK: bEndpoint 0x%x, wLength: 0x%x\n", bEndpoint, wLength);
 	//svc_printf("  data: 0x%x 0x%x\n", *(u32 *)data, *(u32 *)(data + 4));
 
-	/* HCI ACL data packet header */
-	hci_acldata_hdr_t *acl_hdr = data;
-	u16 acl_con_handle = HCI_CON_HANDLE(bswap16(acl_hdr->con_handle));
-	u16 acl_length     = bswap16(acl_hdr->length);
-	u8 *acl_payload    = data + sizeof(hci_acldata_hdr_t);
-
-	/* L2CAP header */
-	l2cap_hdr_t *l2cap_hdr = (void *)acl_payload;
-	u16 l2cap_length  = bswap16(l2cap_hdr->length);
-	u16 l2cap_dcid    = bswap16(l2cap_hdr->dcid);
-	u8 *l2cap_payload = acl_payload + sizeof(l2cap_hdr_t);
-
 	if (bEndpoint == EP_ACL_DATA_OUT) {
+		/* HCI ACL data packet header */
+		hci_acldata_hdr_t *acl_hdr = data;
+		u16 acl_con_handle = HCI_CON_HANDLE(bswap16(acl_hdr->con_handle));
+		u16 acl_length     = bswap16(acl_hdr->length);
+		u8 *acl_payload    = data + sizeof(hci_acldata_hdr_t);
+
+		/* L2CAP header */
+		l2cap_hdr_t *l2cap_hdr = (void *)acl_payload;
+		u16 l2cap_length  = bswap16(l2cap_hdr->length);
+		u16 l2cap_dcid    = bswap16(l2cap_hdr->dcid);
+		u8 *l2cap_payload = acl_payload + sizeof(l2cap_hdr_t);
+
 		//svc_printf("< ACL OUT: hdl: 0x%x, len: 0x%x\n",
 		//	   acl_con_handle, acl_length);
 
-		/* This is the ACL datapath from CPU to Wiimote */
+		/* This is the ACL datapath from CPU to device (Wiimote) */
 		return handle_acl_data_out_l2cap(acl_con_handle, l2cap_dcid,
 						 l2cap_payload, l2cap_length);
 	} else if (bEndpoint == EP_ACL_DATA_IN) {
-	} else if (bEndpoint == EP_ACL_DATA_IN) {
-		//svc_printf("> ACL  IN: hdl: 0x%x, len: 0x%x\n",
-		//	   acl_con_handle, acl_length);
+		svc_printf("> ACL  IN: len: 0x%x\n", wLength);
 
 		/* We are given an ACL buffer to fill */
-		return handle_acl_data_in_l2cap(acl_con_handle, l2cap_dcid,
-						l2cap_payload, l2cap_length);
+		return handle_acl_data_in_l2cap(data, wLength, fwd_to_usb);
+	}
+
+	return 0;
+}
+
+static int handle_hci_cmd_accept_con(void *data, int *fwd_to_usb)
+{
+	int ret;
+	hci_accept_con_cp *cp = data + sizeof(hci_cmd_hdr_t);
+
+	static const char *roles[] = {
+		"Master (0x00)",
+		"Slave (0x01)",
+	};
+
+	svc_printf("  HCI_CMD_ACCEPT_CON %02X:%02X:%02X:%02X:%02X:%02X, role: %s\n",
+		cp->bdaddr.b[5], cp->bdaddr.b[4], cp->bdaddr.b[3],
+		cp->bdaddr.b[2], cp->bdaddr.b[1], cp->bdaddr.b[0],
+		roles[cp->role]);
+
+	/* Connection accepted to our fake device */
+	if (con_req_sent && memcmp(&cp->bdaddr, &fake_dev_baddr, sizeof(bdaddr_t)) == 0) {
+		svc_printf("Accepted CON for our fake device!\n");
+
+		/* The Accept_Connection_Request command will cause the Command Status
+		   event to be sent from the Host Controller when the Host Controller
+		   begins setting up the connection */
+		ret = enqueue_hci_event_command_status(HCI_CMD_ACCEPT_CON);
+		if (ret)
+			return ret;
+
+		if (cp->role == HCI_ROLE_MASTER) {
+			ret = enqueue_hci_event_role_change(cp->bdaddr, HCI_ROLE_MASTER);
+			if (ret)
+				return ret;
+		}
+
+		/* In addition, when the Link Manager determines the connection is established,
+		 *  the Host Controllers on both Bluetooth devices that form the connection
+		 *  will send a Connection Complete event to each Host */
+		ret = enqueue_hci_event_con_compl(cp->bdaddr, 0);
+		if (ret)
+			return ret;
+
+		/* The connection originated from the (fake) device, now we can start creating
+		 * the ACL L2CAP HID control and interrupt channels (in that order). */
+		svc_printf("L2CAP STARTING\n");
+		ret = l2cap_send_psm_connect_req(L2CAP_PSM_HID_CNTL);
+		svc_printf("L2CAP PSM HID connect req: %d\n", ret);
+		ret = l2cap_send_psm_connect_req(L2CAP_PSM_HID_INTR);
+		svc_printf("L2CAP PSM INTR connect req: %d\n", ret);
+
+		*fwd_to_usb = 0;
+	}
+
+	return 0;
+}
+
+static int hci_check_send_connection_request(int *fwd_to_usb)
+{
+	int ret;
+	int class_match = (hci_unit_class[0] == WIIMOTE_HCI_CLASS_0) &&
+			  (hci_unit_class[1] == WIIMOTE_HCI_CLASS_1) &&
+			  (hci_unit_class[2] == WIIMOTE_HCI_CLASS_2);
+
+	/* If page scan is disabled the controller will not see this connection request. */
+	if (class_match && hci_page_scan_enabled && !con_req_sent) {
+		ret = enqueue_hci_event_con_req(fake_dev_baddr);
+		if (ret)
+			return ret;
+		con_req_sent = 1;
+		*fwd_to_usb = 0;
 	}
 
 	return 0;
 }
 
 static int handle_oh1_dev_control_message(u8 bmRequestType, u8 bRequest, u16 wValue,
-					  u16 wIndex, u16 wLength, void *data)
+					  u16 wIndex, u16 wLength, void *data, int *fwd_to_usb)
 {
+	int ret = 0;
+
 	//if (kk++ < 5)
 	//svc_printf("CTL: bmRequestType 0x%x, bRequest: 0x%x, "
 	//	   "wValue: 0x%x, wIndex: 0x%x, wLength: 0x%x\n",
 	//	   bmRequestType, bRequest, wValue, wIndex, wLength);
 	//svc_printf("  data: 0x%x 0x%x\n", *(u32 *)data, *(u32 *)(data + 4));
+
+	/* Default to yes (few command return fake data to BT SW stack) */
+	*fwd_to_usb = 1;
 
 	if (bRequest == EP_HCI_CTRL) {
 		hci_cmd_hdr_t *cmd_hdr = data;
@@ -287,18 +580,9 @@ static int handle_oh1_dev_control_message(u8 bmRequestType, u8 bRequest, u16 wVa
 		case HCI_CMD_CREATE_CON:
 			svc_write("  HCI_CMD_CREATE_CON\n");
 			break;
-		case HCI_CMD_ACCEPT_CON: {
-			hci_accept_con_cp *cp = data + sizeof(hci_cmd_hdr_t);
-			static const char *roles[] = {
-				"Master (0x00)",
-				"Slave (0x01)",
-			};
-			svc_printf("  HCI_CMD_ACCEPT_CON %02X:%02X:%02X:%02X:%02X:%02X, role: %s\n",
-				cp->bdaddr.b[5], cp->bdaddr.b[4], cp->bdaddr.b[3],
-				cp->bdaddr.b[2], cp->bdaddr.b[1], cp->bdaddr.b[0],
-				roles[cp->role]);
+		case HCI_CMD_ACCEPT_CON:
+			ret = handle_hci_cmd_accept_con(data, fwd_to_usb);
 			break;
-		}
 		case HCI_CMD_DISCONNECT:
 			svc_write("  HCI_CMD_DISCONNECT\n");
 			break;
@@ -316,6 +600,7 @@ static int handle_oh1_dev_control_message(u8 bmRequestType, u8 bRequest, u16 wVa
 			svc_printf("  HCI_CMD_WRITE_SCAN_ENABLE: 0x%x (%s)\n",
 				cp->scan_enable, scanning[cp->scan_enable]);
 			hci_page_scan_enabled = cp->scan_enable & HCI_PAGE_SCAN_ENABLE;
+			ret = hci_check_send_connection_request(fwd_to_usb);
 			break;
 		}
 		case HCI_CMD_WRITE_UNIT_CLASS: {
@@ -325,6 +610,7 @@ static int handle_oh1_dev_control_message(u8 bmRequestType, u8 bRequest, u16 wVa
 			hci_unit_class[0] = cp->uclass[0];
 			hci_unit_class[1] = cp->uclass[1];
 			hci_unit_class[2] = cp->uclass[2];
+			ret = hci_check_send_connection_request(fwd_to_usb);
 			break;
 		}
 		case HCI_CMD_WRITE_INQUIRY_SCAN_TYPE: {
@@ -354,67 +640,28 @@ static int handle_oh1_dev_control_message(u8 bmRequestType, u8 bRequest, u16 wVa
 		}
 	}
 
-	return 0;
+	return ret;
 }
 
 static int handle_oh1_dev_intr_message(u8 bEndpoint, u16 wLength, void *data, int *fwd_to_usb)
 {
+	int ret;
 	//if (kk++ < 10)
 	//svc_printf("INT: bEndpoint 0x%x, wLength: 0x%x\n", bEndpoint, wLength);
 	//svc_printf("  data: 0x%x 0x%x\n", *(u32 *)data, *(u32 *)(data + 4));
 
 	/* We are given a HCI buffer to fill */
 	if (bEndpoint == EP_HCI_EVENT) {
-		int class_match = (hci_unit_class[0] == WIIMOTE_HCI_CLASS_0) &&
-				  (hci_unit_class[1] == WIIMOTE_HCI_CLASS_1) &&
-				  (hci_unit_class[2] == WIIMOTE_HCI_CLASS_2);
-		static int sync_pressed = 0;
-#if 0
-		if (class_match && !sync_pressed) {
-			// When the red sync button is pressed, a HCI event is generated:
-			//   > HCI Event: Vendor (0xff) plen 1
-			//   08
-			// This causes the emulated software to perform a BT inquiry and connect to found Wiimotes.
-			// When the red sync button is held for 10 seconds, a HCI event with payload 09 is sent.
-			hci_event_hdr_t *hdr = data;
-			hdr->event = HCI_EVENT_VENDOR;
-			hdr->length = sizeof(u8);
-			u8 *payload = data + sizeof(hci_event_hdr_t);
-			payload[0] = 0x08;
-			svc_printf("Faking SYNC button press HCI event\n");
+		hci_event_hdr_t *event;
+		ret = os_message_queue_receive(pending_hci_event_queueid, &event,
+					       IOS_MESSAGE_NOBLOCK);
+		if (ret == 0) {
+			u16 length = sizeof(hci_event_hdr_t) + event->length;
+			svc_printf("We have a pending HCI event, size: %d!\n", length);
+			memcpy(data, event, length);
+			Mem_Free(event);
 			*fwd_to_usb = 0;
-			sync_pressed = 1;
-			return sizeof(hci_event_hdr_t) + hdr->length;
-		}
-#endif
-		/* If page scan is disabled the controller will not see this connection request. */
-		if (class_match && hci_page_scan_enabled && !con_req_sent) {
-			hci_event_hdr_t *hdr = data;
-			hdr->event = HCI_EVENT_CON_REQ;
-			hdr->length = sizeof(hci_con_req_ep);
-			hci_con_req_ep *ep = data + sizeof(hci_event_hdr_t);
-			// 00:21:BD:2D:57:FF Name: Nintendo RVL-CNT-01
-			/*ep->bdaddr.b[0] = 0x00;
-			ep->bdaddr.b[1] = 0x21;
-			ep->bdaddr.b[2] = 0xBD;
-			ep->bdaddr.b[3] = 0x2D;
-			ep->bdaddr.b[4] = 0x57;
-			ep->bdaddr.b[5] = 0xFF;*/
-			ep->bdaddr.b[5] = 0x00;
-			ep->bdaddr.b[4] = 0x11;
-			ep->bdaddr.b[3] = 0x22;
-			ep->bdaddr.b[2] = 0x33;
-			ep->bdaddr.b[1] = 0x44;
-			ep->bdaddr.b[0] = 0x55;
-			ep->uclass[0] = WIIMOTE_HCI_CLASS_0;
-			ep->uclass[1] = WIIMOTE_HCI_CLASS_1;
-			ep->uclass[2] = WIIMOTE_HCI_CLASS_2;
-			ep->link_type = HCI_LINK_ACL;
-
-			svc_printf("HCI EVENT CON REQ SENT\n");
-			*fwd_to_usb = 0;
-			con_req_sent = 1;
-			return sizeof(hci_event_hdr_t) + hdr->length;
+			return length;
 		}
 	}
 
@@ -443,7 +690,8 @@ static int handle_oh1_dev_ioctlv(u32 cmd, ioctlv *vector, u32 inlen, u32 iolen, 
 		u16 wLength      = bswap16(*(u16 *)vector[4].data);
 		// u16 wUnk      = *(u8 *)vector[5].data;
 		void *data       = vector[6].data;
-		ret = handle_oh1_dev_control_message(bmRequestType, bRequest, wValue, wIndex, wLength, data);
+		ret = handle_oh1_dev_control_message(bmRequestType, bRequest, wValue, wIndex,
+						     wLength, data, fwd_to_usb);
 		*fwd_to_usb = 1;
 		break;
 	}
@@ -451,7 +699,7 @@ static int handle_oh1_dev_ioctlv(u32 cmd, ioctlv *vector, u32 inlen, u32 iolen, 
 		u8 bEndpoint = *(u8 *)vector[0].data;
 		u16 wLength  = *(u16 *)vector[1].data;
 		void *data   = vector[2].data;
-		ret = handle_oh1_dev_bulk_message(bEndpoint, wLength, data);
+		ret = handle_oh1_dev_bulk_message(bEndpoint, wLength, data, fwd_to_usb);
 		*fwd_to_usb = 1;
 		break;
 	}
@@ -522,11 +770,33 @@ static int worker_thread(void *)
 	int ret;
 	svc_printf("Work thread start\n");
 
+	/* Initialize memory heap */
+	ret = Mem_Init(heapspace, sizeof(heapspace));
+	if (ret < 0)
+		return ret;
+
+	ret = os_message_queue_create(pending_hci_event_queue,
+				      ARRAY_SIZE(pending_hci_event_queue));
+	if (ret < 0)
+		return ret;
+	pending_hci_event_queueid = ret;
+
+	ret = os_message_queue_create(pending_acl_in_event_queue,
+				      ARRAY_SIZE(pending_acl_in_event_queue));
+	if (ret < 0)
+		return ret;
+	pending_acl_in_event_queueid = ret;
+
+	/* Init global state */
+	for (int i = 0; i < MAX_CHANNEL_MAP; i++)
+		channels[i].active = false;
+
 	while (1) {
 		ipcmessage *message;
 
 		/* Wait for message */
-		ret = os_message_queue_receive(orig_msg_queueid, (void *)&message, 0);
+		ret = os_message_queue_receive(orig_msg_queueid, (void *)&message,
+					       IOS_MESSAGE_BLOCK);
 		if (ret != 0) {
 			svc_printf("Msg queue recv err: %d\n", ret);
 			break;
@@ -537,6 +807,8 @@ static int worker_thread(void *)
 		handle_oh1_dev_message(message);
 	}
 
+	os_message_queue_destroy(pending_hci_event_queueid);
+	os_message_queue_destroy(pending_acl_in_event_queueid);
 	os_message_queue_destroy(new_msg_queueid);
 
 	return 0;
@@ -563,13 +835,11 @@ static int OH1_IOS_ReceiveMessage_hook(int queueid, void *message, u32 flags)
 		thread_initialized = 1;
 	}
 
-	/* Redirect OH1 module to read messages from our new queue */
+	/* Redirect BT SW stack to read messages from our new queue instead of OH1 BT dongle */
 	if (queueid == orig_msg_queueid)
-		ret = os_message_queue_receive(new_msg_queueid, message, flags);
-	else
-		ret = os_message_queue_receive(queueid, message, flags);
+		queueid = new_msg_queueid;
 
-	return ret;
+	return os_message_queue_receive(queueid, message, flags);
 }
 
 static s32 Patch_OH1UsbModule(void)
@@ -604,7 +874,7 @@ int main(void)
 
 	/* Print info */
 	svc_write("Hello world from Starlet!\n");
-
+#if 0
 	int fd = os_open("/shared2/sys/SYSCONF", IPC_OPEN_READ);
 	svc_printf("os_open(): %d\n", fd);
 
@@ -621,11 +891,7 @@ int main(void)
 	svc_printf("  num_registered: %d\n", conf_pads.num_registered);
 	svc_printf("  registered[0]: %s\n", conf_pads.registered[0].name);
 	svc_printf("  active[0]: %s\n", conf_pads.active[0].name);
-
-	/* Init global state */
-	for (int i = 0; i < MAX_CHANNEL_MAP; i++)
-		channels[i].active = false;
-
+#endif
 	/* System patchers */
 	patcher patchers[] = {
 		{Patch_OH1UsbModule, 0},

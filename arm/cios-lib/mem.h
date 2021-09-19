@@ -29,7 +29,7 @@
 #include "types.h"
 
 /* Prototypes */
-s32   Mem_Init(u32 *heapspace, u32 heapspaceSize);
+s32   Mem_Init(void *heapspace, u32 heapspaceSize);
 #ifdef CIOSLIB_DEBUG
 void *Mem_Alloc_Debug(u32 size, const char* func, u32 line);
 #define Mem_Alloc(S) Mem_Alloc_Debug(S, __FUNCTION__, __LINE__)
