@@ -28,6 +28,7 @@
 #include <string.h>
 #include <stdarg.h>
 
+#include "conf.h"
 #include "ipc.h"
 #include "mem.h"
 #include "syscalls.h"
@@ -65,6 +66,11 @@
 #define USBV0_IOCTL_CANCEL_INSERT_HOOK	31
 #define USBV0_IOCTLV_UNKNOWN_32		32
 
+/* Wiimote definitions */
+#define WIIMOTE_HCI_CLASS_0 0x00
+#define WIIMOTE_HCI_CLASS_1 0x04
+#define WIIMOTE_HCI_CLASS_2 0x48
+
 #define EP_HCI_CTRL	0x00
 #define EP_HCI_EVENT	0x81
 #define EP_ACL_DATA_IN	0x82
@@ -91,6 +97,11 @@ static ipcmessage *new_msg_queue[8] ATTRIBUTE_ALIGN(32);
 static int new_msg_queueid;
 static int orig_msg_queueid;
 static channel_map_t channels[MAX_CHANNEL_MAP];
+
+/* HCI status */
+static u8 hci_unit_class[HCI_CLASS_SIZE];
+static int hci_page_scan_enabled = 0;
+static int con_req_sent = 0;
 
 static channel_map_t *channels_get(u16 local_cid)
 {
@@ -184,8 +195,8 @@ static int handle_hid_intr(void *data, u32 size)
 
 static int handle_acl_data_in_l2cap(u16 acl_con_handle, u16 dcid, void *data, u32 size)
 {
-	svc_printf("  l2cap  in: len: 0x%x, dcid: 0x%x, data: 0x%08x\n",
-		size, dcid, *(u32 *)data);
+	//svc_printf("  l2cap  in: len: 0x%x, dcid: 0x%x, data: 0x%08x\n",
+	//	size, dcid, *(u32 *)data);
 
 	if (dcid == L2CAP_SIGNAL_CID) {
 		return handle_l2cap_signal_channel_in(data, size);
@@ -207,8 +218,8 @@ static int handle_acl_data_in_l2cap(u16 acl_con_handle, u16 dcid, void *data, u3
 
 static int handle_acl_data_out_l2cap(u16 acl_con_handle, u16 dcid, void *data, u32 size)
 {
-	svc_printf("  l2cap out: len: 0x%x, dcid: 0x%x, data: 0x%08x\n",
-		size, dcid, *(u32 *)data);
+	//svc_printf("  l2cap out: len: 0x%x, dcid: 0x%x, data: 0x%08x\n",
+	//	size, dcid, *(u32 *)data);
 
 	if (dcid == L2CAP_SIGNAL_CID) {
 		return handle_l2cap_signal_channel_out(data, size);
@@ -242,6 +253,7 @@ static int handle_oh1_dev_bulk_message(u8 bEndpoint, u16 wLength, void *data)
 		return handle_acl_data_out_l2cap(acl_con_handle, l2cap_dcid,
 						 l2cap_payload, l2cap_length);
 	} else if (bEndpoint == EP_ACL_DATA_IN) {
+	} else if (bEndpoint == EP_ACL_DATA_IN) {
 		//svc_printf("> ACL  IN: hdl: 0x%x, len: 0x%x\n",
 		//	   acl_con_handle, acl_length);
 
@@ -256,6 +268,7 @@ static int handle_oh1_dev_bulk_message(u8 bEndpoint, u16 wLength, void *data)
 static int handle_oh1_dev_control_message(u8 bmRequestType, u8 bRequest, u16 wValue,
 					  u16 wIndex, u16 wLength, void *data)
 {
+	//if (kk++ < 5)
 	//svc_printf("CTL: bmRequestType 0x%x, bRequest: 0x%x, "
 	//	   "wValue: 0x%x, wIndex: 0x%x, wLength: 0x%x\n",
 	//	   bmRequestType, bRequest, wValue, wIndex, wLength);
@@ -266,20 +279,146 @@ static int handle_oh1_dev_control_message(u8 bmRequestType, u8 bRequest, u16 wVa
 		u16 opcode = bswap16(cmd_hdr->opcode);
 		u16 ocf = HCI_OCF(opcode);
 		u16 ogf = HCI_OGF(opcode);
+
+		//if (kk++ < 30)
 		//svc_printf("EP_HCI_CTRL: opcode: 0x%x (ocf: 0x%x, ogf: 0x%x)\n", opcode, ocf, ogf);
 
 		switch (opcode) {
 		case HCI_CMD_CREATE_CON:
-			svc_write("  HCI_CMD_CREATE_CON\r\n");
+			svc_write("  HCI_CMD_CREATE_CON\n");
 			break;
-		case HCI_CMD_ACCEPT_CON:
-			svc_write("  HCI_CMD_ACCEPT_CON\r\n");
+		case HCI_CMD_ACCEPT_CON: {
+			hci_accept_con_cp *cp = data + sizeof(hci_cmd_hdr_t);
+			static const char *roles[] = {
+				"Master (0x00)",
+				"Slave (0x01)",
+			};
+			svc_printf("  HCI_CMD_ACCEPT_CON %02X:%02X:%02X:%02X:%02X:%02X, role: %s\n",
+				cp->bdaddr.b[5], cp->bdaddr.b[4], cp->bdaddr.b[3],
+				cp->bdaddr.b[2], cp->bdaddr.b[1], cp->bdaddr.b[0],
+				roles[cp->role]);
 			break;
+		}
 		case HCI_CMD_DISCONNECT:
-			svc_write("  HCI_CMD_DISCONNECT\r\n");
+			svc_write("  HCI_CMD_DISCONNECT\n");
+			break;
+		case HCI_CMD_INQUIRY:
+			svc_write("  HCI_CMD_INQUIRY\n");
+			break;
+		case HCI_CMD_WRITE_SCAN_ENABLE: {
+			static const char *scanning[] = {
+				"HCI_NO_SCAN_ENABLE",
+				"HCI_INQUIRY_SCAN_ENABLE",
+				"HCI_PAGE_SCAN_ENABLE",
+				"HCI_INQUIRY_AND_PAGE_SCAN_ENABLE",
+			};
+			hci_write_scan_enable_cp *cp = data + sizeof(hci_cmd_hdr_t);
+			svc_printf("  HCI_CMD_WRITE_SCAN_ENABLE: 0x%x (%s)\n",
+				cp->scan_enable, scanning[cp->scan_enable]);
+			hci_page_scan_enabled = cp->scan_enable & HCI_PAGE_SCAN_ENABLE;
+			break;
+		}
+		case HCI_CMD_WRITE_UNIT_CLASS: {
+			hci_write_unit_class_cp *cp = data + sizeof(hci_cmd_hdr_t);
+			svc_printf("  HCI_CMD_WRITE_UNIT_CLASS: 0x%x 0x%x 0x%x\n",
+				cp->uclass[0], cp->uclass[1], cp->uclass[2]);
+			hci_unit_class[0] = cp->uclass[0];
+			hci_unit_class[1] = cp->uclass[1];
+			hci_unit_class[2] = cp->uclass[2];
+			break;
+		}
+		case HCI_CMD_WRITE_INQUIRY_SCAN_TYPE: {
+			hci_write_inquiry_scan_type_cp *cp = data + sizeof(hci_cmd_hdr_t);
+			svc_printf("  HCI_CMD_WRITE_INQUIRY_SCAN_TYPE: 0x%x\n", cp->type);
+			break;
+		}
+		case HCI_CMD_WRITE_PAGE_SCAN_TYPE: {
+			hci_write_page_scan_type_cp *cp = data + sizeof(hci_cmd_hdr_t);
+			svc_printf("  HCI_CMD_WRITE_PAGE_SCAN_TYPE: 0x%x\n", cp->type);
+			break;
+		}
+		case HCI_CMD_WRITE_INQUIRY_MODE: {
+			hci_write_inquiry_mode_cp *cp = data + sizeof(hci_cmd_hdr_t);
+			svc_printf("  HCI_CMD_WRITE_INQUIRY_MODE: 0x%x\n", cp->mode);
+			break;
+		}
+		case HCI_CMD_SET_EVENT_FILTER: {
+			hci_set_event_filter_cp *cp = data + sizeof(hci_cmd_hdr_t);
+			svc_printf("  HCI_CMD_SET_EVENT_FILTER: 0x%x 0x%x\n",
+				  cp->filter_type, cp->filter_condition_type);
+			break;
+		}
+		default:
+			//svc_printf("HCI CTRL: opcode: 0x%x (ocf: 0x%x, ogf: 0x%x)\n", opcode, ocf, ogf);
 			break;
 		}
 	}
+
+	return 0;
+}
+
+static int handle_oh1_dev_intr_message(u8 bEndpoint, u16 wLength, void *data, int *fwd_to_usb)
+{
+	//if (kk++ < 10)
+	//svc_printf("INT: bEndpoint 0x%x, wLength: 0x%x\n", bEndpoint, wLength);
+	//svc_printf("  data: 0x%x 0x%x\n", *(u32 *)data, *(u32 *)(data + 4));
+
+	/* We are given a HCI buffer to fill */
+	if (bEndpoint == EP_HCI_EVENT) {
+		int class_match = (hci_unit_class[0] == WIIMOTE_HCI_CLASS_0) &&
+				  (hci_unit_class[1] == WIIMOTE_HCI_CLASS_1) &&
+				  (hci_unit_class[2] == WIIMOTE_HCI_CLASS_2);
+		static int sync_pressed = 0;
+#if 0
+		if (class_match && !sync_pressed) {
+			// When the red sync button is pressed, a HCI event is generated:
+			//   > HCI Event: Vendor (0xff) plen 1
+			//   08
+			// This causes the emulated software to perform a BT inquiry and connect to found Wiimotes.
+			// When the red sync button is held for 10 seconds, a HCI event with payload 09 is sent.
+			hci_event_hdr_t *hdr = data;
+			hdr->event = HCI_EVENT_VENDOR;
+			hdr->length = sizeof(u8);
+			u8 *payload = data + sizeof(hci_event_hdr_t);
+			payload[0] = 0x08;
+			svc_printf("Faking SYNC button press HCI event\n");
+			*fwd_to_usb = 0;
+			sync_pressed = 1;
+			return sizeof(hci_event_hdr_t) + hdr->length;
+		}
+#endif
+		/* If page scan is disabled the controller will not see this connection request. */
+		if (class_match && hci_page_scan_enabled && !con_req_sent) {
+			hci_event_hdr_t *hdr = data;
+			hdr->event = HCI_EVENT_CON_REQ;
+			hdr->length = sizeof(hci_con_req_ep);
+			hci_con_req_ep *ep = data + sizeof(hci_event_hdr_t);
+			// 00:21:BD:2D:57:FF Name: Nintendo RVL-CNT-01
+			/*ep->bdaddr.b[0] = 0x00;
+			ep->bdaddr.b[1] = 0x21;
+			ep->bdaddr.b[2] = 0xBD;
+			ep->bdaddr.b[3] = 0x2D;
+			ep->bdaddr.b[4] = 0x57;
+			ep->bdaddr.b[5] = 0xFF;*/
+			ep->bdaddr.b[5] = 0x00;
+			ep->bdaddr.b[4] = 0x11;
+			ep->bdaddr.b[3] = 0x22;
+			ep->bdaddr.b[2] = 0x33;
+			ep->bdaddr.b[1] = 0x44;
+			ep->bdaddr.b[0] = 0x55;
+			ep->uclass[0] = WIIMOTE_HCI_CLASS_0;
+			ep->uclass[1] = WIIMOTE_HCI_CLASS_1;
+			ep->uclass[2] = WIIMOTE_HCI_CLASS_2;
+			ep->link_type = HCI_LINK_ACL;
+
+			svc_printf("HCI EVENT CON REQ SENT\n");
+			*fwd_to_usb = 0;
+			con_req_sent = 1;
+			return sizeof(hci_event_hdr_t) + hdr->length;
+		}
+	}
+
+	*fwd_to_usb = 1;
 
 	return 0;
 }
@@ -316,11 +455,16 @@ static int handle_oh1_dev_ioctlv(u32 cmd, ioctlv *vector, u32 inlen, u32 iolen, 
 		*fwd_to_usb = 1;
 		break;
 	}
-	case USBV0_IOCTLV_INTRMSG:
-		*fwd_to_usb = 1;
+	case USBV0_IOCTLV_INTRMSG: {
+		u8 bEndpoint = *(u8 *)vector[0].data;
+		u16 wLength  = *(u16 *)vector[1].data;
+		void *data   = vector[2].data;
+		ret = handle_oh1_dev_intr_message(bEndpoint, wLength, data, fwd_to_usb);
 		break;
+	}
 	default:
 		/* Forward unhandled/unknown ioctls to the OH1 module */
+		svc_printf("Unhandled IOCTL: 0x%x\n", cmd);
 		*fwd_to_usb = 1;
 		break;
 	}
@@ -360,14 +504,17 @@ static void handle_oh1_dev_message(ipcmessage *message)
 	}
 	default:
 		/* Unknown command */
+		svc_printf("Unhandled IPC command: 0x%x\n", message->command);
 		break;
 	}
 
 	/* Acknowledge message or send it to the original OH1 module */
 	if (fwd_to_usb)
 		os_message_queue_send(new_msg_queueid, (void *)message, 0);
-	else
+	else {
+		svc_printf("ACK: %d!\n", ret);
 		os_message_queue_ack(message, ret);
+	}
 }
 
 static int worker_thread(void *)
@@ -448,12 +595,32 @@ static s32 Patch_OH1UsbModule(void)
 	return 0;
 }
 
+static u8 conf_buffer[0x4000] ATTRIBUTE_ALIGN(32);
+static struct conf_pads_setting conf_pads ATTRIBUTE_ALIGN(32);
+
 int main(void)
 {
 	int ret;
 
 	/* Print info */
 	svc_write("Hello world from Starlet!\n");
+
+	int fd = os_open("/shared2/sys/SYSCONF", IPC_OPEN_READ);
+	svc_printf("os_open(): %d\n", fd);
+
+	ret = os_read(fd, conf_buffer, sizeof(conf_buffer));
+	os_close(fd);
+
+	ret = conf_get(conf_buffer, "BT.DINF", &conf_pads, sizeof(conf_pads));
+	svc_printf("conf_get(): %d\n", ret);
+	//for (int i = 0; i < 20; i+=4)
+	//	svc_printf("  foo: 0x%x\n", *(u32*)(((u8*)&conf_pads) + i));
+	svc_printf("  foo: 0x%x\n", *(u32*)((u8*)&conf_pads + 0));
+	svc_printf("  foo: 0x%x\n", *(u32*)((u8*)&conf_pads + 4));
+	//svc_printf("  foo: 0x%x\n", *(u32*)((u8*)&conf_pads + 8));
+	svc_printf("  num_registered: %d\n", conf_pads.num_registered);
+	svc_printf("  registered[0]: %s\n", conf_pads.registered[0].name);
+	svc_printf("  active[0]: %s\n", conf_pads.active[0].name);
 
 	/* Init global state */
 	for (int i = 0; i < MAX_CHANNEL_MAP; i++)

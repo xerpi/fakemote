@@ -30,7 +30,7 @@ LIBS	=	cios-lib/cios-lib.a
 TARGET	=	test-module
 
 # Objects
-OBJS	= start.o main.o libc.o
+OBJS	= start.o main.o libc.o conf.o
 
 $(TARGET).elf: $(OBJS) $(LIBS)
 	@echo -e " LD\t$@"
