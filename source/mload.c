@@ -216,7 +216,7 @@ int mload_elf(const void *my_elf, data_elf *data_elf)
 				}
 			}
 		} else if (phdr->p_type == PT_LOAD && phdr->p_memsz != 0 && phdr->p_vaddr != 0) {
-			// printf("Segment: p_memsz: 0x%04x, p_filesz: 0x%04x\n", phdr->p_memsz, phdr->p_filesz);
+			//printf("Segment: p_vaddr: %p, p_memsz: 0x%04x, p_filesz: 0x%04x\n", phdr->p_vaddr, phdr->p_memsz, phdr->p_filesz);
 			if (mload_memset((void *)phdr->p_vaddr, 0, phdr->p_memsz) < 0)
 				return -1;
 			if (mload_seek(phdr->p_vaddr, SEEK_SET) < 0)

@@ -58,7 +58,7 @@
 #define IOS_MESSAGE_NOBLOCK	1
 
 /* IOS syscalls */
-s32   os_thread_create(u32 (*entry)(void *arg), void *arg, void *stack, u32 stacksize, u32 priority, s32 autostart);
+s32   os_thread_create(s32 (*entry)(void *arg), void *arg, void *stack, u32 stacksize, u32 priority, s32 autostart);
 s32   os_thread_joint(s32 id, u32 *ret);
 s32   os_thread_cancel(s32 id, u32 *ret);
 void  os_thread_set_priority(s32 id, s32 priority);
@@ -79,7 +79,7 @@ void *os_heap_alloc(s32 heap, u32 size);
 void *os_heap_alloc_aligned(s32 heap, s32 size, s32 align);
 void  os_heap_free(s32 heap, void *ptr);
 s32   os_device_register(const char *devicename, s32 queuehandle);
-void  os_message_queue_ack(void *message, s32 result);
+s32   os_message_queue_ack(void *message, s32 result);
 int   os_set_uid(u32 pid, u32 uid);
 u32   os_get_uid(void);
 int   os_set_gid(u32 pid, u16 gid);
