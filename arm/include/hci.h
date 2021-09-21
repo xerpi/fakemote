@@ -83,6 +83,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "types.h"
 
 // All structs in this file are packed
 #pragma pack(push, 1)

@@ -30,7 +30,7 @@ LIBS	=	cios-lib/cios-lib.a
 TARGET	=	test-module
 
 # Objects
-OBJS	= source/start.o source/main.o source/libc.o source/conf.o
+OBJS	= source/start.o source/main.o source/hci_state.o source/libc.o source/conf.o
 
 # Dependency files
 DEPS	= $(OBJS:.o=.d)
