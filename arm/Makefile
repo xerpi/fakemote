@@ -20,7 +20,7 @@ endif
 
 # Flags
 ARCH	=	-mcpu=arm926ej-s -mthumb -mthumb-interwork -mbig-endian
-CFLAGS	=	$(ARCH) -I. -Icios-lib -fomit-frame-pointer -O1 -g3 -Wall -Wstrict-prototypes -ffunction-sections -D__TIME__=\"$(BUILD_TIME)\" -D__DATE__=\"$(BUILD_DATE)\" -Wno-builtin-macro-redefined -nostdlib $(EXTRA_CFLAGS)
+CFLAGS	=	$(ARCH) -Iinclude -Icios-lib -fomit-frame-pointer -O1 -g3 -Wall -Wstrict-prototypes -ffunction-sections -D__TIME__=\"$(BUILD_TIME)\" -D__DATE__=\"$(BUILD_DATE)\" -Wno-builtin-macro-redefined -nostdlib $(EXTRA_CFLAGS)
 LDFLAGS	=	$(ARCH) -nostartfiles -nostdlib -Wl,-T,link.ld,-Map,$(TARGET).map -Wl,--gc-sections -Wl,-static
 
 # Libraries
@@ -30,27 +30,32 @@ LIBS	=	cios-lib/cios-lib.a
 TARGET	=	test-module
 
 # Objects
-OBJS	= start.o main.o libc.o conf.o
+OBJS	= source/start.o source/main.o source/libc.o source/conf.o
 
-$(TARGET).elf: $(OBJS) $(LIBS)
+# Dependency files
+DEPS	= $(OBJS:.o=.d)
+
+$(TARGET).elf: $(OBJS) $(LIBS) link.ld
 	@echo -e " LD\t$@"
 	@$(LD) $(LDFLAGS) $(OBJS) $(LIBS) -lgcc -o $@.orig
 	@$(STRIP) $@.orig $@
 
-$(TARGET).elf: link.ld
-
 %.o: %.s
 	@echo -e " CC\t$@"
-	@$(CC) $(CFLAGS) -D_LANGUAGE_ASSEMBLY -c -x assembler-with-cpp -o $@ $<
+	@$(CC) $(CFLAGS) -MMD -MP -D_LANGUAGE_ASSEMBLY -c -x assembler-with-cpp -o $@ $<
 
 %.o: %.c
 	@echo -e " CC\t$@"
-	@$(CC) $(CFLAGS) -c -o $@ $<
+	@$(CC) $(CFLAGS) -MMD -MP -c -o $@ $<
 
 cios-lib/cios-lib.a:
 	@$(MAKE) -C cios-lib
 
+.PHONY: clean
+
 clean:
 	@echo -e "Cleaning..."
-	@rm -f $(OBJS) $(TARGET).elf $(TARGET).elf.orig $(TARGET).map
+	@rm -f $(OBJS) $(DEPS) $(TARGET).elf $(TARGET).elf.orig $(TARGET).map
 	@$(MAKE) -C cios-lib clean
+
+-include $(DEPS)
