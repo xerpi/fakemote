@@ -1054,7 +1054,7 @@ typedef struct
 /* No return parameter(s) */
 
 #define HCI_OCF_SNIFF_SUBRATING 0x0011
-#define HCI_CMD_SNIFF_SUBRATING 0x0810
+#define HCI_CMD_SNIFF_SUBRATING 0x0811
 typedef struct
 {
   uint16_t con_handle; /* connection handle */

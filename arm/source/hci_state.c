@@ -4,8 +4,7 @@
 #include "l2cap.h"
 #include "utils.h"
 #include "syscalls.h"
-
-#include "ipc.h"
+#include "vsprintf.h"
 
 #define MAX_HCI_CONNECTIONS	32
 
@@ -51,11 +50,23 @@ bool hci_virt_con_handle_map(u16 phys, u16 virt)
 	return false;
 }
 
-bool hci_virt_con_handle_unmap(u16 phys)
+bool hci_virt_con_handle_unmap_phys(u16 phys)
 {
 	for (int i = 0; i < ARRAY_SIZE(hci_virt_con_handle_map_table); i++) {
 		if (hci_virt_con_handle_map_table[i].valid &&
 		    hci_virt_con_handle_map_table[i].phys == phys) {
+			hci_virt_con_handle_map_table[i].valid = 0;
+			return true;
+		}
+	}
+	return false;
+}
+
+bool hci_virt_con_handle_unmap_virt(u16 virt)
+{
+	for (int i = 0; i < ARRAY_SIZE(hci_virt_con_handle_map_table); i++) {
+		if (hci_virt_con_handle_map_table[i].valid &&
+		    hci_virt_con_handle_map_table[i].virt == virt) {
 			hci_virt_con_handle_map_table[i].valid = 0;
 			return true;
 		}
@@ -177,15 +188,16 @@ static int handle_hci_cmd_write_link_policy_settings(void *data, int *fwd_to_usb
 	return 0;
 }
 
-/* Handlers for messages replies coming from OH1  */
+/* Handlers for replies coming from OH1 BT dongle and going to the Host (BT SW stack).
+ * It does *not* include packets that we injected. */
 
 void hci_state_handle_hci_event(void *data, u32 length)
 {
 	bool ret;
+	u16 virt;
 	bool modified = false;
 	hci_event_hdr_t *hdr = data;
 	void *payload = (void *)((u8 *)hdr + sizeof(hci_event_hdr_t));
-
 
 #define TRANSLATE_CON_HANDLE(event, type) \
 	case event: { \
@@ -196,30 +208,37 @@ void hci_state_handle_hci_event(void *data, u32 length)
 		break; \
 	}
 
-	//svc_printf("HCI EV: 0x%x, len: 0x%x\n", hdr->event, hdr->length);
+	svc_printf("hci_state_handle_hci_event: event: 0x%x, len: 0x%x\n", hdr->event, hdr->length);
 
 	switch (hdr->event) {
 	case HCI_EVENT_CON_COMPL: {
 		hci_con_compl_ep *ep = payload;
-		//svc_printf("HCI_EVENT_CON_COMPL: status: 0x%x, handle: 0x%x\n",
-		//	ep->status, le16toh(ep->con_handle));
+		svc_printf("HCI_EVENT_CON_COMPL: status: 0x%x, handle: 0x%x\n",
+			ep->status, le16toh(ep->con_handle));
 		if (ep->status == 0) {
 			/* Allocate a new virtual connection handle */
-			u16 virt = hci_con_handle_virt_alloc();
-			/* Create the connection handle new mapping */
+			virt = hci_con_handle_virt_alloc();
+			/* Create the new connection handle mapping */
 			ret = hci_virt_con_handle_map(le16toh(ep->con_handle), virt);
 			assert(ret);
+			svc_printf("New handle mapping: p 0x%x -> v 0x%x\n", le16toh(ep->con_handle), virt);
+			ep->con_handle = htole16(virt);
+			modified = true;
 		}
 		break;
 	}
 	case HCI_EVENT_DISCON_COMPL: {
 		hci_discon_compl_ep *ep = payload;
-		//svc_printf("HCI_EVENT_DISCON_COMPL: status: 0x%x, handle: 0x%x\n",
-		//	ep->status, le16toh(ep->con_handle));
+		svc_printf("HCI_EVENT_DISCON_COMPL: status: 0x%x, handle: 0x%x, reason: 0x%x\n",
+			ep->status, le16toh(ep->con_handle), ep->reason);
 		if (ep->status == 0) {
-			/* Remove the conneciton handle hmapping */
-			ret = hci_virt_con_handle_unmap(le16toh(ep->con_handle));
+			ret = hci_virt_con_handle_get_virt(le16toh(ep->con_handle), &virt);
 			assert(ret);
+			/* Remove the connection handle mapping */
+			ret = hci_virt_con_handle_unmap_virt(virt);
+			assert(ret);
+			ep->con_handle = htole16(virt);
+			modified = true;
 		}
 		break;
 	}
@@ -252,32 +271,63 @@ void hci_state_handle_hci_event(void *data, u32 length)
 
 	/* If we have modified the packet, flush from cache */
 	if (modified)
-		os_sync_after_write(data, hdr->length);
+		os_sync_after_write(data, sizeof(hci_event_hdr_t) + hdr->length);
 
 #undef TRANSLATE_CON_HANDLE
 }
 
 void hci_state_handle_acl_data_in(void *data, u32 length)
 {
+	bool ret;
+	u16 virt;
+	hci_acldata_hdr_t *hdr = data;
+	u16 handle = le16toh(hdr->con_handle);
+	u16 phys = HCI_CON_HANDLE(handle);
+	u16 pb = HCI_PB_FLAG(handle);
+	u16 pc = HCI_BC_FLAG(handle);
+
+	svc_printf("hci_state_handle_acl_data_in: con_handle: 0x%x, len: 0x%x\n",
+		phys, le16toh(hdr->length));
+
+	ret = hci_virt_con_handle_get_virt(phys, &virt);
+	assert(ret);
+	hdr->con_handle = htole16(HCI_MK_CON_HANDLE(virt, pb, pc));
+
+	os_sync_after_write(data, sizeof(hci_acldata_hdr_t) + hdr->length);
 }
 
-/* Handlers for messages requests going to OH1 */
+/* Handlers for requests coming from the Host (BT stack) and going to OH1.
+ * It does *not* include packets that we injected. */
 
 int hci_state_handle_hci_command(void *data, u32 length, int *fwd_to_usb)
 {
 	int ret = 0;
+	u16 phys;
+	bool modified = false;
+	hci_cmd_hdr_t *hdr = data;
+	void *payload = (void *)((u8 *)hdr + sizeof(hci_cmd_hdr_t));
+
+#define TRANSLATE_CON_HANDLE_EXEC(event, type, exp) \
+	case event: { \
+		exp \
+		u16 phys, virt = le16toh(((type *)payload)->con_handle); \
+		assert(hci_virt_con_handle_get_phys(virt, &phys)); \
+		((type *)payload)->con_handle = htole16(phys); \
+		modified = true; \
+		break; \
+	}
+
+#define TRANSLATE_CON_HANDLE(event, type) \
+	TRANSLATE_CON_HANDLE_EXEC(event, type, (void)0;)
 
 	//svc_printf("CTL: bmRequestType 0x%x, bRequest: 0x%x, "
 	//	   "wValue: 0x%x, wIndex: 0x%x, wLength: 0x%x\n",
 	//	   bmRequestType, bRequest, wValue, wIndex, wLength);
 	//svc_printf("  data: 0x%x 0x%x\n", *(u32 *)data, *(u32 *)(data + 4));
 
-	hci_cmd_hdr_t *cmd_hdr = data;
-	u16 opcode = le16toh(cmd_hdr->opcode);
-	u16 ocf = HCI_OCF(opcode);
-	u16 ogf = HCI_OGF(opcode);
+	u16 opcode = le16toh(hdr->opcode);
 
-	//svc_printf("EP_HCI_CTRL: opcode: 0x%x (ocf: 0x%x, ogf: 0x%x)\n", opcode, ocf, ogf);
+	svc_printf("hci_state_handle_hci_command: opcode: 0x%x\n", opcode);
 
 	switch (opcode) {
 	case HCI_CMD_CREATE_CON:
@@ -286,9 +336,6 @@ int hci_state_handle_hci_command(void *data, u32 length, int *fwd_to_usb)
 	case HCI_CMD_ACCEPT_CON:
 		//svc_write("  HCI_CMD_ACCEPT_CON\n");
 		ret = handle_hci_cmd_accept_con(data, fwd_to_usb);
-		break;
-	case HCI_CMD_DISCONNECT:
-		//svc_write("  HCI_CMD_DISCONNECT\n");
 		break;
 	case HCI_CMD_INQUIRY:
 		//svc_write("  HCI_CMD_INQUIRY\n");
@@ -300,14 +347,14 @@ int hci_state_handle_hci_command(void *data, u32 length, int *fwd_to_usb)
 			"HCI_PAGE_SCAN_ENABLE",
 			"HCI_INQUIRY_AND_PAGE_SCAN_ENABLE",
 		};
-		hci_write_scan_enable_cp *cp = data + sizeof(hci_cmd_hdr_t);
+		hci_write_scan_enable_cp *cp = payload;
 		//svc_printf("  HCI_CMD_WRITE_SCAN_ENABLE: 0x%x (%s)\n",
 		//	cp->scan_enable, scanning[cp->scan_enable]);
 		hci_page_scan_enable = cp->scan_enable;
 		break;
 	}
 	case HCI_CMD_WRITE_UNIT_CLASS: {
-		hci_write_unit_class_cp *cp = data + sizeof(hci_cmd_hdr_t);
+		hci_write_unit_class_cp *cp = payload;
 		//svc_printf("  HCI_CMD_WRITE_UNIT_CLASS: 0x%x 0x%x 0x%x\n",
 		//	cp->uclass[0], cp->uclass[1], cp->uclass[2]);
 		hci_unit_class[0] = cp->uclass[0];
@@ -316,39 +363,102 @@ int hci_state_handle_hci_command(void *data, u32 length, int *fwd_to_usb)
 		break;
 	}
 	case HCI_CMD_WRITE_INQUIRY_SCAN_TYPE: {
-		hci_write_inquiry_scan_type_cp *cp = data + sizeof(hci_cmd_hdr_t);
+		hci_write_inquiry_scan_type_cp *cp = payload;
 		//svc_printf("  HCI_CMD_WRITE_INQUIRY_SCAN_TYPE: 0x%x\n", cp->type);
 		break;
 	}
 	case HCI_CMD_WRITE_PAGE_SCAN_TYPE: {
-		hci_write_page_scan_type_cp *cp = data + sizeof(hci_cmd_hdr_t);
+		hci_write_page_scan_type_cp *cp = payload;
 		//svc_printf("  HCI_CMD_WRITE_PAGE_SCAN_TYPE: 0x%x\n", cp->type);
 		break;
 	}
 	case HCI_CMD_WRITE_INQUIRY_MODE: {
-		hci_write_inquiry_mode_cp *cp = data + sizeof(hci_cmd_hdr_t);
+		hci_write_inquiry_mode_cp *cp = payload;
 		//svc_printf("  HCI_CMD_WRITE_INQUIRY_MODE: 0x%x\n", cp->mode);
 		break;
 	}
 	case HCI_CMD_SET_EVENT_FILTER: {
-		hci_set_event_filter_cp *cp = data + sizeof(hci_cmd_hdr_t);
+		hci_set_event_filter_cp *cp = payload;
 		//svc_printf("  HCI_CMD_SET_EVENT_FILTER: 0x%x 0x%x\n",
 		//	  cp->filter_type, cp->filter_condition_type);
 		break;
 	}
-	case HCI_CMD_WRITE_LINK_POLICY_SETTINGS:
-		ret = handle_hci_cmd_write_link_policy_settings(data, fwd_to_usb);
+	TRANSLATE_CON_HANDLE(HCI_CMD_DISCONNECT, hci_discon_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_ADD_SCO_CON, hci_add_sco_con_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_CHANGE_CON_PACKET_TYPE, hci_change_con_pkt_type_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_AUTH_REQ, hci_auth_req_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_SET_CON_ENCRYPTION, hci_set_con_encryption_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_CHANGE_CON_LINK_KEY, hci_change_con_link_key_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_READ_REMOTE_FEATURES, hci_read_remote_features_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_READ_REMOTE_EXTENDED_FEATURES, hci_read_remote_extended_features_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_READ_REMOTE_VER_INFO, hci_read_remote_ver_info_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_READ_CLOCK_OFFSET, hci_read_clock_offset_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_READ_LMP_HANDLE, hci_read_lmp_handle_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_SETUP_SCO_CON, hci_setup_sco_con_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_HOLD_MODE, hci_hold_mode_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_SNIFF_MODE, hci_sniff_mode_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_EXIT_SNIFF_MODE, hci_exit_sniff_mode_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_PARK_MODE, hci_park_mode_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_EXIT_PARK_MODE, hci_exit_park_mode_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_QOS_SETUP, hci_qos_setup_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_ROLE_DISCOVERY, hci_role_discovery_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_READ_LINK_POLICY_SETTINGS, hci_read_link_policy_settings_cp)
+	TRANSLATE_CON_HANDLE_EXEC(HCI_CMD_WRITE_LINK_POLICY_SETTINGS, hci_write_link_policy_settings_cp,
+		handle_hci_cmd_write_link_policy_settings(data, fwd_to_usb);
+	)
+	TRANSLATE_CON_HANDLE(HCI_CMD_FLOW_SPECIFICATION, hci_flow_specification_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_SNIFF_SUBRATING, hci_sniff_subrating_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_FLUSH, hci_flush_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_READ_AUTO_FLUSH_TIMEOUT, hci_read_auto_flush_timeout_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_WRITE_AUTO_FLUSH_TIMEOUT, hci_write_auto_flush_timeout_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_READ_XMIT_LEVEL, hci_read_xmit_level_cp)
+	case HCI_CMD_HOST_NUM_COMPL_PKTS:
+		/* TODO */
 		break;
+	TRANSLATE_CON_HANDLE(HCI_CMD_READ_LINK_SUPERVISION_TIMEOUT, hci_read_link_supervision_timeout_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_WRITE_LINK_SUPERVISION_TIMEOUT, hci_write_link_supervision_timeout_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_REFRESH_ENCRYPTION_KEY, hci_refresh_encryption_key_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_ENHANCED_FLUSH, hci_enhanced_flush_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_READ_FAILED_CONTACT_CNTR, hci_read_failed_contact_cntr_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_RESET_FAILED_CONTACT_CNTR, hci_reset_failed_contact_cntr_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_READ_LINK_QUALITY, hci_read_link_quality_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_READ_RSSI, hci_read_rssi_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_READ_AFH_CHANNEL_MAP, hci_read_afh_channel_map_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_READ_CLOCK, hci_read_clock_cp)
 	default:
 		//svc_printf("HCI CTRL: opcode: 0x%x (ocf: 0x%x, ogf: 0x%x)\n", opcode, ocf, ogf);
 		break;
 	}
+
+	/* If we have modified the packet, flush from cache */
+	if (modified)
+		os_sync_after_write(data, sizeof(hci_cmd_hdr_t) + hdr->length);
+
+#undef TRANSLATE_CON_HANDLE
 
 	return ret;
 }
 
 int hci_state_handle_acl_data_out(void *data, u32 size, int *fwd_to_usb)
 {
+	bool ret;
+	u16 phys;
+	hci_acldata_hdr_t *hdr = data;
+	u16 handle = le16toh(hdr->con_handle);
+	u16 virt = HCI_CON_HANDLE(handle);
+	u16 pb = HCI_PB_FLAG(handle);
+	u16 pc = HCI_BC_FLAG(handle);
+
+	svc_printf("hci_state_handle_acl_data_out: con_handle: 0x%x, len: 0x%x\n",
+		virt, le16toh(hdr->length));
+
+	ret = hci_virt_con_handle_get_phys(virt, &phys);
+	assert(ret);
+	hdr->con_handle = htole16(HCI_MK_CON_HANDLE(phys, pb, pc));
+
+	os_sync_after_write(data, sizeof(hci_acldata_hdr_t) + hdr->length);
+
+#if 0
 	/* HCI ACL data packet header */
 	hci_acldata_hdr_t *acl_hdr = data;
 	u16 acl_con_handle = le16toh(HCI_CON_HANDLE(acl_hdr->con_handle));
@@ -419,6 +529,6 @@ int hci_state_handle_acl_data_out(void *data, u32 size, int *fwd_to_usb)
 		}
 		}
 	}
-
+#endif
 	return 0;
 }

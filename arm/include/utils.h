@@ -5,9 +5,7 @@
 #define le16toh bswap16
 #define htole16 bswap16
 
-#define printf svc_printf
-
-#define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
 #ifdef assert
 #undef assert

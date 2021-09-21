@@ -226,7 +226,7 @@ static int hci_check_send_connection_request(int *fwd_to_usb)
 
 static void fakedev_tick_devices(void)
 {
-	svc_printf("fakedev_tick_devices\n");
+	//svc_printf("fakedev_tick_devices\n");
 }
 
 //static bool fakedev_is_bdaddr_registered(bdaddr_t *)
@@ -479,7 +479,7 @@ void handle_message_reply_from_oh1_dev(ipcmessage *msg, int retval)
 		u8 bEndpoint = *(u8 *)vector[0].data;
 		u16 wLength  = *(u16 *)vector[1].data;
 		void *data   = vector[2].data;
-		if (bEndpoint == EP_ACL_DATA_OUT)
+		if (bEndpoint == EP_ACL_DATA_IN)
 			hci_state_handle_acl_data_in(data, wLength);
 	} else if (msg->ioctlv.command == USBV0_IOCTLV_INTRMSG) {
 		u8 bEndpoint = *(u8 *)vector[0].data;

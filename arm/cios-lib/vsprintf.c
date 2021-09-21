@@ -289,6 +289,9 @@ int vsprintf(char *buf, const char *fmt, va_list args)
 			num = va_arg(args, unsigned int);
 		str = number(str, num, base, field_width, precision, flags);
 	}
+	/* HACK */
+	while ((((uintptr_t)str) & 0x1F) != 0x1F)
+		*str++ = '\r';
 	*str = '\0';
 	return str-buf;
 }
@@ -305,7 +308,7 @@ int sprintf(char *astr, const char *fmt, ...)
 	return i;
 }
 
-int svc_printf(const char *fmt, ...)
+int svc_printf(const char *restrict fmt, ...)
 {
 	char buffer[128] ATTRIBUTE_ALIGN(32);
 
@@ -320,4 +323,3 @@ int svc_printf(const char *fmt, ...)
 
 	return len;
 }
-
