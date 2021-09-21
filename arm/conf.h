@@ -39,7 +39,7 @@ struct conf_pads_setting {
 	struct conf_pad_device unknown;
 } ATTRIBUTE_PACKED;
 
-int conf_get(const u8 *conf, const char *name, void *buffer, u32 length);
-
+int conf_get(u8 *conf, const char *name, void *buffer, u32 length);
+int conf_set(u8 *conf, const char *name,  const void *buffer, u32 length);
 
 #endif

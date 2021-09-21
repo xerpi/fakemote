@@ -1,7 +1,7 @@
 #include <string.h>
 #include "conf.h"
 
-static const u8 *conf_find(const u8 *conf, const char *name)
+static u8 *conf_find(u8 *conf, const char *name)
 {
 	u16 count;
 	u16 *offset;
@@ -17,9 +17,9 @@ static const u8 *conf_find(const u8 *conf, const char *name)
 	return NULL;
 }
 
-static s32 conf_get_length(const u8 *conf, const char *name)
+static s32 conf_get_length(u8 *conf, const char *name)
 {
-	const u8 *entry;
+	u8 *entry;
 
 	entry = conf_find(conf, name);
 	if(!entry)
@@ -43,9 +43,9 @@ static s32 conf_get_length(const u8 *conf, const char *name)
 	}
 }
 
-int conf_get(const u8 *conf, const char *name, void *buffer, u32 length)
+int conf_get(u8 *conf, const char *name, void *buffer, u32 length)
 {
-	const u8 *entry;
+	u8 *entry;
 	s32 len;
 
 	entry = conf_find(conf, name);
@@ -71,6 +71,40 @@ int conf_get(const u8 *conf, const char *name, void *buffer, u32 length)
 	case CONF_BOOL:
 		memset(buffer, 0, length);
 		memcpy(buffer, &entry[strlen(name)+1], len);
+		break;
+	default:
+		return CONF_ENOTIMPL;
+	}
+	return len;
+}
+
+int conf_set(u8 *conf, const char *name,  const void *buffer, u32 length)
+{
+	u8 *entry;
+	s32 len;
+
+	entry = conf_find(conf, name);
+	if(!entry)
+		return CONF_ENOENT;
+
+	len = conf_get_length(conf, name);
+	if (len < 0)
+		return len;
+	else if (len > length)
+		return CONF_ETOOBIG;
+
+	switch (*entry >> 5) {
+	case CONF_BIGARRAY:
+		memcpy(&entry[strlen(name)+3], buffer, len);
+		break;
+	case CONF_SMALLARRAY:
+		memcpy(&entry[strlen(name)+2], buffer, len);
+		break;
+	case CONF_BYTE:
+	case CONF_SHORT:
+	case CONF_LONG:
+	case CONF_BOOL:
+		memcpy(&entry[strlen(name)+1], buffer, len);
 		break;
 	default:
 		return CONF_ENOTIMPL;

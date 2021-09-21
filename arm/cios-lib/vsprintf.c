@@ -293,7 +293,7 @@ int vsprintf(char *buf, const char *fmt, va_list args)
 	return str-buf;
 }
 
-int sprintf( char *astr, const char *fmt, ...)
+int sprintf(char *astr, const char *fmt, ...)
 {
 	va_list args;
 	int i;
@@ -305,9 +305,9 @@ int sprintf( char *astr, const char *fmt, ...)
 	return i;
 }
 
-int svc_printf( const char *fmt, ...)
+int svc_printf(const char *fmt, ...)
 {
-	char buffer[128] ATTRIBUTE_ALIGN(32) = " ";
+	char buffer[128] ATTRIBUTE_ALIGN(32);
 
 	va_list args;
 	int len;
