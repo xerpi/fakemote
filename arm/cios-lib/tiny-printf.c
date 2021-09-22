@@ -333,17 +333,14 @@ abort:
 
 int puts(const char *s)
 {
-	char endl[2] = {'\n', 0};
-	svc_write(s);
-	svc_write(endl);
-	return strlen(s) + 1;
+	return printf("%s\n", s);
 }
 
 int vprintf(const char *fmt, va_list va)
 {
 	int ret;
 	char str[128];
-	
+
 	ret = vsnprintf(str, sizeof(str), fmt, va);
 	svc_write(str);
 
@@ -355,7 +352,7 @@ int printf(const char *fmt, ...)
 	int ret;
 	va_list va;
 	char str[128];
-	
+
 	va_start(va, fmt);
 	ret = vsnprintf(str, sizeof(str), fmt, va);
 	va_end(va);

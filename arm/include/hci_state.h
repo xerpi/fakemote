@@ -12,9 +12,11 @@ bool hci_request_connection(const bdaddr_t *bdaddr, u8 uclass0, u8 uclass1, u8 u
 
 
 /* Used by the main request-handling loop */
-int hci_state_handle_hci_command(void *data, u32 length, int *fwd_to_usb);
-void hci_state_handle_hci_event(void *data, u32 length);
-int hci_state_handle_acl_data_out(void *data, u32 size, int *fwd_to_usb);
-void hci_state_handle_acl_data_in(void *data, u32 length);
+
+void hci_state_handle_hci_cmd_from_host(void *data, u32 length, int *fwd_to_usb);
+void hci_state_handle_hci_event_from_controller(void *data, u32 length);
+void hci_state_handle_acl_data_in_request_from_host(void *data, u32 length, int *fwd_to_usb);
+void hci_state_handle_acl_data_in_response_from_controller(void *data, u32 length);
+void hci_state_handle_acl_data_out_request_from_host(void *data, u32 length, int *fwd_to_usb);
 
 #endif
