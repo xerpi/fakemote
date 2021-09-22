@@ -1,10 +1,11 @@
 #include <stdbool.h>
+#include <string.h>
+#include "fakedev.h"
 #include "hci.h"
 #include "hci_state.h"
 #include "l2cap.h"
 #include "utils.h"
 #include "syscalls.h"
-#include "vsprintf.h"
 
 #define MAX_HCI_CONNECTIONS	32
 
@@ -27,17 +28,31 @@ void hci_state_init()
 
 }
 
-/* HCI connection handle virt<->phys mapping */
-
 u16 hci_con_handle_virt_alloc(void)
 {
+	/* FIXME: We can have collisions after it wraps around! */
 	static u16 last_virt_con_handle = 0;
 	u16 ret = last_virt_con_handle;
 	last_virt_con_handle = (last_virt_con_handle + 1) & 0x0EFF;
 	return ret;
 }
 
-bool hci_virt_con_handle_map(u16 phys, u16 virt)
+bool hci_request_connection(const bdaddr_t *bdaddr, u8 uclass0, u8 uclass1, u8 uclass2,
+			    u8 link_type)
+{
+	int ret;
+
+	/* If page scan is disabled the controller will not see this connection request. */
+	if (!(hci_page_scan_enable & HCI_PAGE_SCAN_ENABLE))
+		return false;
+
+	ret = enqueue_hci_event_con_req(bdaddr, uclass0, uclass0, uclass1, link_type);
+	return ret == IOS_OK;
+}
+
+/* HCI connection handle virt<->phys mapping */
+
+static bool hci_virt_con_handle_map(u16 phys, u16 virt)
 {
 	for (int i = 0; i < ARRAY_SIZE(hci_virt_con_handle_map_table); i++) {
 		if (!hci_virt_con_handle_map_table[i].valid) {
@@ -50,7 +65,7 @@ bool hci_virt_con_handle_map(u16 phys, u16 virt)
 	return false;
 }
 
-bool hci_virt_con_handle_unmap_phys(u16 phys)
+static bool hci_virt_con_handle_unmap_phys(u16 phys)
 {
 	for (int i = 0; i < ARRAY_SIZE(hci_virt_con_handle_map_table); i++) {
 		if (hci_virt_con_handle_map_table[i].valid &&
@@ -62,7 +77,7 @@ bool hci_virt_con_handle_unmap_phys(u16 phys)
 	return false;
 }
 
-bool hci_virt_con_handle_unmap_virt(u16 virt)
+static bool hci_virt_con_handle_unmap_virt(u16 virt)
 {
 	for (int i = 0; i < ARRAY_SIZE(hci_virt_con_handle_map_table); i++) {
 		if (hci_virt_con_handle_map_table[i].valid &&
@@ -74,7 +89,7 @@ bool hci_virt_con_handle_unmap_virt(u16 virt)
 	return false;
 }
 
-bool hci_virt_con_handle_get_virt(u16 phys, u16 *virt)
+static bool hci_virt_con_handle_get_virt(u16 phys, u16 *virt)
 {
 	for (int i = 0; i < ARRAY_SIZE(hci_virt_con_handle_map_table); i++) {
 		if (hci_virt_con_handle_map_table[i].valid &&
@@ -86,7 +101,7 @@ bool hci_virt_con_handle_get_virt(u16 phys, u16 *virt)
 	return false;
 }
 
-bool hci_virt_con_handle_get_phys(u16 virt, u16 *phys)
+static bool hci_virt_con_handle_get_phys(u16 virt, u16 *phys)
 {
 	for (int i = 0; i < ARRAY_SIZE(hci_virt_con_handle_map_table); i++) {
 		if (hci_virt_con_handle_map_table[i].valid &&
@@ -102,62 +117,21 @@ bool hci_virt_con_handle_get_phys(u16 virt, u16 *phys)
 
 static int handle_hci_cmd_accept_con(void *data, int *fwd_to_usb)
 {
-#if 0
-	int ret;
-	hci_accept_con_cp *cp = data + sizeof(hci_cmd_hdr_t);
-
+	char mac[MAC_STR_LEN];
+	hci_accept_con_cp *cp = data;
 	static const char *roles[] = {
 		"Master (0x00)",
 		"Slave (0x01)",
 	};
 
-	/*svc_printf("  HCI_CMD_ACCEPT_CON %02X:%02X:%02X:%02X:%02X:%02X, role: %s\n",
-		cp->bdaddr.b[5], cp->bdaddr.b[4], cp->bdaddr.b[3],
-		cp->bdaddr.b[2], cp->bdaddr.b[1], cp->bdaddr.b[0],
-		roles[cp->role]);*/
+	bdaddr_to_str(mac, &cp->bdaddr);
+	svc_printf("HCI_CMD_ACCEPT_CON MAC: %s, role: %s\n", mac, roles[cp->role]);
 
-	/* Another device, ignore it */
-	//if (memcmp(&cp->bdaddr, &fakedev.bdaddr, sizeof(bdaddr_t) != 0))
-	//	return 0;
-	return 0;
+	/* If the connection was accepted on a fake device, don't
+	 * forward this packet to the real USB BT dongle! */
+	if (fakedev_handle_hci_cmd_accept_con(&cp->bdaddr, cp->role))
+		*fwd_to_usb = 0;
 
-	/* Connection accepted to our fake device */
-	//svc_printf("Accepted CON for our fake device!\n");
-
-	/* The Accept_Connection_Request command will cause the Command Status
-	   event to be sent from the Host Controller when the Host Controller
-	   begins setting up the connection */
-	ret = enqueue_hci_event_command_status(HCI_CMD_ACCEPT_CON);
-	if (ret)
-		return ret;
-
-	fakedev.baseband_state = FAKEDEV_BASEBAND_STATE_COMPLETE;
-	/* We can start the ACL (L2CAP) linking now */
-	fakedev.acl_state = FAKEDEV_ACL_STATE_LINKING;
-
-	if (cp->role == HCI_ROLE_MASTER) {
-		ret = enqueue_hci_event_role_change(cp->bdaddr, HCI_ROLE_MASTER);
-		if (ret)
-			return ret;
-	}
-
-	/* In addition, when the Link Manager determines the connection is established,
-	 * the Host Controllers on both Bluetooth devices that form the connection
-	 * will send a Connection Complete event to each Host */
-	ret = enqueue_hci_event_con_compl(cp->bdaddr, 0);
-	if (ret)
-		return ret;
-
-		//ret = l2cap_send_psm_connect_req(fakedev.bdaddr, L2CAP_PSM_HID_CNTL);
-		//svc_printf("HID CNTL connect req: %d\n", ret);
-		//svc_printf("L2CAP PSM HID connect req: %d\n", ret);
-		//ret = l2cap_send_psm_connect_req(fakedev.bdaddr, L2CAP_PSM_HID_INTR);
-
-	/* Now let's wait until a "HCI_CMD_WRITE_LINK_POLICY_SETTINGS" to
-	 * start sending the L2CAP PSM HID connection requests... */
-
-	*fwd_to_usb = 0;
-#endif
 	return 0;
 }
 
@@ -208,7 +182,7 @@ void hci_state_handle_hci_event(void *data, u32 length)
 		break; \
 	}
 
-	svc_printf("hci_state_handle_hci_event: event: 0x%x, len: 0x%x\n", hdr->event, hdr->length);
+	//svc_printf("hci_state_handle_hci_event: event: 0x%x, len: 0x%x\n", hdr->event, hdr->length);
 
 	switch (hdr->event) {
 	case HCI_EVENT_CON_COMPL: {
@@ -286,8 +260,8 @@ void hci_state_handle_acl_data_in(void *data, u32 length)
 	u16 pb = HCI_PB_FLAG(handle);
 	u16 pc = HCI_BC_FLAG(handle);
 
-	svc_printf("hci_state_handle_acl_data_in: con_handle: 0x%x, len: 0x%x\n",
-		phys, le16toh(hdr->length));
+	//svc_printf("hci_state_handle_acl_data_in: con_handle: 0x%x, len: 0x%x\n",
+	//	phys, le16toh(hdr->length));
 
 	ret = hci_virt_con_handle_get_virt(phys, &virt);
 	assert(ret);
@@ -320,22 +294,19 @@ int hci_state_handle_hci_command(void *data, u32 length, int *fwd_to_usb)
 #define TRANSLATE_CON_HANDLE(event, type) \
 	TRANSLATE_CON_HANDLE_EXEC(event, type, (void)0;)
 
-	//svc_printf("CTL: bmRequestType 0x%x, bRequest: 0x%x, "
-	//	   "wValue: 0x%x, wIndex: 0x%x, wLength: 0x%x\n",
-	//	   bmRequestType, bRequest, wValue, wIndex, wLength);
-	//svc_printf("  data: 0x%x 0x%x\n", *(u32 *)data, *(u32 *)(data + 4));
-
 	u16 opcode = le16toh(hdr->opcode);
-
-	svc_printf("hci_state_handle_hci_command: opcode: 0x%x\n", opcode);
+	//svc_printf("hci_state_handle_hci_command: opcode: 0x%x\n", opcode);
 
 	switch (opcode) {
 	case HCI_CMD_CREATE_CON:
-		//svc_write("  HCI_CMD_CREATE_CON\n");
+		//svc_write("HCI_CMD_CREATE_CON\n");
 		break;
 	case HCI_CMD_ACCEPT_CON:
-		//svc_write("  HCI_CMD_ACCEPT_CON\n");
-		ret = handle_hci_cmd_accept_con(data, fwd_to_usb);
+		ret = handle_hci_cmd_accept_con(payload, fwd_to_usb);
+		break;
+	case HCI_CMD_REJECT_CON:
+		/* TODO */
+		svc_write("HCI_CMD_REJECT_CON\n");
 		break;
 	case HCI_CMD_INQUIRY:
 		//svc_write("  HCI_CMD_INQUIRY\n");
@@ -449,8 +420,8 @@ int hci_state_handle_acl_data_out(void *data, u32 size, int *fwd_to_usb)
 	u16 pb = HCI_PB_FLAG(handle);
 	u16 pc = HCI_BC_FLAG(handle);
 
-	svc_printf("hci_state_handle_acl_data_out: con_handle: 0x%x, len: 0x%x\n",
-		virt, le16toh(hdr->length));
+	//svc_printf("hci_state_handle_acl_data_out: con_handle: 0x%x, len: 0x%x\n",
+	//	virt, le16toh(hdr->length));
 
 	ret = hci_virt_con_handle_get_phys(virt, &phys);
 	assert(ret);

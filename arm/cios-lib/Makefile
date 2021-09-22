@@ -46,7 +46,7 @@ OBJS	=	direct_syscalls.o	\
 		timer.o			\
 		tools.o			\
 		usbstorage.o		\
-		vsprintf.o
+		tiny-printf.o
 
 OBJS2	=	libwbfs/libwbfs.o	\
 		libwbfs/rijndael.o	\
