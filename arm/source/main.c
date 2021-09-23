@@ -52,25 +52,28 @@
 
 #define PERIODC_TIMER_PERIOD		500 * 1000
 #define THREAD_STACK_SIZE		4096
-#define INJECTED_IPCMESSAGE_COOKIE	0xFEEDCAFE
-
-/* Global heap for dynamic memory */
-static u8 heapspace[16 * 1024] ATTRIBUTE_ALIGN(32);
+#define HAND_DOWN_MSG_DATA_SIZE		4096
 
 /* Global state */
 char *moduleName = "TST";
-static int orig_msg_queueid;
-static int periodic_timer_id;
-static int periodic_timer_cookie __attribute__((used));
 
-static u8 usb_intr_msg_handed_to_oh1_ioctlv_0_data = EP_HCI_EVENT;
-static u16 usb_intr_msg_handed_to_oh1_ioctlv_1_data;
-static ioctlv usb_intr_msg_handed_to_oh1_ioctlvs[3] = {
-	{&usb_intr_msg_handed_to_oh1_ioctlv_0_data, sizeof(usb_intr_msg_handed_to_oh1_ioctlv_0_data)},
-	{&usb_intr_msg_handed_to_oh1_ioctlv_1_data, sizeof(usb_intr_msg_handed_to_oh1_ioctlv_1_data)},
-	{NULL, 0} /* Filled dynamically */
+/* Queue ID created by OH1 that receives ipcmessages from /dev/usb/oh1 */
+static int orig_msg_queueid;
+
+/* Periodic timer with large period to tick fakedevices to check their state */
+static int periodic_timer_id;
+static int periodic_timer_cookie;
+
+/* ipcmessages used when we return from IOS_ReceiveMessage hook to communicate with the USB BT dongle */
+static u8 usb_intr_hand_down_msg_data[HAND_DOWN_MSG_DATA_SIZE] ATTRIBUTE_ALIGN(32);
+static u8 usb_intr_hand_down_msg_ioctlv_0_data = EP_HCI_EVENT;
+static u16 usb_intr_hand_down_msg_ioctlv_1_data;
+static ioctlv usb_intr_hand_down_msg_ioctlvs[3] = {
+	{&usb_intr_hand_down_msg_ioctlv_0_data, sizeof(usb_intr_hand_down_msg_ioctlv_0_data)},
+	{&usb_intr_hand_down_msg_ioctlv_1_data, sizeof(usb_intr_hand_down_msg_ioctlv_1_data)},
+	{&usb_intr_hand_down_msg_data,          sizeof(usb_intr_hand_down_msg_data)}
 };
-static ipcmessage usb_intr_msg_handed_to_oh1 = {
+static ipcmessage usb_intr_hand_down_msg = {
 	.command = IOS_IOCTLV,
 	.result = IOS_OK,
 	.fd = 0, /* Filled dynamically */
@@ -78,18 +81,19 @@ static ipcmessage usb_intr_msg_handed_to_oh1 = {
 		.command = USBV0_IOCTLV_INTRMSG,
 		.num_in = 2,
 		.num_io = 1,
-		.vector = usb_intr_msg_handed_to_oh1_ioctlvs
+		.vector = usb_intr_hand_down_msg_ioctlvs
 	}
 };
 
-static u8 usb_bulk_in_msg_handed_to_oh1_ioctlv_0_data = EP_ACL_DATA_IN;
-static u16 usb_bulk_in_msg_handed_to_oh1_ioctlv_1_data;
-static ioctlv usb_bulk_in_msg_handed_to_oh1_ioctlvs[3] = {
-	{&usb_bulk_in_msg_handed_to_oh1_ioctlv_0_data, sizeof(usb_bulk_in_msg_handed_to_oh1_ioctlv_0_data)},
-	{&usb_bulk_in_msg_handed_to_oh1_ioctlv_1_data, sizeof(usb_bulk_in_msg_handed_to_oh1_ioctlv_1_data)},
-	{NULL, 0} /* Filled dynamically */
+static u8 usb_bulk_in_hand_down_msg_data[HAND_DOWN_MSG_DATA_SIZE] ATTRIBUTE_ALIGN(32);
+static u8 usb_bulk_in_hand_down_msg_ioctlv_0_data = EP_ACL_DATA_IN;
+static u16 usb_bulk_in_hand_down_msg_ioctlv_1_data;
+static ioctlv usb_bulk_in_hand_down_msg_ioctlvs[3] = {
+	{&usb_bulk_in_hand_down_msg_ioctlv_0_data, sizeof(usb_bulk_in_hand_down_msg_ioctlv_0_data)},
+	{&usb_bulk_in_hand_down_msg_ioctlv_1_data, sizeof(usb_bulk_in_hand_down_msg_ioctlv_1_data)},
+	{&usb_bulk_in_hand_down_msg_data,          sizeof(usb_intr_hand_down_msg_data)}
 };
-static ipcmessage usb_bulk_in_msg_handed_to_oh1 = {
+static ipcmessage usb_bulk_in_hand_down_msg = {
 	.command = IOS_IOCTLV,
 	.result = IOS_OK,
 	.fd = 0, /* Filled dynamically */
@@ -97,10 +101,12 @@ static ipcmessage usb_bulk_in_msg_handed_to_oh1 = {
 		.command = USBV0_IOCTLV_BLKMSG,
 		.num_in = 2,
 		.num_io = 1,
-		.vector = usb_bulk_in_msg_handed_to_oh1_ioctlvs
+		.vector = usb_bulk_in_hand_down_msg_ioctlvs
 	}
 };
 
+/* Heap to allocate ipcmessages that we inject into the ReadyQ to send them to the /dev/usb/oh1 user,
+ * which is the bluetooth stack beneath the WPAD library of games/apps */
 static u8 ipcmessages_heap_data[4 * 1024] ATTRIBUTE_ALIGN(32);
 static int ipcmessages_heap_id;
 
@@ -116,7 +122,7 @@ static int pending_usb_bulk_in_msg_queue_id;
 
 /* Function prototypes */
 
-static int ensure_init_oh1_context(void);
+static int ensure_initalized(void);
 static int handle_bulk_intr_pending_message(ipcmessage *recv_msg, u16 size, ipcmessage **ret_msg,
 					    int ready_queue_id, int pending_queue_id,
 					    ipcmessage *hand_down_msg, int *fwd_to_usb);
@@ -134,13 +140,18 @@ static ipcmessage *alloc_inject_message(void **data, u32 size)
 		return NULL;
 
 	/* Fill ipcmessage data */
-	msg->command = INJECTED_IPCMESSAGE_COOKIE;
 	msg->ioctlv.vector = (void *)((u8 *)msg + sizeof(ipcmessage));
 	msg->ioctlv.vector[2].data = (void *)((u8 *)msg->ioctlv.vector + 3 * sizeof(ioctlv));
 	msg->ioctlv.vector[2].len = size;
 	*data = msg->ioctlv.vector[2].data;
 
 	return msg;
+}
+
+static inline bool is_message_injected(const ipcmessage *msg)
+{
+	return ((uintptr_t)msg >= (uintptr_t)ipcmessages_heap_data) &&
+	       ((uintptr_t)msg < ((uintptr_t)ipcmessages_heap_data + sizeof(ipcmessages_heap_data)));
 }
 
 /* ACL/L2CAP message enqueue (injection) helpers */
@@ -447,7 +458,7 @@ static int handle_oh1_dev_ioctlv(ipcmessage *recv_msg, ipcmessage **ret_msg, u32
 			ret = handle_bulk_intr_pending_message(recv_msg, wLength, ret_msg,
 							       ready_usb_bulk_in_msg_queue_id,
 							       pending_usb_bulk_in_msg_queue_id,
-							       &usb_bulk_in_msg_handed_to_oh1,
+							       &usb_bulk_in_hand_down_msg,
 							       fwd_to_usb);
 		}
 		break;
@@ -461,14 +472,14 @@ static int handle_oh1_dev_ioctlv(ipcmessage *recv_msg, ipcmessage **ret_msg, u32
 			ret = handle_bulk_intr_pending_message(recv_msg, wLength, ret_msg,
 							       ready_usb_intr_msg_queue_id,
 							       pending_usb_intr_msg_queue_id,
-							       &usb_intr_msg_handed_to_oh1,
+							       &usb_intr_hand_down_msg,
 							       fwd_to_usb);
 		}
 		break;
 	}
 	default:
 		/* Unhandled/unknown ioctls are forwarded to the OH1 module */
-		printf("Unhandled IOCTL: 0x%x\n", cmd);
+		DEBUG("Unhandled IOCTL: 0x%x\n", cmd);
 		break;
 	}
 
@@ -477,7 +488,7 @@ static int handle_oh1_dev_ioctlv(ipcmessage *recv_msg, ipcmessage **ret_msg, u32
 
 /* PendingQ / ReadyQ helpers */
 
-static inline void copy_ipcmessage_bulk_intr_io_data(ipcmessage *dst, const ipcmessage *src, u32 len)
+static inline void copy_ipcmessage_data(ipcmessage *dst, const ipcmessage *src, u32 len)
 {
 	void *src_data = src->ioctlv.vector[2].data;
 	void *dst_data = dst->ioctlv.vector[2].data;
@@ -486,81 +497,15 @@ static inline void copy_ipcmessage_bulk_intr_io_data(ipcmessage *dst, const ipcm
 	os_sync_after_write(dst_data, len);
 }
 
-static int configure_usb_bulk_intr_msg_handed_to_oh1(ipcmessage *handed_down_msg, u32 fd,
-						     u16 min_wLength)
+static inline void configure_hand_down_msg(ipcmessage *msg, int fd, u16 wLength)
 {
-	u16 *p_wLength = handed_down_msg->ioctlv.vector[1].data;
-	u32 *p_len = &handed_down_msg->ioctlv.vector[2].len;
-	void **p_data = &handed_down_msg->ioctlv.vector[2].data;
+	assert(wLength <= HAND_DOWN_MSG_DATA_SIZE);
 
-	/* If the message has no data allocated, or it's smaller than the required... */
-	if (*p_data == NULL || *p_wLength < min_wLength) {
-		if (*p_data != NULL)
-			Mem_Free(*p_data);
+	*(u16 *)msg->ioctlv.vector[1].data = wLength;
+	msg->ioctlv.vector[2].len = wLength;
+	msg->fd = fd;
 
-		*p_data = Mem_Alloc(min_wLength);
-		if (*p_data == NULL)
-			return IOS_ENOMEM;
-		*p_wLength = min_wLength;
-		*p_len = *p_wLength;
-	}
-
-	handed_down_msg->fd = fd;
-
-	os_sync_before_read(*p_data, *p_len);
-
-	return IOS_OK;
-}
-
-#if 0
-/* Used to allocate ipcmessages to hand down to OH1 */
-static ipcmessage *clone_bulk_in_intr_ipcmessage(const ipcmessage *src)
-{
-	ipcmessage *dst;
-	u16 data_size = *(u16 *)src->ioctlv.vector[1].data;
-	u32 data_offset = ROUNDUP32(sizeof(*dst) + 3 * sizeof(ioctlv) + sizeof(u8) + sizeof(u16));
-	u32 alloc_size = data_offset + data_size;
-
-	dst = os_heap_alloc(ipcmessages_heap_id, alloc_size);
-	assert(dst != NULL);
-	if (!dst)
-		return NULL;
-
-	dst->command               = src->command;
-	dst->result                = src->result;
-	dst->fd                    = src->fd;
-	dst->ioctlv.command        = src->ioctlv.command;
-	dst->ioctlv.num_in         = src->ioctlv.num_in;
-	dst->ioctlv.num_io         = src->ioctlv.num_io;
-	dst->ioctlv.vector         = (void *)((u8 *)dst + sizeof(ipcmessage));
-	dst->ioctlv.vector[1].data = (void *)((u8 *)dst->ioctlv.vector + 3 * sizeof(ioctlv));
-	dst->ioctlv.vector[1].len  = src->ioctlv.vector[1].len;
-	dst->ioctlv.vector[0].data = (void *)((u8 *)dst->ioctlv.vector[1].data + sizeof(u16));
-	dst->ioctlv.vector[0].len  = src->ioctlv.vector[0].len;
-	dst->ioctlv.vector[2].data = (void *)((u8 *)dst + data_offset);
-	dst->ioctlv.vector[2].len  = src->ioctlv.vector[2].len;
-
-	/* bEndpoint */
-	*(u8 *)dst->ioctlv.vector[0].data = *(u8 *)src->ioctlv.vector[0].data;
-	/* wLength */
-	*(u16 *)dst->ioctlv.vector[1].data = *(u16 *)src->ioctlv.vector[1].data;
-
-	/* Invalidate the data before the USB DMA in case we had dirty lines on the Dcache */
-	os_sync_before_read(dst->ioctlv.vector[2].data, dst->ioctlv.vector[2].len);
-
-	return dst;
-}
-
-static inline bool is_message_ours(const ipcmessage *msg)
-{
-	return ((uintptr_t)msg >= (uintptr_t)ipcmessages_heap_data) &&
-	       ((uintptr_t)msg < ((uintptr_t)ipcmessages_heap_data + sizeof(ipcmessages_heap_data)));
-}
-#endif
-
-static inline bool is_message_injected(const ipcmessage *msg)
-{
-	return msg->command == INJECTED_IPCMESSAGE_COOKIE;
+	os_sync_before_read(msg->ioctlv.vector[2].data, wLength);
 }
 
 static int handle_bulk_intr_pending_message(ipcmessage *pend_msg, u16 size, ipcmessage **ret_msg,
@@ -575,7 +520,7 @@ static int handle_bulk_intr_pending_message(ipcmessage *pend_msg, u16 size, ipcm
 	if (ret == IOS_OK) {
 		/* Copy message data if the return value is positive */
 		if (*(int *)&ready_msg->result > 0)
-			copy_ipcmessage_bulk_intr_io_data(pend_msg, ready_msg, ready_msg->result);
+			copy_ipcmessage_data(pend_msg, ready_msg, ready_msg->result);
 		/* Finally, we can ACK the message! */
 		ret = os_message_queue_ack(pend_msg, ready_msg->result);
 		/* If it was a message we injected ourselves, we have to deallocate it */
@@ -585,9 +530,8 @@ static int handle_bulk_intr_pending_message(ipcmessage *pend_msg, u16 size, ipcm
 		*fwd_to_usb = 0;
 	} else {
 		/* Hand down to OH1 a copy of the message for it to fill it from real USB data */
-		ret = configure_usb_bulk_intr_msg_handed_to_oh1(hand_down_msg, pend_msg->fd, size);
-		if (ret == IOS_OK)
-			*ret_msg = hand_down_msg;
+		configure_hand_down_msg(hand_down_msg, pend_msg->fd, size);
+		*ret_msg = hand_down_msg;
 		/* Push the received message to the PendingQ */
 		ret = os_message_queue_send(pending_queue_id, pend_msg, IOS_MESSAGE_NOBLOCK);
 	}
@@ -606,7 +550,7 @@ static int handle_bulk_intr_ready_message(ipcmessage *ready_msg, int retval, int
 	if (ret == IOS_OK) {
 		/* If retval is positive, it contains the data size, an error otherwise */
 		if (retval > 0)
-			copy_ipcmessage_bulk_intr_io_data(pend_msg, ready_msg, retval);
+			copy_ipcmessage_data(pend_msg, ready_msg, retval);
 		/* Finally we can ACK the message! */
 		ret = os_message_queue_ack(pend_msg, retval);
 		assert(ret == IOS_OK);
@@ -634,12 +578,12 @@ static int OH1_IOS_ReceiveMessage_hook(int queueid, ipcmessage **ret_msg, u32 fl
 	if (queueid != orig_msg_queueid)
 		return os_message_queue_receive(queueid, (void *)ret_msg, flags);
 
-	ensure_init_oh1_context();
+	ensure_initalized();
 
 	while (1) {
 		ret = os_message_queue_receive(queueid, (void *)&recv_msg, flags);
 		if (ret != IOS_OK) {
-			printf("Message queue recv err: %d\n", ret);
+			DEBUG("Message queue recv err: %d\n", ret);
 			break;
 		} else if (recv_msg == (ipcmessage *)0xcafef00d) {
 			*ret_msg = (ipcmessage *)0xcafef00d;
@@ -674,7 +618,7 @@ static int OH1_IOS_ReceiveMessage_hook(int queueid, ipcmessage **ret_msg, u32 fl
 			}
 			default:
 				/* Unknown command */
-				printf("Unhandled IPC command: 0x%x\n", recv_msg->command);
+				DEBUG("Unhandled IPC command: 0x%x\n", recv_msg->command);
 				break;
 			}
 		}
@@ -698,8 +642,8 @@ static int OH1_IOS_ResourceReply_hook(ipcmessage *ready_msg, int retval)
 	int ret;
 	ioctlv *vector;
 
-	if (ready_msg == &usb_intr_msg_handed_to_oh1) {
-		ensure_init_oh1_context();
+	if (ready_msg == &usb_intr_hand_down_msg) {
+		ensure_initalized();
 		vector = ready_msg->ioctlv.vector;
 		assert(ready_msg->command == IOS_IOCTLV);
 		assert(ready_msg->ioctlv.command == USBV0_IOCTLV_INTRMSG);
@@ -711,8 +655,8 @@ static int OH1_IOS_ResourceReply_hook(ipcmessage *ready_msg, int retval)
 						     pending_usb_intr_msg_queue_id,
 						     ready_usb_intr_msg_queue_id);
 		return ret;
-	} else if (ready_msg == &usb_bulk_in_msg_handed_to_oh1) {
-		ensure_init_oh1_context();
+	} else if (ready_msg == &usb_bulk_in_hand_down_msg) {
+		ensure_initalized();
 		vector = ready_msg->ioctlv.vector;
 		assert(ready_msg->command == IOS_IOCTLV);
 		assert(ready_msg->ioctlv.command == USBV0_IOCTLV_BLKMSG);
@@ -729,7 +673,7 @@ static int OH1_IOS_ResourceReply_hook(ipcmessage *ready_msg, int retval)
 	return os_message_queue_ack(ready_msg, retval);
 }
 
-static int ensure_init_oh1_context(void)
+static int ensure_initalized(void)
 {
 	static int initialized = 0;
 	int ret;
@@ -807,14 +751,9 @@ int main(void)
 	int ret;
 
 	/* Print info */
-	svc_write("Hello world from Starlet!\n");
+	printf("Hello world from Starlet!\n");
 
-	/* Initialize global memory heap */
-	ret = Mem_Init(heapspace, sizeof(heapspace));
-	if (ret < 0)
-		return ret;
-
-	/* Initialize heaps for inject and hand down messages */
+	/* Initialize heaps for inject messages */
 	ret = os_heap_create(ipcmessages_heap_data, sizeof(ipcmessages_heap_data));
 	if (ret < 0)
 		return ret;
@@ -833,10 +772,10 @@ int main(void)
 	os_close(fd);
 
 	ret = conf_get(conf_buffer, "BT.DINF", &conf_pads, sizeof(conf_pads));
-	printf("conf_get(): %d\n", ret);
-	printf("  num_registered: %d\n", conf_pads.num_registered);
-	printf("  registered[0]: %s\n", conf_pads.registered[0].name);
-	printf("  registered[1]: %s\n", conf_pads.registered[1].name);
+	DEBUG("conf_get(): %d\n", ret);
+	DEBUG("  num_registered: %d\n", conf_pads.num_registered);
+	DEBUG("  registered[0]: %s\n", conf_pads.registered[0].name);
+	DEBUG("  registered[1]: %s\n", conf_pads.registered[1].name);
 
 	bdaddr_t bdaddr = {.b = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66}};
 	for (int i = 0; i < 6; i++)
@@ -858,7 +797,7 @@ int main(void)
 
 	/* Initialize plugin with patchers */
 	ret = IOS_InitSystem(patchers, sizeof(patchers));
-	printf("IOS_InitSystem(): %d\n", ret);
+	DEBUG("IOS_InitSystem(): %d\n", ret);
 
 	return 0;
 }

@@ -115,12 +115,11 @@ static bool hci_virt_con_handle_get_phys(u16 virt, u16 *phys)
 
 void hci_state_handle_hci_cmd_from_host(void *data, u32 length, int *fwd_to_usb)
 {
-	bool modified = false;
 	hci_cmd_hdr_t *hdr = data;
 	void *payload = (void *)((u8 *)hdr + sizeof(hci_cmd_hdr_t));
 
 	u16 opcode = le16toh(hdr->opcode);
-	//printf("H > C HCI CMD: opcode: 0x%x\n", opcode);
+	DEBUG("H > C HCI CMD: opcode: 0x%x\n", opcode);
 
 	/* If the request targets a "fake device", we don't have to hand it down to OH1.
 	 * Otherwise, we just have to patch the HCI connection handle from virtual to physical.
@@ -128,24 +127,23 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, int *fwd_to_usb)
 
 #define TRANSLATE_CON_HANDLE(event, type) \
 	case event: { \
-		u16 phys, virt = le16toh(((type *)payload)->con_handle); \
+		type *cp = (type *)payload; \
+		u16 phys, virt = le16toh(cp->con_handle); \
 		/* First check if the virtual connection handle corresponds to a fake device. \
 		 * If so, we don't have to forward the HCI command to the USB BT dongle. */ \
 		if (fakedev_handle_hci_cmd_from_host(virt, hdr)) { \
 			*fwd_to_usb = 0; \
-			/*printf("  (to fakedev)\n");*/ \
 			break; \
 		} \
 		assert(hci_virt_con_handle_get_phys(virt, &phys)); \
-		/*printf("Found map v 0x%x -> p 0x%x\n", virt, phys);*/ \
-		((type *)payload)->con_handle = htole16(phys); \
-		modified = true; \
+		cp->con_handle = htole16(phys); \
+		os_sync_after_write(&cp->con_handle, sizeof(cp->con_handle)); \
 		break; \
 	}
 
 	switch (opcode) {
 	case HCI_CMD_CREATE_CON:
-		//svc_write("HCI_CMD_CREATE_CON\n");
+		//DEBUG("HCI_CMD_CREATE_CON\n");
 		break;
 	case HCI_CMD_ACCEPT_CON: {
 		char mac[MAC_STR_LEN];
@@ -156,7 +154,7 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, int *fwd_to_usb)
 		};
 
 		bdaddr_to_str(mac, &cp->bdaddr);
-		printf("HCI_CMD_ACCEPT_CON MAC: %s, role: %s\n", mac, roles[cp->role]);
+		DEBUG("HCI_CMD_ACCEPT_CON MAC: %s, role: %s\n", mac, roles[cp->role]);
 
 		/* If the connection was accepted on a fake device, don't
 		 * forward this packet to the real USB BT dongle! */
@@ -166,14 +164,14 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, int *fwd_to_usb)
 	}
 	case HCI_CMD_REJECT_CON:
 		/* TODO */
-		svc_write("HCI_CMD_REJECT_CON\n");
+		DEBUG("HCI_CMD_REJECT_CON\n");
 		break;
 	case HCI_CMD_INQUIRY:
-		//svc_write("  HCI_CMD_INQUIRY\n");
+		//DEBUG("  HCI_CMD_INQUIRY\n");
 		break;
 	case HCI_CMD_WRITE_LOCAL_NAME: {
 		hci_write_local_name_cp *cp = payload;
-		//printf("  HCI_CMD_WRITE_LOCAL_NAME: %s\n", cp->name);
+		DEBUG("  HCI_CMD_WRITE_LOCAL_NAME: %s\n", cp->name);
 		break;
 	}
 	case HCI_CMD_WRITE_SCAN_ENABLE: {
@@ -184,15 +182,15 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, int *fwd_to_usb)
 			"HCI_INQUIRY_AND_PAGE_SCAN_ENABLE",
 		};
 		hci_write_scan_enable_cp *cp = payload;
-		//printf("  HCI_CMD_WRITE_SCAN_ENABLE: 0x%x (%s)\n",
-		//	cp->scan_enable, scanning[cp->scan_enable]);
+		DEBUG("  HCI_CMD_WRITE_SCAN_ENABLE: 0x%x (%s)\n",
+			cp->scan_enable, scanning[cp->scan_enable]);
 		hci_page_scan_enable = cp->scan_enable;
 		break;
 	}
 	case HCI_CMD_WRITE_UNIT_CLASS: {
 		hci_write_unit_class_cp *cp = payload;
-		//printf("  HCI_CMD_WRITE_UNIT_CLASS: 0x%x 0x%x 0x%x\n",
-		//	cp->uclass[0], cp->uclass[1], cp->uclass[2]);
+		DEBUG("  HCI_CMD_WRITE_UNIT_CLASS: 0x%x 0x%x 0x%x\n",
+			cp->uclass[0], cp->uclass[1], cp->uclass[2]);
 		hci_unit_class[0] = cp->uclass[0];
 		hci_unit_class[1] = cp->uclass[1];
 		hci_unit_class[2] = cp->uclass[2];
@@ -200,23 +198,23 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, int *fwd_to_usb)
 	}
 	case HCI_CMD_WRITE_INQUIRY_SCAN_TYPE: {
 		hci_write_inquiry_scan_type_cp *cp = payload;
-		//printf("  HCI_CMD_WRITE_INQUIRY_SCAN_TYPE: 0x%x\n", cp->type);
+		DEBUG("  HCI_CMD_WRITE_INQUIRY_SCAN_TYPE: 0x%x\n", cp->type);
 		break;
 	}
 	case HCI_CMD_WRITE_PAGE_SCAN_TYPE: {
 		hci_write_page_scan_type_cp *cp = payload;
-		//printf("  HCI_CMD_WRITE_PAGE_SCAN_TYPE: 0x%x\n", cp->type);
+		DEBUG("  HCI_CMD_WRITE_PAGE_SCAN_TYPE: 0x%x\n", cp->type);
 		break;
 	}
 	case HCI_CMD_WRITE_INQUIRY_MODE: {
 		hci_write_inquiry_mode_cp *cp = payload;
-		//printf("  HCI_CMD_WRITE_INQUIRY_MODE: 0x%x\n", cp->mode);
+		DEBUG("  HCI_CMD_WRITE_INQUIRY_MODE: 0x%x\n", cp->mode);
 		break;
 	}
 	case HCI_CMD_SET_EVENT_FILTER: {
 		hci_set_event_filter_cp *cp = payload;
-		//printf("  HCI_CMD_SET_EVENT_FILTER: 0x%x 0x%x\n",
-		//	  cp->filter_type, cp->filter_condition_type);
+		DEBUG("  HCI_CMD_SET_EVENT_FILTER: 0x%x 0x%x\n",
+			cp->filter_type, cp->filter_condition_type);
 		break;
 	}
 	TRANSLATE_CON_HANDLE(HCI_CMD_DISCONNECT, hci_discon_cp)
@@ -260,35 +258,31 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, int *fwd_to_usb)
 	TRANSLATE_CON_HANDLE(HCI_CMD_READ_AFH_CHANNEL_MAP, hci_read_afh_channel_map_cp)
 	TRANSLATE_CON_HANDLE(HCI_CMD_READ_CLOCK, hci_read_clock_cp)
 	default:
-		//printf("HCI CTRL: opcode: 0x%x (ocf: 0x%x, ogf: 0x%x)\n", opcode, ocf, ogf);
+		DEBUG("HCI CTRL: opcode: 0x%x\n", opcode);
 		break;
 	}
 #undef TRANSLATE_CON_HANDLE
-
-	/* If we have modified the packet, flush from cache */
-	if (modified)
-		os_sync_after_write(data, sizeof(hci_cmd_hdr_t) + hdr->length);
 }
 
 void hci_state_handle_hci_event_from_controller(void *data, u32 length)
 {
 	bool ret;
 	u16 virt;
-	bool modified = false;
 	hci_event_hdr_t *hdr = data;
 	void *payload = (void *)((u8 *)hdr + sizeof(hci_event_hdr_t));
 
 	/* Here we just have to patch the HCI connection handles from physical to virtual,
 	 * and check for connection/disconnection events to create/remove the mappings.  */
 
-	//printf("C > H HCI EVT: event: 0x%x, len: 0x%x\n", hdr->event, hdr->length);
+	DEBUG("C > H HCI EVT: event: 0x%x, len: 0x%x\n", hdr->event, hdr->length);
 
 #define TRANSLATE_CON_HANDLE(event, type) \
 	case event: { \
-		u16 virt, phys = le16toh(((type *)payload)->con_handle); \
+		type *ep = (type *)payload; \
+		u16 virt, phys = le16toh(ep->con_handle); \
 		assert(hci_virt_con_handle_get_virt(phys, &virt)); \
-		((type *)payload)->con_handle = htole16(virt); \
-		modified = true; \
+		ep->con_handle = htole16(virt); \
+		os_sync_after_write(&ep->con_handle, sizeof(ep->con_handle)); \
 		break; \
 	}
 
@@ -297,7 +291,7 @@ void hci_state_handle_hci_event_from_controller(void *data, u32 length)
 		hci_con_compl_ep *ep = payload;
 		/* The BT controller sent us the *physical* HCI handle for the new connection.
 		 * Allocate a new virtual HCI handle and map it. */
-		printf("HCI_EVENT_CON_COMPL: status: 0x%x, handle: 0x%x\n",
+		DEBUG("HCI_EVENT_CON_COMPL: status: 0x%x, handle: 0x%x\n",
 			ep->status, le16toh(ep->con_handle));
 		if (ep->status == 0) {
 			/* Allocate a new virtual connection handle */
@@ -305,10 +299,10 @@ void hci_state_handle_hci_event_from_controller(void *data, u32 length)
 			/* Create the new connection handle mapping */
 			ret = hci_virt_con_handle_map(le16toh(ep->con_handle), virt);
 			assert(ret);
-			printf("New HCI connection. Mapping: p 0x%x -> v 0x%x\n",
+			DEBUG("New HCI connection. Mapping: p 0x%x -> v 0x%x\n",
 				le16toh(ep->con_handle), virt);
 			ep->con_handle = htole16(virt);
-			modified = true;
+			os_sync_after_write(&ep->con_handle, sizeof(ep->con_handle));
 		}
 		break;
 	}
@@ -316,7 +310,7 @@ void hci_state_handle_hci_event_from_controller(void *data, u32 length)
 		hci_discon_compl_ep *ep = payload;
 		/* The BT controller sent us the *physical* HCI handle for the disconnection.
 		 * Unmap the virtual HCI handle associated to it. */
-		printf("HCI_EVENT_DISCON_COMPL: status: 0x%x, handle: 0x%x, reason: 0x%x\n",
+		DEBUG("HCI_EVENT_DISCON_COMPL: status: 0x%x, handle: 0x%x, reason: 0x%x\n",
 			ep->status, le16toh(ep->con_handle), ep->reason);
 		if (ep->status == 0) {
 			ret = hci_virt_con_handle_get_virt(le16toh(ep->con_handle), &virt);
@@ -325,7 +319,7 @@ void hci_state_handle_hci_event_from_controller(void *data, u32 length)
 			ret = hci_virt_con_handle_unmap_virt(virt);
 			assert(ret);
 			ep->con_handle = htole16(virt);
-			modified = true;
+			os_sync_after_write(&ep->con_handle, sizeof(ep->con_handle));
 		}
 		break;
 	}
@@ -356,10 +350,6 @@ void hci_state_handle_hci_event_from_controller(void *data, u32 length)
 	TRANSLATE_CON_HANDLE(HCI_EVENT_ENHANCED_FLUSH_COMPL, hci_enhanced_flush_compl_ep)
 	}
 #undef TRANSLATE_CON_HANDLE
-
-	/* If we have modified the packet, flush from cache */
-	if (modified)
-		os_sync_after_write(data, sizeof(hci_event_hdr_t) + hdr->length);
 }
 
 void hci_state_handle_hci_event_request_from_host(u32 length)
@@ -383,16 +373,16 @@ void hci_state_handle_acl_data_in_response_from_controller(void *data, u32 lengt
 	u16 pb = HCI_PB_FLAG(handle_pb_bc);
 	u16 pc = HCI_BC_FLAG(handle_pb_bc);
 
-	//printf("H < C ACL  IN: pcon_handle: 0x%x, len: 0x%x\n", phys, payload_len);
+	DEBUG("H < C ACL  IN: pcon_handle: 0x%x, len: 0x%x\n", phys, payload_len);
 
 	ret = hci_virt_con_handle_get_virt(phys, &virt);
 	assert(ret);
 	hdr->con_handle = htole16(HCI_MK_CON_HANDLE(virt, pb, pc));
 
-	//printf("    p 0x%x -> v 0x%x\n", phys, virt);
+	DEBUG("    p 0x%x -> v 0x%x\n", phys, virt);
 
 	/* Flush modified data */
-	os_sync_after_write(hdr, sizeof(*hdr) + payload_len);
+	os_sync_after_write(&hdr->con_handle, sizeof(hdr->con_handle));
 }
 
 void hci_state_handle_acl_data_out_request_from_host(void *data, u32 length, int *fwd_to_usb)
@@ -406,12 +396,12 @@ void hci_state_handle_acl_data_out_request_from_host(void *data, u32 length, int
 	u16 pb = HCI_PB_FLAG(handle_pb_bc);
 	u16 pc = HCI_BC_FLAG(handle_pb_bc);
 
-	//printf("H > C ACL OUT: vcon_handle: 0x%x, len: 0x%x\n", virt, payload_len);
+	DEBUG("H > C ACL OUT: vcon_handle: 0x%x, len: 0x%x\n", virt, payload_len);
 
 	/* First check if the virtual connection handle corresponds to a fake device */
 	if (fakedev_handle_acl_data_out_request_from_host(virt, hdr)) {
 		*fwd_to_usb = 0;
-		//printf("  (to fakedev)\n");
+		DEBUG("  (to fakedev)\n");
 		return;
 	}
 
@@ -419,8 +409,8 @@ void hci_state_handle_acl_data_out_request_from_host(void *data, u32 length, int
 	assert(ret);
 	hdr->con_handle = htole16(HCI_MK_CON_HANDLE(phys, pb, pc));
 
-	//printf("    v 0x%x -> p 0x%x\n", virt, phys);
+	DEBUG("    v 0x%x -> p 0x%x\n", virt, phys);
 
 	/* Flush modified data */
-	os_sync_after_write(hdr, sizeof(*hdr) + payload_len);
+	os_sync_after_write(&hdr->con_handle, sizeof(hdr->con_handle));
 }
