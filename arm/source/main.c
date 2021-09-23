@@ -50,8 +50,7 @@
 
 /* Private definitions */
 
-#define PERIODC_TIMER_PERIOD		500 * 1000
-#define THREAD_STACK_SIZE		4096
+#define PERIODC_TIMER_PERIOD		250 * 1000
 #define HAND_DOWN_MSG_DATA_SIZE		4096
 
 /* Required by cios-lib... */
@@ -598,33 +597,16 @@ static int OH1_IOS_ReceiveMessage_hook(int queueid, ipcmessage **ret_msg, u32 fl
 			fwd_to_usb = 0;
 		} else {
 			*ret_msg = NULL;
-			/* Default to yes (few commands return fake data to BT SW stack) */
+			/* Default to forward message to OH1 */
 			fwd_to_usb = 1;
 
-			switch (recv_msg->command) {
-			case IOS_OPEN:
-				break;
-			case IOS_CLOSE:
-				break;
-			case IOS_READ:
-				break;
-			case IOS_WRITE:
-				break;
-			case IOS_SEEK:
-				break;
-			case IOS_IOCTLV: {
+			if (recv_msg->command == IOS_IOCTLV) {
 				ioctlv *vector = recv_msg->ioctlv.vector;
 				u32     inlen  = recv_msg->ioctlv.num_in;
 				u32     iolen  = recv_msg->ioctlv.num_io;
 				u32     cmd    = recv_msg->ioctlv.command;
 				ret = handle_oh1_dev_ioctlv(recv_msg, ret_msg, cmd, vector,
 							    inlen, iolen, &fwd_to_usb);
-				break;
-			}
-			default:
-				/* Unknown command */
-				DEBUG("Unhandled IPC command: 0x%x\n", recv_msg->command);
-				break;
 			}
 		}
 
@@ -632,7 +614,7 @@ static int OH1_IOS_ReceiveMessage_hook(int queueid, ipcmessage **ret_msg, u32 fl
 		 * to deliver the message to the BT USB dongle */
 		if (fwd_to_usb) {
 			/* Just send the original message we received if we don't
-			 * want to hand down a "private" message to OH1 */
+			 * want to hand down an injected message to OH1 */
 			if (*ret_msg == NULL)
 				*ret_msg = recv_msg;
 			break;
@@ -646,16 +628,19 @@ static int OH1_IOS_ResourceReply_hook(ipcmessage *ready_msg, int retval)
 {
 	int ret;
 	ioctlv *vector;
+	void *data;
 
 	if (ready_msg == &usb_intr_hand_down_msg) {
 		ensure_initalized();
-		vector = ready_msg->ioctlv.vector;
 		assert(ready_msg->command == IOS_IOCTLV);
 		assert(ready_msg->ioctlv.command == USBV0_IOCTLV_INTRMSG);
-		ready_msg->result = retval;
 		/* Let the HCI tracker know about this HCI event response coming from OH1 */
-		hci_state_handle_hci_event_from_controller(vector[2].data,
-							   *(u16 *)vector[1].data);
+		if (retval > 0) {
+			vector = ready_msg->ioctlv.vector;
+			data = vector[2].data;
+			hci_state_handle_hci_event_from_controller(data, retval);
+		}
+		ready_msg->result = retval;
 		ret = handle_bulk_intr_ready_message(ready_msg, retval,
 						     pending_usb_intr_msg_queue_id,
 						     ready_usb_intr_msg_queue_id);
@@ -665,10 +650,13 @@ static int OH1_IOS_ResourceReply_hook(ipcmessage *ready_msg, int retval)
 		vector = ready_msg->ioctlv.vector;
 		assert(ready_msg->command == IOS_IOCTLV);
 		assert(ready_msg->ioctlv.command == USBV0_IOCTLV_BLKMSG);
-		ready_msg->result = retval;
 		/* Let the HCI tracker know about this HCI ACL IN response coming from OH1 */
-		hci_state_handle_acl_data_in_response_from_controller(vector[2].data,
-							   *(u16 *)vector[1].data);
+		if (retval > 0) {
+			vector = ready_msg->ioctlv.vector;
+			data = vector[2].data;
+			hci_state_handle_acl_data_in_response_from_controller(data, retval);
+		}
+		ready_msg->result = retval;
 		ret = handle_bulk_intr_ready_message(ready_msg, retval,
 						     pending_usb_bulk_in_msg_queue_id,
 						     ready_usb_bulk_in_msg_queue_id);
