@@ -20,12 +20,10 @@ static struct {
 	u16 phys; /* The one the BT dongle uses */
 } hci_virt_con_handle_map_table[MAX_HCI_CONNECTIONS];
 
-
 void hci_state_init()
 {
 	for (int i = 0; i < ARRAY_SIZE(hci_virt_con_handle_map_table); i++)
 		hci_virt_con_handle_map_table[i].valid = false;
-
 }
 
 u16 hci_con_handle_virt_alloc(void)
@@ -122,7 +120,7 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, int *fwd_to_usb)
 	void *payload = (void *)((u8 *)hdr + sizeof(hci_cmd_hdr_t));
 
 	u16 opcode = le16toh(hdr->opcode);
-	printf("H > C HCI CMD: opcode: 0x%x\n", opcode);
+	//printf("H > C HCI CMD: opcode: 0x%x\n", opcode);
 
 	/* If the request targets a "fake device", we don't have to hand it down to OH1.
 	 * Otherwise, we just have to patch the HCI connection handle from virtual to physical.
@@ -135,11 +133,11 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, int *fwd_to_usb)
 		 * If so, we don't have to forward the HCI command to the USB BT dongle. */ \
 		if (fakedev_handle_hci_cmd_from_host(virt, hdr)) { \
 			*fwd_to_usb = 0; \
-			printf("  (to fakedev)\n"); \
+			/*printf("  (to fakedev)\n");*/ \
 			break; \
 		} \
 		assert(hci_virt_con_handle_get_phys(virt, &phys)); \
-		printf("Found map v 0x%x -> p 0x%x\n", virt, phys); \
+		/*printf("Found map v 0x%x -> p 0x%x\n", virt, phys);*/ \
 		((type *)payload)->con_handle = htole16(phys); \
 		modified = true; \
 		break; \
@@ -175,7 +173,7 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, int *fwd_to_usb)
 		break;
 	case HCI_CMD_WRITE_LOCAL_NAME: {
 		hci_write_local_name_cp *cp = payload;
-		printf("  HCI_CMD_WRITE_LOCAL_NAME: %s\n", cp->name);
+		//printf("  HCI_CMD_WRITE_LOCAL_NAME: %s\n", cp->name);
 		break;
 	}
 	case HCI_CMD_WRITE_SCAN_ENABLE: {
@@ -283,7 +281,7 @@ void hci_state_handle_hci_event_from_controller(void *data, u32 length)
 	/* Here we just have to patch the HCI connection handles from physical to virtual,
 	 * and check for connection/disconnection events to create/remove the mappings.  */
 
-	printf("C > H HCI EVT: event: 0x%x, len: 0x%x\n", hdr->event, hdr->length);
+	//printf("C > H HCI EVT: event: 0x%x, len: 0x%x\n", hdr->event, hdr->length);
 
 #define TRANSLATE_CON_HANDLE(event, type) \
 	case event: { \
@@ -364,33 +362,14 @@ void hci_state_handle_hci_event_from_controller(void *data, u32 length)
 		os_sync_after_write(data, sizeof(hci_event_hdr_t) + hdr->length);
 }
 
-void hci_state_handle_acl_data_in_request_from_host(void *data, u32 length, int *fwd_to_usb)
+void hci_state_handle_hci_event_request_from_host(u32 length)
 {
-	bool ret;
-	u16 phys;
-	hci_acldata_hdr_t *hdr = data;
-	u16 handle_pb_bc = le16toh(hdr->con_handle);
-	u16 payload_len = le16toh(hdr->length);
-	u16 virt = HCI_CON_HANDLE(handle_pb_bc);
-	u16 pb = HCI_PB_FLAG(handle_pb_bc);
-	u16 pc = HCI_BC_FLAG(handle_pb_bc);
+	fakedev_handle_hci_event_request_from_host(length);
+}
 
-	printf("H > C ACL  IN: vcon_handle: 0x%x, len: 0x%x\n", virt, payload_len);
-
-	/* First check if the virtual connection handle corresponds to a fake device */
-	if (fakedev_handle_acl_data_in_request_from_host(virt, hdr)) {
-		*fwd_to_usb = 0;
-		printf("  (to fakedev)\n");
-		return;
-	}
-
-	ret = hci_virt_con_handle_get_phys(virt, &phys);
-	assert(ret);
-	hdr->con_handle = htole16(HCI_MK_CON_HANDLE(phys, pb, pc));
-
-	//printf("    v 0x%x -> p 0x%x\n", virt, phys);
-
-	os_sync_after_write(hdr, sizeof(*hdr) + payload_len);
+void hci_state_handle_acl_data_in_request_from_host(u32 length)
+{
+	fakedev_handle_acl_data_in_request_from_host(length);
 }
 
 void hci_state_handle_acl_data_in_response_from_controller(void *data, u32 length)
@@ -404,7 +383,7 @@ void hci_state_handle_acl_data_in_response_from_controller(void *data, u32 lengt
 	u16 pb = HCI_PB_FLAG(handle_pb_bc);
 	u16 pc = HCI_BC_FLAG(handle_pb_bc);
 
-	printf("H < C ACL  IN: pcon_handle: 0x%x, len: 0x%x\n", phys, payload_len);
+	//printf("H < C ACL  IN: pcon_handle: 0x%x, len: 0x%x\n", phys, payload_len);
 
 	ret = hci_virt_con_handle_get_virt(phys, &virt);
 	assert(ret);
@@ -427,12 +406,12 @@ void hci_state_handle_acl_data_out_request_from_host(void *data, u32 length, int
 	u16 pb = HCI_PB_FLAG(handle_pb_bc);
 	u16 pc = HCI_BC_FLAG(handle_pb_bc);
 
-	printf("H > C ACL OUT: vcon_handle: 0x%x, len: 0x%x\n", virt, payload_len);
+	//printf("H > C ACL OUT: vcon_handle: 0x%x, len: 0x%x\n", virt, payload_len);
 
 	/* First check if the virtual connection handle corresponds to a fake device */
 	if (fakedev_handle_acl_data_out_request_from_host(virt, hdr)) {
 		*fwd_to_usb = 0;
-		printf("  (to fakedev)\n");
+		//printf("  (to fakedev)\n");
 		return;
 	}
 

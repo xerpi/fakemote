@@ -15,7 +15,7 @@ bool fakedev_handle_hci_cmd_from_host(u16 hci_con_handle, const hci_cmd_hdr_t *h
 /* Processes and returns true if the HCI connection handle belongs to a fake device */
 bool fakedev_handle_acl_data_out_request_from_host(u16 hci_con_handle, const hci_acldata_hdr_t *hdr);
 
-/* Processes and returns true if the HCI connection handle belongs to a fake device */
-bool fakedev_handle_acl_data_in_request_from_host(u16 hci_con_handle, const hci_acldata_hdr_t *hdr);
+void fakedev_handle_hci_event_request_from_host(u32 length);
+void fakedev_handle_acl_data_in_request_from_host(u32 length);
 
 #endif

@@ -144,9 +144,14 @@ int main(int argc, char **argv)
 
 	while (run) {
 		WPAD_ScanPads();
-		u32 pressed = WPAD_ButtonsDown(0);
-		if (pressed & WPAD_BUTTON_HOME)
+		u32 pressed0 = WPAD_ButtonsDown(0);
+		u32 pressed1 = WPAD_ButtonsDown(1);
+		if ((pressed0 | pressed1) & WPAD_BUTTON_HOME)
 			run = 0;
+		if (pressed0)
+			printf("Pressed[0]: 0x%08x\n", pressed0);
+		if (pressed1)
+			printf("Pressed[1]: 0x%08x\n", pressed1);
 
 #if 0
 		/* Log ringbuffer consumer */

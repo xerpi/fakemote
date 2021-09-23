@@ -5,11 +5,90 @@
 #include "syscalls.h"
 #include "utils.h"
 
+/* Source: HID_010_SPC_PFL/1.0 (official HID specification) and Dolphin emulator */
+#define HID_TYPE_HANDSHAKE	0
+#define HID_TYPE_SET_REPORT	5
+#define HID_TYPE_DATA		0xA
+#define HID_HANDSHAKE_SUCCESS	0
+#define HID_PARAM_INPUT		1
+#define HID_PARAM_OUTPUT	2
+
 /* Wiimote definitions */
-#define WIIMOTE_HCI_CLASS_0 0x00
-#define WIIMOTE_HCI_CLASS_1 0x04
-#define WIIMOTE_HCI_CLASS_2 0x48
-#define WII_REQUEST_MTU     185
+#define WIIMOTE_HCI_CLASS_0	0x00
+#define WIIMOTE_HCI_CLASS_1	0x04
+#define WIIMOTE_HCI_CLASS_2	0x48
+
+#define WII_REQUEST_MTU		185
+#define WIIMOTE_MAX_PAYLOAD	23
+
+/* Wiimote -> Host */
+#define INPUT_REPORT_ID_STATUS		0x20
+#define INPUT_REPORT_ID_READ_DATA_REPLY	0x21
+#define INPUT_REPORT_ID_ACK		0x22
+#define INPUT_REPORT_ID_REPORT_CORE	0x30
+
+/* Host -> Wiimote */
+#define OUTPUT_REPORT_ID_LED		0x11
+#define OUTPUT_REPORT_ID_REPORT_MODE	0x12
+#define OUTPUT_REPORT_ID_STATUS 	0x15
+#define OUTPUT_REPORT_ID_READ_DATA	0x17
+
+#define ERROR_CODE_SUCCESS	0
+
+struct wiimote_input_report_ack_t {
+	u16 buttons;
+	u8 rpt_id;
+	u8 error_code;
+} ATTRIBUTE_PACKED;
+
+struct wiimote_input_report_status_t {
+	u16 buttons;
+	u8 leds : 4;
+	u8 ir : 1;
+	u8 speaker : 1;
+	u8 extension : 1;
+	u8 battery_low : 1;
+	u8 padding2[2];
+	u8 battery;
+} ATTRIBUTE_PACKED;
+
+struct wiimote_input_report_read_data_t {
+	u16 buttons;
+	u8 size_minus_one : 4;
+	u8 error : 4;
+	// big endian:
+	u16 address;
+	u8 data[16];
+} ATTRIBUTE_PACKED;
+
+struct wiimote_output_report_led_t {
+	u8 leds : 4;
+	u8 : 2;
+	u8 ack : 1;
+	u8 rumble : 1;
+} ATTRIBUTE_PACKED;
+
+struct wiimote_output_report_mode_t {
+	u8 : 5;
+	u8 continuous : 1;
+	u8 ack : 1;
+	u8 rumble : 1;
+	u8 mode;
+} ATTRIBUTE_PACKED;
+
+struct wiimote_output_report_read_data_t {
+	u8 : 4;
+	u8 space : 2;
+	u8 : 1;
+	u8 rumble : 1;
+	// Used only for register space (i2c bus) (7-bits):
+	u8 slave_address : 7;
+	// A real wiimote ignores the i2c read/write bit.
+	u8 i2c_rw_ignored : 1;
+	// big endian:
+	u16 address;
+	u16 size;
+};
 
 /* Fake devices */
 // 00:21:BD:2D:57:FF Name: Nintendo RVL-CNT-01
@@ -111,13 +190,11 @@ static void check_send_config_for_new_channel(l2cap_channel_info_t *info)
 
 	if (is_l2cap_channel_accepted(info) &&
 	    (info->state == FAKEDEV_L2CAP_CHANNEL_STATE_INACTIVE)) {
-		ret = l2cap_send_psm_config_req(fakedev.hci_con_handle, info->remote_cid,
-						WII_REQUEST_MTU, L2CAP_FLUSH_TIMO_DEFAULT);
+		ret = l2cap_send_config_req(fakedev.hci_con_handle, info->remote_cid,
+					    WII_REQUEST_MTU, L2CAP_FLUSH_TIMO_DEFAULT);
 		if (ret == IOS_OK) {
-			info->remote_mtu = WII_REQUEST_MTU;
 			info->state = FAKEDEV_L2CAP_CHANNEL_STATE_CONFIG_PEND;
 		}
-		printf("L2CAP send config req: %d\n", ret);
 	}
 }
 
@@ -148,30 +225,28 @@ void fakedev_tick_devices(void)
 	if (fakedev.acl_state == FAKEDEV_ACL_STATE_LINKING) {
 		if (!fakedev.l2cap_psm_hid_cntl_channel.valid) {
 			u16 local_cid = generate_l2cap_channel_id();
-			ret = l2cap_send_psm_connect_req(fakedev.hci_con_handle,
-							 L2CAP_PSM_HID_CNTL,
-							 local_cid);
+			ret = l2cap_send_connect_req(fakedev.hci_con_handle, L2CAP_PSM_HID_CNTL,
+						     local_cid);
 			assert(ret == IOS_OK);
 			fakedev.l2cap_psm_hid_cntl_channel.state = FAKEDEV_L2CAP_CHANNEL_STATE_INACTIVE;
 			fakedev.l2cap_psm_hid_cntl_channel.local_cid = local_cid;
 			fakedev.l2cap_psm_hid_cntl_channel.remote_cid = L2CAP_NULL_CID;
 			fakedev.l2cap_psm_hid_cntl_channel.remote_mtu = 0;
 			fakedev.l2cap_psm_hid_cntl_channel.valid = true;
-			printf("L2CAP PSM HID CNTL connect req: %d\n", ret);
+			printf("Generated local CID for HID CNTL: 0x%x\n", local_cid);
 		}
 
 		if (!fakedev.l2cap_psm_hid_intr_channel.valid) {
 			u16 local_cid = generate_l2cap_channel_id();
-			ret = l2cap_send_psm_connect_req(fakedev.hci_con_handle,
-							 L2CAP_PSM_HID_INTR,
-							 local_cid);
+			ret = l2cap_send_connect_req(fakedev.hci_con_handle, L2CAP_PSM_HID_INTR,
+						     local_cid);
 			assert(ret == IOS_OK);
 			fakedev.l2cap_psm_hid_intr_channel.state = FAKEDEV_L2CAP_CHANNEL_STATE_INACTIVE;
 			fakedev.l2cap_psm_hid_intr_channel.local_cid = local_cid;
 			fakedev.l2cap_psm_hid_intr_channel.remote_cid = L2CAP_NULL_CID;
 			fakedev.l2cap_psm_hid_intr_channel.remote_mtu = 0;
 			fakedev.l2cap_psm_hid_intr_channel.valid = true;
-			printf("L2CAP PSM HID INTR connect req: %d\n", ret);
+			printf("Generated local CID for HID INTR: 0x%x\n", local_cid);
 		}
 
 		if (is_l2cap_channel_complete(&fakedev.l2cap_psm_hid_cntl_channel) &&
@@ -183,8 +258,6 @@ void fakedev_tick_devices(void)
 bool fakedev_handle_hci_cmd_accept_con(const bdaddr_t *bdaddr, u8 role)
 {
 	int ret;
-
-	printf("fakedev_handle_hci_cmd_accept_con\n");
 
 	/* Check if this bdaddr belongs to a fake device */
 	if (memcmp(bdaddr, &fakedev.bdaddr, sizeof(bdaddr_t) != 0))
@@ -225,146 +298,321 @@ bool fakedev_handle_hci_cmd_accept_con(const bdaddr_t *bdaddr, u8 role)
 
 bool fakedev_handle_hci_cmd_from_host(u16 hci_con_handle, const hci_cmd_hdr_t *hdr)
 {
-	/* TODO */
-	printf("fakedev_handle_hci_cmd_from_host: 0x%x\n", hci_con_handle);
-
 	/* Check if this HCI connection handle belongs to a fake device */
 	if (!fakedev_is_connected() || (fakedev.hci_con_handle != hci_con_handle))
 		return false;
 
+	/* TODO */
+	//printf("FAKEDEV H > C HCI CMD: 0x%x\n", hci_con_handle);
+
 	return true;
+}
+
+static void handle_l2cap_config_req(u8 ident, u16 dcid, u16 flags, const u8 *options, u16 options_size)
+{
+	u8 tmp[256];
+	u32 offset = 0;
+	u32 resp_len = 0;
+	u32 option_size;
+	l2cap_cfg_rsp_cp *rsp = (l2cap_cfg_rsp_cp *)tmp;
+
+	/* If the option is not provided, configure the default. */
+	u16 remote_mtu = L2CAP_MTU_DEFAULT;
+
+	assert(flags == 0x00);
+	printf("   options_size: 0x%x\n", options_size);
+
+	u16 remote_cid = 0;
+	if (fakedev.l2cap_psm_sdp_channel.local_cid == dcid) {
+		remote_cid = fakedev.l2cap_psm_sdp_channel.remote_cid;
+	} else if (fakedev.l2cap_psm_hid_cntl_channel.local_cid == dcid) {
+		remote_cid = fakedev.l2cap_psm_hid_cntl_channel.remote_cid;
+	} else if (fakedev.l2cap_psm_hid_intr_channel.local_cid == dcid) {
+		remote_cid = fakedev.l2cap_psm_hid_intr_channel.remote_cid;
+	} else {
+		assert(1);
+	}
+
+	/* Response to this config request */
+	rsp->scid = htole16(remote_cid);
+	rsp->flags = htole16(0x00);
+	rsp->result = htole16(L2CAP_SUCCESS);
+	resp_len += sizeof(l2cap_cfg_rsp_cp);
+
+	/* Read configuration options. */
+	while (offset < options_size) {
+		const l2cap_cfg_opt_t *opt = (const l2cap_cfg_opt_t *)&options[offset];
+		offset += sizeof(l2cap_cfg_opt_t);
+
+		switch (opt->type) {
+		case L2CAP_OPT_MTU: {
+			assert(opt->length == L2CAP_OPT_MTU_SIZE);
+			l2cap_cfg_opt_val_t *mtu = (l2cap_cfg_opt_val_t *)&options[offset];
+			remote_mtu = le16toh(mtu->mtu);
+			printf("      MTU configued to: 0x%x\n", remote_mtu);
+			break;
+		}
+		/* We don't care what the flush timeout is. Our packets are not dropped. */
+		case L2CAP_OPT_FLUSH_TIMO: {
+			assert(opt->length == L2CAP_OPT_FLUSH_TIMO_SIZE);
+			l2cap_cfg_opt_val_t *flush_time_out = (l2cap_cfg_opt_val_t *)&options[offset];
+			printf("      Flush timeout configured to 0x%x\n", flush_time_out->flush_timo);
+			break;
+		}
+		default:
+			printf("      Unknown Option: 0x%02x", opt->type);
+			break;
+		}
+
+		offset += opt->length;
+		option_size = sizeof(l2cap_cfg_opt_t) + opt->length;
+		memcpy(&tmp[resp_len], options, option_size);
+		resp_len += option_size;
+	}
+
+	/* Send Respone */
+	l2cap_send_config_rsp(fakedev.hci_con_handle, dcid, ident, tmp, resp_len);
+
+	/* Set the MTU */
+	if (fakedev.l2cap_psm_sdp_channel.local_cid == dcid) {
+		fakedev.l2cap_psm_sdp_channel.remote_mtu = remote_mtu;
+	} else if (fakedev.l2cap_psm_hid_cntl_channel.local_cid == dcid) {
+		fakedev.l2cap_psm_hid_cntl_channel.remote_mtu = remote_mtu;
+	} else if (fakedev.l2cap_psm_hid_intr_channel.local_cid == dcid) {
+		fakedev.l2cap_psm_hid_intr_channel.remote_mtu = remote_mtu;
+	} else {
+		assert(1);
+	}
+}
+
+static void handle_l2cap_signal_channel(u8 code, u8 ident, const void *payload, u16 size)
+{
+	svc_printf("  signal channel: code: 0x%x, ident: 0x%x\n", code, ident);
+
+	switch (code) {
+	case L2CAP_CONNECT_REQ: {
+		const l2cap_con_req_cp *req = payload;
+		u16 psm = le16toh(req->psm);
+		u16 scid = le16toh(req->scid);
+		printf("  L2CAP_CONNECT_REQ: psm: 0x%x, scid: 0x%x\n", psm, scid);
+		break;
+	}
+	case L2CAP_CONNECT_RSP: {
+		const l2cap_con_rsp_cp *rsp = payload;
+		u16 dcid = bswap16(rsp->dcid);
+		u16 scid = bswap16(rsp->scid);
+		u16 result = bswap16(rsp->result);
+		u16 status = bswap16(rsp->status);
+		printf("  L2CAP_CONNECT_RSP: dcid: 0x%x, scid: 0x%x, result: 0x%x, status: 0x%x\n",
+			dcid, scid, result, status);
+
+		assert(result == L2CAP_SUCCESS);
+		assert(status == L2CAP_NO_INFO);
+		//assert(DoesChannelExist(rsp->scid));
+
+		/* Save endpoint's Destination CID  */
+		if (fakedev.l2cap_psm_sdp_channel.local_cid == scid) {
+			assert(fakedev.l2cap_psm_sdp_channel.valid);
+			fakedev.l2cap_psm_sdp_channel.remote_cid = dcid;
+		} else if (fakedev.l2cap_psm_hid_cntl_channel.local_cid == scid) {
+			assert(fakedev.l2cap_psm_hid_cntl_channel.valid);
+			fakedev.l2cap_psm_hid_cntl_channel.remote_cid = dcid;
+		} else if (fakedev.l2cap_psm_hid_intr_channel.local_cid == scid) {
+			assert(fakedev.l2cap_psm_hid_intr_channel.valid);
+			fakedev.l2cap_psm_hid_intr_channel.remote_cid = dcid;
+		} else {
+			assert(1);
+		}
+		break;
+	}
+	case L2CAP_CONFIG_REQ: {
+		const l2cap_cfg_req_cp *rsp = payload;
+		u16 dcid = bswap16(rsp->dcid);
+		u16 flags = bswap16(rsp->flags);
+		const void *options = (const void *)((u8 *)rsp + sizeof(l2cap_cfg_req_cp));
+
+		printf("  L2CAP_CONFIG_REQ: dcid: 0x%x, flags: 0x%x\n", dcid, flags);
+		handle_l2cap_config_req(ident, dcid, flags, options, size - sizeof(l2cap_cfg_req_cp));
+		break;
+	}
+	case L2CAP_CONFIG_RSP: {
+		const l2cap_cfg_rsp_cp *rsp = payload;
+		u16 scid = le16toh(rsp->scid);
+		u16 flags = le16toh(rsp->flags);
+		u16 result = le16toh(rsp->result);
+		printf("  L2CAP_CONFIG_RSP: scid: 0x%x, flags: 0x%x, result: 0x%x\n",
+			scid, flags, result);
+
+		assert(result == L2CAP_SUCCESS);
+
+		/* Mark channel as complete!  */
+		if (fakedev.l2cap_psm_sdp_channel.local_cid == scid) {
+			fakedev.l2cap_psm_sdp_channel.state = FAKEDEV_L2CAP_CHANNEL_STATE_COMPLETE;
+		} else if (fakedev.l2cap_psm_hid_cntl_channel.local_cid == scid) {
+			fakedev.l2cap_psm_hid_cntl_channel.state = FAKEDEV_L2CAP_CHANNEL_STATE_COMPLETE;
+		} else if (fakedev.l2cap_psm_hid_intr_channel.local_cid == scid) {
+			fakedev.l2cap_psm_hid_intr_channel.state = FAKEDEV_L2CAP_CHANNEL_STATE_COMPLETE;
+		} else {
+			assert(1);
+		}
+		break;
+	}
+	}
+}
+
+static int send_hid_data(u16 hci_con_handle, u16 dcid, u8 hid_type, const void *data, u32 size)
+{
+	u8 buf[WIIMOTE_MAX_PAYLOAD];
+	assert(size <= (WIIMOTE_MAX_PAYLOAD - 1));
+	buf[0] = hid_type;
+	memcpy(&buf[1], data, size);
+	return l2cap_send_msg(hci_con_handle, dcid, buf, size + 1);
+}
+
+static inline int send_hid_input_report(u16 hci_con_handle, u16 dcid, u8 report_id,
+					const void *data, u32 size)
+{
+	u8 buf[WIIMOTE_MAX_PAYLOAD - 1];
+	assert(size <= (WIIMOTE_MAX_PAYLOAD - 2));
+	buf[0] = report_id;
+	memcpy(&buf[1], data, size);
+	return send_hid_data(hci_con_handle, dcid, (HID_TYPE_DATA << 4) | HID_PARAM_INPUT, buf, size + 1);
+}
+
+static int wiimote_send_ack(u8 rpt_id, u8 error_code)
+{
+	struct wiimote_input_report_ack_t ack ATTRIBUTE_ALIGN(32);
+	ack.buttons = 0;
+	ack.rpt_id = rpt_id;
+	ack.error_code = error_code;
+	return send_hid_input_report(fakedev.hci_con_handle,
+				     fakedev.l2cap_psm_hid_intr_channel.remote_cid,
+				     INPUT_REPORT_ID_ACK, &ack, sizeof(ack));
+}
+
+static void handle_hid_intr_data_output(const u8 *data, u16 size)
+{
+	printf("handle_hid_intr_data_output: size: 0x%x, 0x%x\n", size, *(u32 *)(data-1));
+
+	if (size == 0)
+		return;
+
+	switch (data[0]) {
+	case OUTPUT_REPORT_ID_LED: {
+		struct wiimote_output_report_led_t *led = (void *)&data[1];
+		printf("  LED: 0x%x\n", led->leds);
+		if (led->ack)
+			wiimote_send_ack(OUTPUT_REPORT_ID_LED, ERROR_CODE_SUCCESS);
+		break;
+	}
+	case OUTPUT_REPORT_ID_STATUS: {
+		struct wiimote_input_report_status_t status;
+		memset(&status, 0, sizeof(status));
+		status.buttons = 0;
+		send_hid_input_report(fakedev.hci_con_handle,
+				     fakedev.l2cap_psm_hid_intr_channel.remote_cid,
+				     INPUT_REPORT_ID_STATUS, &status, sizeof(status));
+		break;
+	}
+	case OUTPUT_REPORT_ID_REPORT_MODE: {
+		struct wiimote_output_report_mode_t *mode = (void *)&data[1];
+		printf("  MODE: mode: 0x%02x, cont: %d, rumble: %d, ack: %d\n",
+			mode->mode, mode->continuous, mode->rumble, mode->ack);
+		if (mode->ack)
+			wiimote_send_ack(OUTPUT_REPORT_ID_REPORT_MODE, ERROR_CODE_SUCCESS);
+		break;
+	}
+	case OUTPUT_REPORT_ID_READ_DATA: {
+		struct wiimote_output_report_read_data_t *read = (void *)&data[1];
+		struct wiimote_input_report_read_data_t reply;
+		memset(&reply, 0, sizeof(reply));
+		reply.buttons = 0;
+		reply.size_minus_one = read->size - 1;
+		reply.error = ERROR_CODE_SUCCESS;
+		reply.address = read->address;
+		send_hid_input_report(fakedev.hci_con_handle,
+				     fakedev.l2cap_psm_hid_intr_channel.remote_cid,
+				     INPUT_REPORT_ID_READ_DATA_REPLY, &reply, sizeof(reply));
+		break;
+	}
+	default:
+		printf("Unhandled output report: 0x%x\n", data[0]);
+		break;
+	}
 }
 
 bool fakedev_handle_acl_data_out_request_from_host(u16 hci_con_handle, const hci_acldata_hdr_t *hdr)
 {
-	printf("fakedev_handle_acl_data_out_request_from_host: 0x%x\n", hci_con_handle);
+	const l2cap_hdr_t *l2cap_hdr;
+	u16 l2cap_dcid, l2cap_length;
+	const void *l2cap_payload;
+	const l2cap_cmd_hdr_t *cmd_hdr;
+	u16 cmd_len;
+	const void *cmd_payload;
+	const u8 *data;
+	u16 len;
 
 	/* Check if this HCI connection handle belongs to a fake device */
 	if (!fakedev_is_connected() || (fakedev.hci_con_handle != hci_con_handle))
 		return false;
 
 	/* L2CAP header */
-	l2cap_hdr_t *l2cap_hdr = (void *)((u8 *)hdr + sizeof(hci_acldata_hdr_t));
-	//u16 l2cap_length       = le16toh(l2cap_hdr->length);
-	u16 l2cap_dcid         = le16toh(l2cap_hdr->dcid);
-	void *l2cap_payload    = (void *)((u8 *)l2cap_hdr + sizeof(l2cap_hdr_t));
+	l2cap_hdr     = (const void *)((u8 *)hdr + sizeof(hci_acldata_hdr_t));
+	l2cap_length  = le16toh(l2cap_hdr->length);
+	l2cap_dcid    = le16toh(l2cap_hdr->dcid);
+	l2cap_payload = (const void *)((u8 *)l2cap_hdr + sizeof(l2cap_hdr_t));
 
-	//printf("< ACL OUT: hdl: 0x%x, len: 0x%x\n", acl_con_handle, acl_length);
-	//printf("  L2CAP: len: 0x%x, dcid: 0x%x\n", l2cap_length, l2cap_dcid);
+	//printf("FD ACL OUT: con_handle: 0x%x, dcid: 0x%x, len: 0x%x\n", hci_con_handle,
+	//	l2cap_dcid, l2cap_length);
 
 	if (l2cap_dcid == L2CAP_SIGNAL_CID) {
-		l2cap_cmd_hdr_t *cmd_hdr = (void *)l2cap_payload;
-		u16 cmd_hdr_length = le16toh(cmd_hdr->length);
-		void *cmd_payload = (void *)((u8 *)l2cap_payload + sizeof(l2cap_cmd_hdr_t));
+		data = l2cap_payload;
+		len = l2cap_length;
+		while (len >= sizeof(l2cap_cmd_hdr_t)) {
+			cmd_hdr = (const void *)data;
+			cmd_len = le16toh(cmd_hdr->length);
+			cmd_payload = (const void *)((u8 *)data + sizeof(*cmd_hdr));
 
-		printf("  L2CAP CMD: code: 0x%x, ident: 0x%x, length: 0x%x\n",
-			cmd_hdr->code, cmd_hdr->ident, cmd_hdr_length);
+			handle_l2cap_signal_channel(cmd_hdr->code, cmd_hdr->ident,
+						    cmd_payload, cmd_len);
 
-		switch (cmd_hdr->code) {
-		case L2CAP_CONNECT_REQ: {
-			l2cap_con_req_cp *con_req = cmd_payload;
-			u16 req_psm = le16toh(con_req->psm);
-			u16 req_scid = le16toh(con_req->scid);
-			printf("    L2CAP_CONNECT_REQ: psm: 0x%x, scid: 0x%x\n", req_psm, req_scid);
-
-			/* Save PSM -> Remote CID mapping */
-			//channel_map_t *chn = channels_get(con_req_scid);
-			//assert(chn);
-			//chn->psm = con_req_psm;
-			break;
+			data += sizeof(l2cap_cmd_hdr_t) + cmd_len;
+			len -= sizeof(l2cap_cmd_hdr_t) + cmd_len;
 		}
-		case L2CAP_CONNECT_RSP: {
-			l2cap_con_rsp_cp *con_rsp = cmd_payload;
-			u16 rsp_dcid = le16toh(con_rsp->dcid);
-			u16 rsp_scid = le16toh(con_rsp->scid);
-			u16 rsp_result = le16toh(con_rsp->result);
-			u16 rsp_status = le16toh(con_rsp->status);
-
-			printf("    L2CAP_CONNECT_RSP: dcid: 0x%x, scid: 0x%x, result: 0x%x, status: 0x%x\n",
-				rsp_dcid, rsp_scid, rsp_result, rsp_status);
-
-			assert(rsp_result == L2CAP_SUCCESS);
-			assert(rsp_status == L2CAP_NO_INFO);
-			//assert(DoesChannelExist(rsp->scid));
-
-			/* libogc sets it to the "dcid" and not the "result" field (and scid to 0)... */
-			if ((rsp_dcid == L2CAP_PSM_NOT_SUPPORTED) &&
-			    (rsp_scid == 0)) {
-				printf("FUKKUUUUUUU\n");
-				//fakedev.acl_state = FAKEDEV_ACL_STATE_INACTIVE;
-			}
-
-			/* Save endpoint's Destination CID  */
-			if (fakedev.l2cap_psm_sdp_channel.local_cid == rsp_scid) {
-				assert(fakedev.l2cap_psm_sdp_channel.valid);
-				fakedev.l2cap_psm_sdp_channel.remote_cid = rsp_dcid;
-			} else if (fakedev.l2cap_psm_hid_cntl_channel.local_cid == rsp_scid) {
-				assert(fakedev.l2cap_psm_hid_cntl_channel.valid);
-				fakedev.l2cap_psm_hid_cntl_channel.remote_cid = rsp_dcid;
-			} else if (fakedev.l2cap_psm_hid_intr_channel.local_cid == rsp_scid) {
-				assert(fakedev.l2cap_psm_hid_intr_channel.valid);
-				fakedev.l2cap_psm_hid_intr_channel.remote_cid = rsp_dcid;
-			} else {
-				assert(1);
-			}
-			break;
-		}
-		case L2CAP_CONFIG_REQ: {
-			l2cap_cfg_req_cp *cfg_req = cmd_payload;
-			u16 req_dcid = le16toh(cfg_req->dcid);
-			u16 req_flags = le16toh(cfg_req->flags);
-
-			printf("    L2CAP_CONFIG_REQ: dcid: 0x%x, flags: 0x%x\n", req_dcid, req_flags);
-			break;
-		}
-		case L2CAP_CONFIG_RSP: {
-			l2cap_cfg_rsp_cp *cfg_rsp = cmd_payload;
-			u16 rsp_scid = le16toh(cfg_rsp->scid);
-			u16 rsp_flags = le16toh(cfg_rsp->flags);
-			u16 rsp_result = le16toh(cfg_rsp->result);
-
-			assert(rsp_result == L2CAP_SUCCESS);
-
-			printf("    L2CAP_CONFIG_RSP: scid: 0x%x, flags: 0x%x, result: 0x%x\n",
-				rsp_scid, rsp_flags, rsp_result);
-
-			/* Mark channel as complete!  */
-			if (fakedev.l2cap_psm_sdp_channel.local_cid == rsp_scid) {
-				fakedev.l2cap_psm_sdp_channel.state = FAKEDEV_L2CAP_CHANNEL_STATE_COMPLETE;
-			} else if (fakedev.l2cap_psm_hid_cntl_channel.local_cid == rsp_scid) {
-				fakedev.l2cap_psm_hid_cntl_channel.state = FAKEDEV_L2CAP_CHANNEL_STATE_COMPLETE;
-			} else if (fakedev.l2cap_psm_hid_intr_channel.local_cid == rsp_scid) {
-
-				fakedev.l2cap_psm_hid_intr_channel.state = FAKEDEV_L2CAP_CHANNEL_STATE_COMPLETE;
-			} else {
-				assert(1);
-			}
-
-			break;
-		}
+	} else if (l2cap_dcid == fakedev.l2cap_psm_sdp_channel.local_cid) {
+		assert(1);
+	} else if (l2cap_dcid == fakedev.l2cap_psm_hid_cntl_channel.local_cid) {
+		printf("  PSM HID CNTL!\n");
+	} else if (l2cap_dcid == fakedev.l2cap_psm_hid_intr_channel.local_cid) {
+		//printf("  PSM HID INTR! 0x%08x\n", *(u32 *)l2cap_payload);
+		data = l2cap_payload;
+		if (l2cap_length > 0) {
+			if (data[0] == ((HID_TYPE_DATA << 4) | HID_PARAM_OUTPUT))
+				handle_hid_intr_data_output(data + 1, l2cap_length - 1);
+			else
+				printf("Unknown HID-type: 0x%x\n", data[0]);
 		}
 	}
 
 	return true;
 }
 
-
-bool fakedev_handle_acl_data_in_request_from_host(u16 hci_con_handle, const hci_acldata_hdr_t *hdr)
+void fakedev_handle_hci_event_request_from_host(u32 length)
 {
-	printf("fakedev_handle_acl_data_in_request_from_host: 0x%x\n", hci_con_handle);
 
-	/* Check if this HCI connection handle belongs to a fake device */
-	if (!fakedev_is_connected() || (fakedev.hci_con_handle != hci_con_handle))
-		return false;
+}
 
-	/* L2CAP header */
-	l2cap_hdr_t *l2cap_hdr = (void *)((u8 *)hdr + sizeof(hci_acldata_hdr_t));
-	//u16 l2cap_length       = le16toh(l2cap_hdr->length);
-	u16 l2cap_dcid         = le16toh(l2cap_hdr->dcid);
-	void *l2cap_payload    = (void *)((u8 *)l2cap_hdr + sizeof(l2cap_hdr_t));
+void fakedev_handle_acl_data_in_request_from_host(u32 length)
+{
+	//int ret;
+	if (fakedev_is_connected()) {
+		//printf("FAKEDEV ACL IN: size 0x%x\n", length);
+		/*static u8 kk = 0;
+		if (kk++ == 0) {
+			u8 report[2] = {0x80, 0x80};
+			send_hid_input_report(fakedev.hci_con_handle, fakedev.l2cap_psm_hid_intr_channel.remote_cid,
+				INPUT_REPORT_ID_REPORT_CORE, report, sizeof(report));
+		}*/
 
-	//printf("< ACL OUT: hdl: 0x%x, len: 0x%x\n", acl_con_handle, acl_length);
-	//printf("  L2CAP: len: 0x%x, dcid: 0x%x\n", l2cap_length, l2cap_dcid);
-
-	return true;
+	}
 }

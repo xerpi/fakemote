@@ -37,7 +37,9 @@ int enqueue_hci_event_con_compl(const bdaddr_t *bdaddr, u16 con_handle, u8 statu
 int enqueue_hci_event_role_change(const bdaddr_t *bdaddr, u8 role);
 
 /* L2CAP event enqueue helpers */
-int l2cap_send_psm_connect_req(u16 hci_con_handle, u16 psm, u16 scid);
-int l2cap_send_psm_config_req(u16 hci_con_handle, u16 remote_cid, u16 mtu, u16 flush_time_out);
+int l2cap_send_msg(u16 hci_con_handle, u16 dcid, const void *data, u16 size);
+int l2cap_send_connect_req(u16 hci_con_handle, u16 psm, u16 scid);
+int l2cap_send_config_req(u16 hci_con_handle, u16 remote_cid, u16 mtu, u16 flush_time_out);
+int l2cap_send_config_rsp(u16 hci_con_handle, u16 remote_cid, u8 ident, const u8 *options, u32 options_len);
 
 #endif

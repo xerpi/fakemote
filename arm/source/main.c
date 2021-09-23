@@ -55,13 +55,51 @@
 #define INJECTED_IPCMESSAGE_COOKIE	0xFEEDCAFE
 
 /* Global heap for dynamic memory */
-static u8 heapspace[4 * 1024] ATTRIBUTE_ALIGN(32);
+static u8 heapspace[16 * 1024] ATTRIBUTE_ALIGN(32);
 
 /* Global state */
 char *moduleName = "TST";
 static int orig_msg_queueid;
 static int periodic_timer_id;
 static int periodic_timer_cookie __attribute__((used));
+
+static u8 usb_intr_msg_handed_to_oh1_ioctlv_0_data = EP_HCI_EVENT;
+static u16 usb_intr_msg_handed_to_oh1_ioctlv_1_data;
+static ioctlv usb_intr_msg_handed_to_oh1_ioctlvs[3] = {
+	{&usb_intr_msg_handed_to_oh1_ioctlv_0_data, sizeof(usb_intr_msg_handed_to_oh1_ioctlv_0_data)},
+	{&usb_intr_msg_handed_to_oh1_ioctlv_1_data, sizeof(usb_intr_msg_handed_to_oh1_ioctlv_1_data)},
+	{NULL, 0} /* Filled dynamically */
+};
+static ipcmessage usb_intr_msg_handed_to_oh1 = {
+	.command = IOS_IOCTLV,
+	.result = IOS_OK,
+	.fd = 0, /* Filled dynamically */
+	.ioctlv = {
+		.command = USBV0_IOCTLV_INTRMSG,
+		.num_in = 2,
+		.num_io = 1,
+		.vector = usb_intr_msg_handed_to_oh1_ioctlvs
+	}
+};
+
+static u8 usb_bulk_in_msg_handed_to_oh1_ioctlv_0_data = EP_ACL_DATA_IN;
+static u16 usb_bulk_in_msg_handed_to_oh1_ioctlv_1_data;
+static ioctlv usb_bulk_in_msg_handed_to_oh1_ioctlvs[3] = {
+	{&usb_bulk_in_msg_handed_to_oh1_ioctlv_0_data, sizeof(usb_bulk_in_msg_handed_to_oh1_ioctlv_0_data)},
+	{&usb_bulk_in_msg_handed_to_oh1_ioctlv_1_data, sizeof(usb_bulk_in_msg_handed_to_oh1_ioctlv_1_data)},
+	{NULL, 0} /* Filled dynamically */
+};
+static ipcmessage usb_bulk_in_msg_handed_to_oh1 = {
+	.command = IOS_IOCTLV,
+	.result = IOS_OK,
+	.fd = 0, /* Filled dynamically */
+	.ioctlv = {
+		.command = USBV0_IOCTLV_BLKMSG,
+		.num_in = 2,
+		.num_io = 1,
+		.vector = usb_bulk_in_msg_handed_to_oh1_ioctlvs
+	}
+};
 
 static u8 ipcmessages_heap_data[4 * 1024] ATTRIBUTE_ALIGN(32);
 static int ipcmessages_heap_id;
@@ -79,9 +117,9 @@ static int pending_usb_bulk_in_msg_queue_id;
 /* Function prototypes */
 
 static int ensure_init_oh1_context(void);
-static int handle_bulk_intr_pending_message(ipcmessage *recv_msg, ipcmessage **ret_msg,
+static int handle_bulk_intr_pending_message(ipcmessage *recv_msg, u16 size, ipcmessage **ret_msg,
 					    int ready_queue_id, int pending_queue_id,
-					    int *fwd_to_usb);
+					    ipcmessage *hand_down_msg, int *fwd_to_usb);
 static int handle_bulk_intr_ready_message(ipcmessage *ready_msg, int retval,
 					  int pending_queue_id, int ready_queue_id);
 
@@ -167,39 +205,97 @@ static ipcmessage *alloc_l2cap_cmd_msg(void **l2cap_cmd_payload, u16 hci_con_han
 	return msg;
 }
 
-int l2cap_send_psm_connect_req(u16 hci_con_handle, u16 psm, u16 scid)
+int l2cap_send_msg(u16 hci_con_handle, u16 dcid, const void *data, u16 size)
 {
-	ipcmessage *msg;
-	l2cap_con_req_cp *cr;
-
-	msg = alloc_l2cap_cmd_msg((void **)&cr, hci_con_handle, L2CAP_CONNECT_REQ,
-				  L2CAP_CONNECT_REQ, sizeof(cr));
+	void *payload;
+	ipcmessage *msg = alloc_l2cap_msg(&payload, hci_con_handle, dcid, size);
 	if (!msg)
 		return IOS_ENOMEM;
 
 	/* Fill message data */
-	cr->psm = htole16(psm);
-	cr->scid = htole16(scid);
+	memcpy(payload, data, size);
 
 	return enqueue_to_bulk_in_msg_ready_queue(msg);
 }
 
-int l2cap_send_psm_config_req(u16 hci_con_handle, u16 remote_cid, u16 mtu, u16 flush_time_out)
+int l2cap_send_connect_req(u16 hci_con_handle, u16 psm, u16 scid)
 {
 	ipcmessage *msg;
-	l2cap_cfg_req_cp *cr;
+	l2cap_con_req_cp *req;
 
-	msg = alloc_l2cap_cmd_msg((void **)&cr, hci_con_handle, L2CAP_CONFIG_REQ,
-				  L2CAP_CONFIG_REQ, sizeof(cr));
+	msg = alloc_l2cap_cmd_msg((void **)&req, hci_con_handle, L2CAP_CONNECT_REQ,
+				  L2CAP_CONNECT_REQ, sizeof(*req));
 	if (!msg)
 		return IOS_ENOMEM;
 
 	/* Fill message data */
-	cr->dcid = le16toh(remote_cid);
-	cr->flags = le16toh(0);
+	req->psm = htole16(psm);
+	req->scid = htole16(scid);
 
 	return enqueue_to_bulk_in_msg_ready_queue(msg);
+}
 
+int l2cap_send_config_req(u16 hci_con_handle, u16 remote_cid, u16 mtu, u16 flush_time_out)
+{
+	ipcmessage *msg;
+	l2cap_cfg_req_cp *req;
+	l2cap_cfg_opt_t *opt;
+	u32 size = sizeof(l2cap_cfg_req_cp);
+	u32 offset = size;
+
+	if (mtu != L2CAP_MTU_DEFAULT)
+		size += sizeof(l2cap_cfg_opt_t) + L2CAP_OPT_MTU_SIZE;
+	if (flush_time_out != L2CAP_FLUSH_TIMO_DEFAULT)
+		size += sizeof(l2cap_cfg_opt_t) + L2CAP_OPT_FLUSH_TIMO_SIZE;
+
+	msg = alloc_l2cap_cmd_msg((void **)&req, hci_con_handle, L2CAP_CONFIG_REQ,
+				  L2CAP_CONFIG_REQ, size);
+	if (!msg)
+		return IOS_ENOMEM;
+
+	/* Fill message data */
+	req->dcid = htole16(remote_cid);
+	req->flags = htole16(0);
+
+	if (mtu != L2CAP_MTU_DEFAULT) {
+		opt = (void *)((u8 *)req + offset);
+		offset += sizeof(l2cap_cfg_opt_t);
+		opt->type = L2CAP_OPT_MTU;
+		opt->length = L2CAP_OPT_MTU_SIZE;
+		*(u16 *)(void *)((u8 *)req + offset) = htole16(mtu);
+		offset += L2CAP_OPT_MTU_SIZE;
+	}
+
+	if (flush_time_out != L2CAP_FLUSH_TIMO_DEFAULT) {
+		opt = (void *)((u8 *)req + offset);
+		offset += sizeof(l2cap_cfg_opt_t);
+		opt->type = L2CAP_OPT_FLUSH_TIMO;
+		opt->length = L2CAP_OPT_FLUSH_TIMO_SIZE;
+		*(u16 *)(void *)((u8 *)req + offset) = htole16(flush_time_out);
+		offset += L2CAP_OPT_FLUSH_TIMO_SIZE;
+	}
+
+	return enqueue_to_bulk_in_msg_ready_queue(msg);
+}
+
+int l2cap_send_config_rsp(u16 hci_con_handle, u16 remote_cid, u8 ident, const u8 *options, u32 options_len)
+{
+	ipcmessage *msg;
+	l2cap_cfg_rsp_cp *req;
+
+	msg = alloc_l2cap_cmd_msg((void **)&req, hci_con_handle, L2CAP_CONFIG_RSP,
+				  ident, sizeof(*req) + options_len);
+	if (!msg)
+		return IOS_ENOMEM;
+
+	/* Fill message data */
+	req->scid = htole16(remote_cid);
+	req->flags = htole16(0);
+	req->result = htole16(L2CAP_SUCCESS);
+	if (options && options_len > 0)
+		memcpy((u8 *)req + sizeof(*req), options, options_len);
+
+	return enqueue_to_bulk_in_msg_ready_queue(msg);
 }
 
 /* HCI event enqueue (injection) helpers */
@@ -313,16 +409,19 @@ static int handle_oh1_dev_ioctlv(ipcmessage *recv_msg, ipcmessage **ret_msg, u32
 				 ioctlv *vector, u32 inlen, u32 iolen, int *fwd_to_usb)
 {
 	int ret = 0;
+	void *data;
+	u16 wLength;
+	u8 bEndpoint, bRequest;
 
 	/* Invalidate cache */
 	InvalidateVector(vector, inlen, iolen);
 
 	switch (cmd) {
 	case USBV0_IOCTLV_CTRLMSG: {
-		u8 bRequest = *(u8 *)vector[1].data;
+		bRequest = *(u8 *)vector[1].data;
 		if (bRequest == EP_HCI_CTRL) {
-			u16 wLength      = le16toh(*(u16 *)vector[4].data);
-			void *data       = vector[6].data;
+			wLength = le16toh(*(u16 *)vector[4].data);
+			data    = vector[6].data;
 			hci_state_handle_hci_cmd_from_host(data, wLength, fwd_to_usb);
 			/* If we don't have to hand it down, we can already ACK it */
 			if (!*fwd_to_usb)
@@ -331,11 +430,11 @@ static int handle_oh1_dev_ioctlv(ipcmessage *recv_msg, ipcmessage **ret_msg, u32
 		break;
 	}
 	case USBV0_IOCTLV_BLKMSG: {
-		u8 bEndpoint = *(u8 *)vector[0].data;
+		bEndpoint = *(u8 *)vector[0].data;
 		if (bEndpoint == EP_ACL_DATA_OUT) {
 			/* This is the ACL datapath from CPU to device (Wiimote) */
-			u16 wLength  = *(u16 *)vector[1].data;
-			void *data   = vector[2].data;
+			wLength = *(u16 *)vector[1].data;
+			data    = vector[2].data;
 			hci_state_handle_acl_data_out_request_from_host(data, wLength, fwd_to_usb);
 			/* If we don't have to hand it down, we can already ACK it */
 			if (!*fwd_to_usb) {
@@ -343,23 +442,26 @@ static int handle_oh1_dev_ioctlv(ipcmessage *recv_msg, ipcmessage **ret_msg, u32
 			}
 		} else if (bEndpoint == EP_ACL_DATA_IN) {
 			/* We are given an ACL buffer to fill */
-			u16 wLength  = *(u16 *)vector[1].data;
-			void *data   = vector[2].data;
-			hci_state_handle_acl_data_in_request_from_host(data, wLength, fwd_to_usb);
-			ret = handle_bulk_intr_pending_message(recv_msg, ret_msg,
+			wLength = *(u16 *)vector[1].data;
+			hci_state_handle_acl_data_in_request_from_host(wLength);
+			ret = handle_bulk_intr_pending_message(recv_msg, wLength, ret_msg,
 							       ready_usb_bulk_in_msg_queue_id,
 							       pending_usb_bulk_in_msg_queue_id,
+							       &usb_bulk_in_msg_handed_to_oh1,
 							       fwd_to_usb);
 		}
 		break;
 	}
 	case USBV0_IOCTLV_INTRMSG: {
-		u8 bEndpoint = *(u8 *)vector[0].data;
+		bEndpoint = *(u8 *)vector[0].data;
 		if (bEndpoint == EP_HCI_EVENT) {
+			wLength = *(u16 *)vector[1].data;
 			/* We are given a HCI buffer to fill */
-			ret = handle_bulk_intr_pending_message(recv_msg, ret_msg,
+			hci_state_handle_hci_event_request_from_host(wLength);
+			ret = handle_bulk_intr_pending_message(recv_msg, wLength, ret_msg,
 							       ready_usb_intr_msg_queue_id,
 							       pending_usb_intr_msg_queue_id,
+							       &usb_intr_msg_handed_to_oh1,
 							       fwd_to_usb);
 		}
 		break;
@@ -384,6 +486,33 @@ static inline void copy_ipcmessage_bulk_intr_io_data(ipcmessage *dst, const ipcm
 	os_sync_after_write(dst_data, len);
 }
 
+static int configure_usb_bulk_intr_msg_handed_to_oh1(ipcmessage *handed_down_msg, u32 fd,
+						     u16 min_wLength)
+{
+	u16 *p_wLength = handed_down_msg->ioctlv.vector[1].data;
+	u32 *p_len = &handed_down_msg->ioctlv.vector[2].len;
+	void **p_data = &handed_down_msg->ioctlv.vector[2].data;
+
+	/* If the message has no data allocated, or it's smaller than the required... */
+	if (*p_data == NULL || *p_wLength < min_wLength) {
+		if (*p_data != NULL)
+			Mem_Free(*p_data);
+
+		*p_data = Mem_Alloc(min_wLength);
+		if (*p_data == NULL)
+			return IOS_ENOMEM;
+		*p_wLength = min_wLength;
+		*p_len = *p_wLength;
+	}
+
+	handed_down_msg->fd = fd;
+
+	os_sync_before_read(*p_data, *p_len);
+
+	return IOS_OK;
+}
+
+#if 0
 /* Used to allocate ipcmessages to hand down to OH1 */
 static ipcmessage *clone_bulk_in_intr_ipcmessage(const ipcmessage *src)
 {
@@ -393,6 +522,7 @@ static ipcmessage *clone_bulk_in_intr_ipcmessage(const ipcmessage *src)
 	u32 alloc_size = data_offset + data_size;
 
 	dst = os_heap_alloc(ipcmessages_heap_id, alloc_size);
+	assert(dst != NULL);
 	if (!dst)
 		return NULL;
 
@@ -426,19 +556,19 @@ static inline bool is_message_ours(const ipcmessage *msg)
 	return ((uintptr_t)msg >= (uintptr_t)ipcmessages_heap_data) &&
 	       ((uintptr_t)msg < ((uintptr_t)ipcmessages_heap_data + sizeof(ipcmessages_heap_data)));
 }
+#endif
 
 static inline bool is_message_injected(const ipcmessage *msg)
 {
 	return msg->command == INJECTED_IPCMESSAGE_COOKIE;
 }
 
-static int handle_bulk_intr_pending_message(ipcmessage *pend_msg, ipcmessage **ret_msg,
+static int handle_bulk_intr_pending_message(ipcmessage *pend_msg, u16 size, ipcmessage **ret_msg,
 					    int ready_queue_id, int pending_queue_id,
-					    int *fwd_to_usb)
+					    ipcmessage *hand_down_msg, int *fwd_to_usb)
 {
 	int ret;
 	ipcmessage *ready_msg;
-	ipcmessage *hand_down_msg;
 
 	/* Fast-path: check if we already have a message ready to be delivered */
 	ret = os_message_queue_receive(ready_queue_id, &ready_msg, IOS_MESSAGE_NOBLOCK);
@@ -449,20 +579,15 @@ static int handle_bulk_intr_pending_message(ipcmessage *pend_msg, ipcmessage **r
 		/* Finally, we can ACK the message! */
 		ret = os_message_queue_ack(pend_msg, ready_msg->result);
 		/* If it was a message we injected ourselves, we have to deallocate it */
-		if (is_message_ours(ready_msg))
+		if (is_message_injected(ready_msg))
 			os_heap_free(ipcmessages_heap_id, ready_msg);
 		/* We have already ACK it, we don't have to hand it down to OH1 */
 		*fwd_to_usb = 0;
 	} else {
-		/* The request targets a "real device", we have to hand down a copy to OH1 */
-		if (*fwd_to_usb) {
-			hand_down_msg = clone_bulk_in_intr_ipcmessage(pend_msg);
-			if (!hand_down_msg)
-				return IOS_ENOMEM;
-
+		/* Hand down to OH1 a copy of the message for it to fill it from real USB data */
+		ret = configure_usb_bulk_intr_msg_handed_to_oh1(hand_down_msg, pend_msg->fd, size);
+		if (ret == IOS_OK)
 			*ret_msg = hand_down_msg;
-		}
-
 		/* Push the received message to the PendingQ */
 		ret = os_message_queue_send(pending_queue_id, pend_msg, IOS_MESSAGE_NOBLOCK);
 	}
@@ -486,7 +611,7 @@ static int handle_bulk_intr_ready_message(ipcmessage *ready_msg, int retval, int
 		ret = os_message_queue_ack(pend_msg, retval);
 		assert(ret == IOS_OK);
 		/* If it was a message we injected ourselves, we have to deallocate it */
-		if (is_message_ours(ready_msg))
+		if (is_message_injected(ready_msg))
 			os_heap_free(ipcmessages_heap_id, ready_msg);
 	} else {
 		/* Push message to ReadyQ. We store the return value/size to the "result" field */
@@ -571,35 +696,33 @@ static int OH1_IOS_ReceiveMessage_hook(int queueid, ipcmessage **ret_msg, u32 fl
 static int OH1_IOS_ResourceReply_hook(ipcmessage *ready_msg, int retval)
 {
 	int ret;
+	ioctlv *vector;
 
-	if (is_message_ours(ready_msg)) {
-		ioctlv *vector = ready_msg->ioctlv.vector;
+	if (ready_msg == &usb_intr_msg_handed_to_oh1) {
+		ensure_init_oh1_context();
+		vector = ready_msg->ioctlv.vector;
 		assert(ready_msg->command == IOS_IOCTLV);
+		assert(ready_msg->ioctlv.command == USBV0_IOCTLV_INTRMSG);
+		/* Let the HCI tracker know about this HCI event response coming from OH1 */
+		hci_state_handle_hci_event_from_controller(vector[2].data,
+							   *(u16 *)vector[1].data);
 
-		/* We got the response for either an Interrupt or a Bulk in USB transfer */
-		if (ready_msg->ioctlv.command == USBV0_IOCTLV_INTRMSG) {
-			ensure_init_oh1_context();
-			/* Let the HCI tracker know about this HCI event response coming from OH1 */
-			hci_state_handle_hci_event_from_controller(vector[2].data,
-								   *(u16 *)vector[1].data);
+		ret = handle_bulk_intr_ready_message(ready_msg, retval,
+						     pending_usb_intr_msg_queue_id,
+						     ready_usb_intr_msg_queue_id);
+		return ret;
+	} else if (ready_msg == &usb_bulk_in_msg_handed_to_oh1) {
+		ensure_init_oh1_context();
+		vector = ready_msg->ioctlv.vector;
+		assert(ready_msg->command == IOS_IOCTLV);
+		assert(ready_msg->ioctlv.command == USBV0_IOCTLV_BLKMSG);
+		/* Let the HCI tracker know about this HCI ACL IN response coming from OH1 */
+		hci_state_handle_acl_data_in_response_from_controller(vector[2].data,
+							   *(u16 *)vector[1].data);
 
-			ret = handle_bulk_intr_ready_message(ready_msg, retval,
-							     pending_usb_intr_msg_queue_id,
-							     ready_usb_intr_msg_queue_id);
-		} else if (ready_msg->ioctlv.command == USBV0_IOCTLV_BLKMSG) {
-			ensure_init_oh1_context();
-			/* Let the HCI tracker know about this HCI ACL IN response coming from OH1 */
-			hci_state_handle_acl_data_in_response_from_controller(vector[2].data,
-								   *(u16 *)vector[1].data);
-
-			ret = handle_bulk_intr_ready_message(ready_msg, retval,
-							     pending_usb_bulk_in_msg_queue_id,
-							     ready_usb_bulk_in_msg_queue_id);
-		} else {
-			assert(1);
-			ret = IOS_EINVAL;
-		}
-
+		ret = handle_bulk_intr_ready_message(ready_msg, retval,
+						     pending_usb_bulk_in_msg_queue_id,
+						     ready_usb_bulk_in_msg_queue_id);
 		return ret;
 	}
 
