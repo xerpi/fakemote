@@ -134,7 +134,7 @@ static int ensure_initalized(void);
 static int handle_bulk_intr_pending_message(ipcmessage *recv_msg, u16 size, ipcmessage **ret_msg,
 					    int ready_queue_id, int pending_queue_id,
 					    ipcmessage *hand_down_msg, bool *hand_down_msg_pending,
-					    int *fwd_to_usb);
+					    bool *fwd_to_usb);
 static int handle_bulk_intr_ready_message(void *ready_msg, int retval,
 					  int pending_queue_id, int ready_queue_id);
 
@@ -418,7 +418,7 @@ int l2cap_send_config_rsp(u16 hci_con_handle, u16 remote_cid, u8 ident, const u8
 /* Main IOCTLV handler */
 
 static int handle_oh1_dev_ioctlv(ipcmessage *recv_msg, ipcmessage **ret_msg, u32 cmd,
-				 ioctlv *vector, u32 inlen, u32 iolen, int *fwd_to_usb)
+				 ioctlv *vector, u32 inlen, u32 iolen, bool *fwd_to_usb)
 {
 	int ret = 0;
 	void *data;
@@ -536,7 +536,7 @@ static inline int copy_and_ack_ipcmessage(ipcmessage *pend_msg, void *ready_msg)
 static int handle_bulk_intr_pending_message(ipcmessage *pend_msg, u16 size, ipcmessage **ret_msg,
 					    int ready_queue_id, int pending_queue_id,
 					    ipcmessage *hand_down_msg, bool *hand_down_msg_pending,
-					    int *fwd_to_usb)
+					    bool *fwd_to_usb)
 {
 	int ret;
 	void *ready_msg;
@@ -546,7 +546,7 @@ static int handle_bulk_intr_pending_message(ipcmessage *pend_msg, u16 size, ipcm
 	if (ret == IOS_OK) {
 		ret = copy_and_ack_ipcmessage(pend_msg, ready_msg);
 		/* We have already ACKed it, we don't have to hand it down to OH1 */
-		*fwd_to_usb = 0;
+		*fwd_to_usb = false;
 	} else {
 		/* Push the received message to the PendingQ */
 		ret = os_message_queue_send(pending_queue_id, pend_msg, IOS_MESSAGE_NOBLOCK);
@@ -557,7 +557,7 @@ static int handle_bulk_intr_pending_message(ipcmessage *pend_msg, u16 size, ipcm
 			*hand_down_msg_pending = true;
 		} else {
 			/* We already have a hand down message to OH1 USB pending... */
-			*fwd_to_usb = 0;
+			*fwd_to_usb = true;
 		}
 	}
 
@@ -588,7 +588,7 @@ static int OH1_IOS_ReceiveMessage_hook(int queueid, ipcmessage **ret_msg, u32 fl
 {
 	int ret;
 	ipcmessage *recv_msg;
-	int fwd_to_usb;
+	bool fwd_to_usb;
 
 	/* We don't care about other queues... */
 	if (queueid != orig_msg_queueid)
@@ -606,11 +606,11 @@ static int OH1_IOS_ReceiveMessage_hook(int queueid, ipcmessage **ret_msg, u32 fl
 			break;
 		} else if (recv_msg == (void *)&periodic_timer_cookie) {
 			fakedev_tick_devices();
-			fwd_to_usb = 0;
+			fwd_to_usb = false;
 		} else {
 			*ret_msg = NULL;
 			/* Default to forward message to OH1 */
-			fwd_to_usb = 1;
+			fwd_to_usb = true;
 
 			if (recv_msg->command == IOS_IOCTLV) {
 				ioctlv *vector = recv_msg->ioctlv.vector;

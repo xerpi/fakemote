@@ -113,7 +113,7 @@ static bool hci_virt_con_handle_get_phys(u16 virt, u16 *phys)
 
 /* HCI handlers */
 
-void hci_state_handle_hci_cmd_from_host(void *data, u32 length, int *fwd_to_usb)
+void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb)
 {
 	hci_cmd_hdr_t *hdr = data;
 	void *payload = (void *)((u8 *)hdr + sizeof(hci_cmd_hdr_t));
@@ -132,7 +132,7 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, int *fwd_to_usb)
 		/* First check if the virtual connection handle corresponds to a fake device. \
 		 * If so, we don't have to forward the HCI command to the USB BT dongle. */ \
 		if (fakedev_handle_hci_cmd_from_host(virt, hdr)) { \
-			*fwd_to_usb = 0; \
+			*fwd_to_usb = false; \
 			break; \
 		} \
 		assert(hci_virt_con_handle_get_phys(virt, &phys)); \
@@ -159,7 +159,7 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, int *fwd_to_usb)
 		/* If the connection was accepted on a fake device, don't
 		 * forward this packet to the real USB BT dongle! */
 		if (fakedev_handle_hci_cmd_accept_con(&cp->bdaddr, cp->role))
-			*fwd_to_usb = 0;
+			*fwd_to_usb = false;
 		break;
 	}
 	case HCI_CMD_REJECT_CON:
@@ -385,7 +385,7 @@ void hci_state_handle_acl_data_in_response_from_controller(void *data, u32 lengt
 	os_sync_after_write(&hdr->con_handle, sizeof(hdr->con_handle));
 }
 
-void hci_state_handle_acl_data_out_request_from_host(void *data, u32 length, int *fwd_to_usb)
+void hci_state_handle_acl_data_out_request_from_host(void *data, u32 length, bool *fwd_to_usb)
 {
 	bool ret;
 	u16 phys;
@@ -400,7 +400,7 @@ void hci_state_handle_acl_data_out_request_from_host(void *data, u32 length, int
 
 	/* First check if the virtual connection handle corresponds to a fake device */
 	if (fakedev_handle_acl_data_out_request_from_host(virt, hdr)) {
-		*fwd_to_usb = 0;
+		*fwd_to_usb = false;
 		DEBUG("  (to fakedev)\n");
 		return;
 	}
