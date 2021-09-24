@@ -53,7 +53,7 @@ typedef struct iovec {
 /* IPC message */
 typedef struct ipcmessage {
 	u32 command;
-	u32 result;
+	s32 result;
 	u32 fd;
 
 	union

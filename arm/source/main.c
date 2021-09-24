@@ -83,6 +83,7 @@ static ipcmessage usb_intr_hand_down_msg = {
 		.vector = usb_intr_hand_down_msg_ioctlvs
 	}
 };
+static bool usb_intr_hand_down_msg_pending = false;
 
 static u8 usb_bulk_in_hand_down_msg_data[HAND_DOWN_MSG_DATA_SIZE] ATTRIBUTE_ALIGN(32);
 static u8 usb_bulk_in_hand_down_msg_ioctlv_0_data = EP_ACL_DATA_IN;
@@ -90,7 +91,7 @@ static u16 usb_bulk_in_hand_down_msg_ioctlv_1_data;
 static ioctlv usb_bulk_in_hand_down_msg_ioctlvs[3] = {
 	{&usb_bulk_in_hand_down_msg_ioctlv_0_data, sizeof(usb_bulk_in_hand_down_msg_ioctlv_0_data)},
 	{&usb_bulk_in_hand_down_msg_ioctlv_1_data, sizeof(usb_bulk_in_hand_down_msg_ioctlv_1_data)},
-	{&usb_bulk_in_hand_down_msg_data,          sizeof(usb_intr_hand_down_msg_data)}
+	{&usb_bulk_in_hand_down_msg_data,          sizeof(usb_bulk_in_hand_down_msg_data)}
 };
 static ipcmessage usb_bulk_in_hand_down_msg = {
 	.command = IOS_IOCTLV,
@@ -103,6 +104,7 @@ static ipcmessage usb_bulk_in_hand_down_msg = {
 		.vector = usb_bulk_in_hand_down_msg_ioctlvs
 	}
 };
+static bool usb_bulk_in_hand_down_msg_pending = false;
 
 /* Heap to allocate ipcmessages that we inject into the ReadyQ to send them to the /dev/usb/oh1 user,
  * which is the bluetooth stack beneath the WPAD library of games/apps */
@@ -131,7 +133,8 @@ static int pending_usb_bulk_in_msg_queue_id;
 static int ensure_initalized(void);
 static int handle_bulk_intr_pending_message(ipcmessage *recv_msg, u16 size, ipcmessage **ret_msg,
 					    int ready_queue_id, int pending_queue_id,
-					    ipcmessage *hand_down_msg, int *fwd_to_usb);
+					    ipcmessage *hand_down_msg, bool *hand_down_msg_pending,
+					    int *fwd_to_usb);
 static int handle_bulk_intr_ready_message(void *ready_msg, int retval,
 					  int pending_queue_id, int ready_queue_id);
 
@@ -457,6 +460,7 @@ static int handle_oh1_dev_ioctlv(ipcmessage *recv_msg, ipcmessage **ret_msg, u32
 							       ready_usb_bulk_in_msg_queue_id,
 							       pending_usb_bulk_in_msg_queue_id,
 							       &usb_bulk_in_hand_down_msg,
+							       &usb_bulk_in_hand_down_msg_pending,
 							       fwd_to_usb);
 		}
 		break;
@@ -471,6 +475,7 @@ static int handle_oh1_dev_ioctlv(ipcmessage *recv_msg, ipcmessage **ret_msg, u32
 							       ready_usb_intr_msg_queue_id,
 							       pending_usb_intr_msg_queue_id,
 							       &usb_intr_hand_down_msg,
+							       &usb_intr_hand_down_msg_pending,
 							       fwd_to_usb);
 		}
 		break;
@@ -512,13 +517,13 @@ static inline int copy_and_ack_ipcmessage(ipcmessage *pend_msg, void *ready_msg)
 
 	if (is_message_injected(ready_msg)) {
 		ready_data = ((injmessage *)ready_msg)->data;
-		retval = (int)((injmessage *)ready_msg)->size;
+		retval = ((injmessage *)ready_msg)->size;
 		copy_data_to_ipcmessage(pend_msg, ready_data, retval);
 		/* If it was a message we injected ourselves, we have to deallocate it */
 		os_heap_free(injmessages_heap_id, ready_msg);
 	} else {
 		ready_data = ((ipcmessage *)ready_msg)->ioctlv.vector[2].data;
-		retval = (int)((ipcmessage *)ready_msg)->result;
+		retval = ((ipcmessage *)ready_msg)->result;
 		/* If retval is positive, it contains the data size, an error otherwise */
 		if (retval > 0)
 			copy_data_to_ipcmessage(pend_msg, ready_data, retval);
@@ -530,7 +535,8 @@ static inline int copy_and_ack_ipcmessage(ipcmessage *pend_msg, void *ready_msg)
 
 static int handle_bulk_intr_pending_message(ipcmessage *pend_msg, u16 size, ipcmessage **ret_msg,
 					    int ready_queue_id, int pending_queue_id,
-					    ipcmessage *hand_down_msg, int *fwd_to_usb)
+					    ipcmessage *hand_down_msg, bool *hand_down_msg_pending,
+					    int *fwd_to_usb)
 {
 	int ret;
 	void *ready_msg;
@@ -542,11 +548,17 @@ static int handle_bulk_intr_pending_message(ipcmessage *pend_msg, u16 size, ipcm
 		/* We have already ACKed it, we don't have to hand it down to OH1 */
 		*fwd_to_usb = 0;
 	} else {
-		/* Hand down to OH1 a copy of the message for it to fill it from real USB data */
-		configure_hand_down_msg(hand_down_msg, pend_msg->fd, size);
-		*ret_msg = hand_down_msg;
 		/* Push the received message to the PendingQ */
 		ret = os_message_queue_send(pending_queue_id, pend_msg, IOS_MESSAGE_NOBLOCK);
+		if (!*hand_down_msg_pending) {
+			/* Hand down to OH1 a copy of the message for it to fill it from real USB data */
+			configure_hand_down_msg(hand_down_msg, pend_msg->fd, size);
+			*ret_msg = hand_down_msg;
+			*hand_down_msg_pending = true;
+		} else {
+			/* We already have a hand down message to OH1 USB pending... */
+			*fwd_to_usb = 0;
+		}
 	}
 
 	return ret;
@@ -564,7 +576,7 @@ static int handle_bulk_intr_ready_message(void *ready_msg, int retval, int pendi
 		ret = copy_and_ack_ipcmessage(pend_msg, ready_msg);
 	} else {
 		/* Push message to ReadyQ. We store the return value/size to the "result" field */
-		ret = os_message_queue_send(ready_queue_id, ready_msg, IOS_MESSAGE_NOBLOCK);
+		ret = os_message_queue_send(ready_queue_id, ready_msg, IOS_MESSAGE_BLOCK);
 	}
 
 	return ret;
@@ -631,6 +643,7 @@ static int OH1_IOS_ResourceReply_hook(ipcmessage *ready_msg, int retval)
 	void *data;
 
 	if (ready_msg == &usb_intr_hand_down_msg) {
+		usb_intr_hand_down_msg_pending = 0;
 		ensure_initalized();
 		assert(ready_msg->command == IOS_IOCTLV);
 		assert(ready_msg->ioctlv.command == USBV0_IOCTLV_INTRMSG);
@@ -646,6 +659,7 @@ static int OH1_IOS_ResourceReply_hook(ipcmessage *ready_msg, int retval)
 						     ready_usb_intr_msg_queue_id);
 		return ret;
 	} else if (ready_msg == &usb_bulk_in_hand_down_msg) {
+		usb_bulk_in_hand_down_msg_pending = 0;
 		ensure_initalized();
 		vector = ready_msg->ioctlv.vector;
 		assert(ready_msg->command == IOS_IOCTLV);
