@@ -216,11 +216,11 @@ void fakedev_tick_devices(void)
 	}
 
 	if (l2cap_channel_is_complete(&fakedev.psm_hid_intr_chn)) {
-		DEBUG("Faking buttons...\n");
+		//DEBUG("Faking buttons...\n");
 		static u16 buttons = 0;
-		buttons ^= 0x80;
-		send_hid_input_report(fakedev.hci_con_handle, fakedev.psm_hid_intr_chn.remote_cid,
-			INPUT_REPORT_ID_REPORT_CORE, &buttons, sizeof(buttons));
+		//buttons ^= 0x80;
+		//send_hid_input_report(fakedev.hci_con_handle, fakedev.psm_hid_intr_chn.remote_cid,
+		//	INPUT_REPORT_ID_REPORT_CORE, &buttons, sizeof(buttons));
 	}
 }
 
@@ -419,6 +419,19 @@ static void handle_l2cap_signal_channel_request(const void *data, u16 length)
 	}
 }
 
+static void extension_read_data(void *dst, u16 address, u16 size)
+{
+	struct wiimote_extension_registers_t regs;
+	assert(address + size <= sizeof(regs));
+
+	memset(&regs, 0, sizeof(regs));
+	/* Good for now... */
+	memcpy(regs.identifier, EXT_NUNCHUNK_ID, sizeof(regs.identifier));
+
+	/* Copy the requested data from the extension registers */
+	memcpy(dst, ((u8 *)&regs) + address, size);
+}
+
 static void handle_hid_intr_data_output(const u8 *data, u16 size)
 {
 	DEBUG("handle_hid_intr_data_output: size: 0x%x, 0x%x\n", size, *(u32 *)(data-1));
@@ -429,7 +442,6 @@ static void handle_hid_intr_data_output(const u8 *data, u16 size)
 	switch (data[0]) {
 	case OUTPUT_REPORT_ID_LED: {
 		struct wiimote_output_report_led_t *led = (void *)&data[1];
-		DEBUG("  LED: 0x%x\n", led->leds);
 		if (led->ack)
 			wiimote_send_ack(OUTPUT_REPORT_ID_LED, ERROR_CODE_SUCCESS);
 		break;
@@ -437,6 +449,7 @@ static void handle_hid_intr_data_output(const u8 *data, u16 size)
 	case OUTPUT_REPORT_ID_STATUS: {
 		struct wiimote_input_report_status_t status;
 		memset(&status, 0, sizeof(status));
+		status.extension = 1;
 		status.buttons = 0;
 		send_hid_input_report(fakedev.hci_con_handle,
 				     fakedev.psm_hid_intr_chn.remote_cid,
@@ -451,21 +464,68 @@ static void handle_hid_intr_data_output(const u8 *data, u16 size)
 			wiimote_send_ack(OUTPUT_REPORT_ID_REPORT_MODE, ERROR_CODE_SUCCESS);
 		break;
 	}
+	case OUTPUT_REPORT_ID_WRITE_DATA: {
+		struct wiimote_output_report_write_data_t *write =  (void *)&data[1];
+		DEBUG("  Write data to slave 0x%02x, address: 0x%x, size: 0x%x 0x%x\n",
+			write->slave_address, write->address, write->size, write->data[0]);
+		/* Write data is, among other things, used to decrypt the extension bytes */
+		wiimote_send_ack(OUTPUT_REPORT_ID_WRITE_DATA, ERROR_CODE_SUCCESS);
+		break;
+	}
 	case OUTPUT_REPORT_ID_READ_DATA: {
 		struct wiimote_output_report_read_data_t *read = (void *)&data[1];
 		struct wiimote_input_report_read_data_t reply;
-		memset(&reply, 0, sizeof(reply));
-		reply.buttons = 0;
-		reply.size_minus_one = read->size - 1;
-		reply.error = ERROR_CODE_SUCCESS;
-		reply.address = read->address;
-		send_hid_input_report(fakedev.hci_con_handle,
-				     fakedev.psm_hid_intr_chn.remote_cid,
-				     INPUT_REPORT_ID_READ_DATA_REPLY, &reply, sizeof(reply));
+		u16 offset, size, read_size;
+		u8 error = ERROR_CODE_SUCCESS;
+		memset(&reply.data, 0, sizeof(reply.data));
+
+		DEBUG("  Read data from slave 0x%02x, addrspace: %d, address: 0x%x, size: 0x%x\n\n",
+			read->slave_address, read->space, read->address, read->size);
+
+		if (read->size == 0)
+			break;
+
+		offset = read->address;
+		size = read->size;
+		/* TODO: Move this to an update() function that runs periodically */
+		while (size > 0) {
+			read_size = (size < 16) ? size : 16;
+			switch (read->space) {
+			case ADDRESS_SPACE_EEPROM:
+				/* TODO */
+				break;
+			case ADDRESS_SPACE_I2C_BUS:
+			case ADDRESS_SPACE_I2C_BUS_ALT:
+				if (read->slave_address == EXTENSION_I2C_ADDR) {
+					extension_read_data(reply.data, offset, read_size);
+					break;
+				} else if (read->slave_address == EEPROM_I2C_ADDR) {
+					error = ERROR_CODE_INVALID_ADDRESS;
+					break;
+				}
+				break;
+			default:
+				error = ERROR_CODE_INVALID_SPACE;
+				break;
+			}
+
+			reply.buttons = 0;
+			reply.size_minus_one = read_size - 1;
+			reply.error = error;
+			reply.address = offset;
+			send_hid_input_report(fakedev.hci_con_handle,
+					      fakedev.psm_hid_intr_chn.remote_cid,
+					      INPUT_REPORT_ID_READ_DATA_REPLY,
+					      &reply, sizeof(reply));
+			if (error != ERROR_CODE_SUCCESS)
+				break;
+			offset += 16;
+			size -= read_size;
+		}
 		break;
 	}
 	default:
-		DEBUG("Unhandled output report: 0x%x\n", data[0]);
+		printf("Unhandled output report: 0x%x\n", data[0]);
 		break;
 	}
 }

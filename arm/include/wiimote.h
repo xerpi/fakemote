@@ -29,9 +29,30 @@
 #define OUTPUT_REPORT_ID_LED		0x11
 #define OUTPUT_REPORT_ID_REPORT_MODE	0x12
 #define OUTPUT_REPORT_ID_STATUS 	0x15
+#define OUTPUT_REPORT_ID_WRITE_DATA 	0x16
 #define OUTPUT_REPORT_ID_READ_DATA	0x17
 
-#define ERROR_CODE_SUCCESS	0
+/* Error codes */
+#define ERROR_CODE_SUCCESS		0
+#define ERROR_CODE_BUSY			4
+#define ERROR_CODE_INVALID_SPACE	6
+#define ERROR_CODE_NACK			7
+#define ERROR_CODE_INVALID_ADDRESS	8
+
+/* Address spaces */
+#define ADDRESS_SPACE_EEPROM		0x00
+#define ADDRESS_SPACE_I2C_BUS		0x01
+#define ADDRESS_SPACE_I2C_BUS_ALT	0x02
+
+/* I2C addresses */
+#define EEPROM_I2C_ADDR		0x50
+#define EXTENSION_I2C_ADDR	0x52
+
+/* Offsets in Wiimote memory */
+#define WIIMOTE_EXP_MEM_CALIBR	0x20
+#define WIIMOTE_EXP_ID		0xFA
+
+/* Input reports (Wiimote -> Host) */
 
 struct wiimote_input_report_ack_t {
 	u16 buttons;
@@ -59,6 +80,8 @@ struct wiimote_input_report_read_data_t {
 	u8 data[16];
 } ATTRIBUTE_PACKED;
 
+/* Output reports (Host -> Wiimote) */
+
 struct wiimote_output_report_led_t {
 	u8 leds : 4;
 	u8 : 2;
@@ -74,6 +97,21 @@ struct wiimote_output_report_mode_t {
 	u8 mode;
 } ATTRIBUTE_PACKED;
 
+struct wiimote_output_report_write_data_t {
+	u8 : 4;
+	u8 space : 2;
+	u8 : 1;
+	u8 rumble : 1;
+	// Used only for register space (i2c bus) (7-bits):
+	u8 slave_address : 7;
+	// A real wiimote ignores the i2c read/write bit.
+	u8 i2c_rw_ignored : 1;
+	// big endian:
+	u16 address;
+	u8 size;
+	u8 data[16];
+} ATTRIBUTE_PACKED;
+
 struct wiimote_output_report_read_data_t {
 	u8 : 4;
 	u8 space : 2;
@@ -86,6 +124,31 @@ struct wiimote_output_report_read_data_t {
 	// big endian:
 	u16 address;
 	u16 size;
-};
+} ATTRIBUTE_PACKED;
+
+/* Extensions */
+
+#define CONTROLLER_DATA_BYTES	21
+
+struct wiimote_extension_registers_t {
+	// 21 bytes of possible extension data
+	u8 controller_data[CONTROLLER_DATA_BYTES];
+	u8 unknown2[11];
+	// address 0x20
+	u8 calibration[0x10];
+	u8 unknown3[0x10];
+	// address 0x40
+	u8 encryption_key_data[0x10];
+	u8 unknown4[0xA0];
+	// address 0xF0
+	u8 encryption;
+	u8 unknown5[0x9];
+	// address 0xFA
+	u8 identifier[6];
+} ATTRIBUTE_PACKED;
+
+/* Extension IDs */
+
+#define EXT_NUNCHUNK_ID ((u8[6]){0x00, 0x00, 0xa4, 0x20, 0x00, 0x00})
 
 #endif
