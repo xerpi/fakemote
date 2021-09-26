@@ -179,48 +179,43 @@ static void fakedev_tick(fakedev_t *fakedev)
 		/* After a connection request is visible to the controller switch to inactive */
 		if (req)
 			fakedev->baseband_state = FAKEDEV_BASEBAND_STATE_INACTIVE;
-	}
-
-	if (!fakedev_is_connected(fakedev))
-		return;
-
-	/*  Send configuration for any newly connected channels. */
-	check_send_config_for_new_channel(fakedev->hci_con_handle, &fakedev->psm_sdp_chn);
-	check_send_config_for_new_channel(fakedev->hci_con_handle, &fakedev->psm_hid_cntl_chn);
-	check_send_config_for_new_channel(fakedev->hci_con_handle, &fakedev->psm_hid_intr_chn);
-
-	/* "If the connection originated from the device (Wiimote) it will create
-	 * HID control and interrupt channels (in that order)." */
-	if (fakedev->acl_state == FAKEDEV_ACL_STATE_LINKING) {
-		if (!fakedev->psm_hid_cntl_chn.valid) {
-			u16 local_cid = generate_l2cap_channel_id();
-			ret = l2cap_send_connect_req(fakedev->hci_con_handle, L2CAP_PSM_HID_CNTL,
-						     local_cid);
-			assert(ret == IOS_OK);
-			l2cap_channel_info_setup(&fakedev->psm_hid_cntl_chn, L2CAP_PSM_HID_CNTL, local_cid);
-			DEBUG("Generated local CID for HID CNTL: 0x%x\n", local_cid);
+	} else if (fakedev->baseband_state == FAKEDEV_BASEBAND_STATE_COMPLETE) {
+		/* "If the connection originated from the device (Wiimote) it will create
+		 * HID control and interrupt channels (in that order)." */
+		if (fakedev->acl_state == FAKEDEV_ACL_STATE_LINKING) {
+			/* If-else-if cascade to avoid sending too many packets on the same "tick" */
+			if (!fakedev->psm_hid_cntl_chn.valid) {
+				u16 local_cid = generate_l2cap_channel_id();
+				ret = l2cap_send_connect_req(fakedev->hci_con_handle, L2CAP_PSM_HID_CNTL,
+							     local_cid);
+				assert(ret == IOS_OK);
+				l2cap_channel_info_setup(&fakedev->psm_hid_cntl_chn, L2CAP_PSM_HID_CNTL, local_cid);
+				DEBUG("Generated local CID for HID CNTL: 0x%x\n", local_cid);
+			} else if (!fakedev->psm_hid_intr_chn.valid) {
+				u16 local_cid = generate_l2cap_channel_id();
+				ret = l2cap_send_connect_req(fakedev->hci_con_handle, L2CAP_PSM_HID_INTR,
+							     local_cid);
+				assert(ret == IOS_OK);
+				l2cap_channel_info_setup(&fakedev->psm_hid_intr_chn, L2CAP_PSM_HID_INTR, local_cid);
+				DEBUG("Generated local CID for HID INTR: 0x%x\n", local_cid);
+			} else if (l2cap_channel_is_complete(&fakedev->psm_hid_cntl_chn) &&
+				   l2cap_channel_is_complete(&fakedev->psm_hid_intr_chn)) {
+				fakedev->acl_state = FAKEDEV_ACL_STATE_INACTIVE;
+			}
 		}
 
-		if (!fakedev->psm_hid_intr_chn.valid) {
-			u16 local_cid = generate_l2cap_channel_id();
-			ret = l2cap_send_connect_req(fakedev->hci_con_handle, L2CAP_PSM_HID_INTR,
-						     local_cid);
-			assert(ret == IOS_OK);
-			l2cap_channel_info_setup(&fakedev->psm_hid_intr_chn, L2CAP_PSM_HID_INTR, local_cid);
-			DEBUG("Generated local CID for HID INTR: 0x%x\n", local_cid);
+		/* Send configuration for any newly connected channels. */
+		check_send_config_for_new_channel(fakedev->hci_con_handle, &fakedev->psm_sdp_chn);
+		check_send_config_for_new_channel(fakedev->hci_con_handle, &fakedev->psm_hid_cntl_chn);
+		check_send_config_for_new_channel(fakedev->hci_con_handle, &fakedev->psm_hid_intr_chn);
+
+		if (l2cap_channel_is_complete(&fakedev->psm_hid_intr_chn)) {
+			//DEBUG("Faking buttons...\n");
+			static u16 buttons = 0;
+			buttons ^= 0x80;
+			send_hid_input_report(fakedev->hci_con_handle, fakedev->psm_hid_intr_chn.remote_cid,
+				INPUT_REPORT_ID_REPORT_CORE, &buttons, sizeof(buttons));
 		}
-
-		if (l2cap_channel_is_complete(&fakedev->psm_hid_cntl_chn) &&
-		    l2cap_channel_is_complete(&fakedev->psm_hid_intr_chn))
-			fakedev->acl_state = FAKEDEV_ACL_STATE_INACTIVE;
-	}
-
-	if (l2cap_channel_is_complete(&fakedev->psm_hid_intr_chn)) {
-		//DEBUG("Faking buttons...\n");
-		static u16 buttons = 0;
-		buttons ^= 0x80;
-		send_hid_input_report(fakedev->hci_con_handle, fakedev->psm_hid_intr_chn.remote_cid,
-			INPUT_REPORT_ID_REPORT_CORE, &buttons, sizeof(buttons));
 	}
 }
 
