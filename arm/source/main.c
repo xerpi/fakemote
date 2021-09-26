@@ -50,7 +50,8 @@
 
 /* Private definitions */
 
-#define PERIODC_TIMER_PERIOD		250 * 1000
+/* The Real Wiimmote sends report every ~5ms (200 Hz). */
+#define PERIODC_TIMER_PERIOD		5 * 1000
 #define HAND_DOWN_MSG_DATA_SIZE		4096
 
 /* Required by cios-lib... */

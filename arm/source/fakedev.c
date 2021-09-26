@@ -9,6 +9,8 @@
 /* Fake devices */
 // 00:21:BD:2D:57:FF Name: Nintendo RVL-CNT-01
 
+#define MAX_FAKEDEVS	4
+
 typedef enum {
 	FAKEDEV_BASEBAND_STATE_INACTIVE,
 	FAKEDEV_BASEBAND_STATE_REQUEST_CONNECTION,
@@ -45,17 +47,13 @@ typedef struct {
 	l2cap_channel_info_t psm_hid_intr_chn;
 } fakedev_t;
 
-static fakedev_t fakedev = {
-	.bdaddr = {.b = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66}},
-	.baseband_state = FAKEDEV_BASEBAND_STATE_INACTIVE,
-	.acl_state = FAKEDEV_ACL_STATE_INACTIVE,
-};
+static fakedev_t fakedevs[MAX_FAKEDEVS];
 
 /* Helper functions */
 
-static inline bool fakedev_is_connected(void)
+static inline bool fakedev_is_connected(const fakedev_t *fakedev)
 {
-	return fakedev.baseband_state == FAKEDEV_BASEBAND_STATE_COMPLETE;
+	return fakedev->baseband_state == FAKEDEV_BASEBAND_STATE_COMPLETE;
 }
 
 /* Channel bookkeeping */
@@ -128,14 +126,13 @@ static inline int send_hid_input_report(u16 hci_con_handle, u16 dcid, u8 report_
 	return send_hid_data(hci_con_handle, dcid, (HID_TYPE_DATA << 4) | HID_PARAM_INPUT, buf, size + 1);
 }
 
-static int wiimote_send_ack(u8 rpt_id, u8 error_code)
+static int wiimote_send_ack(const fakedev_t *fakedev, u8 rpt_id, u8 error_code)
 {
 	struct wiimote_input_report_ack_t ack ATTRIBUTE_ALIGN(32);
 	ack.buttons = 0;
 	ack.rpt_id = rpt_id;
 	ack.error_code = error_code;
-	return send_hid_input_report(fakedev.hci_con_handle,
-				     fakedev.psm_hid_intr_chn.remote_cid,
+	return send_hid_input_report(fakedev->hci_con_handle, fakedev->psm_hid_intr_chn.remote_cid,
 				     INPUT_REPORT_ID_ACK, &ack, sizeof(ack));
 }
 
@@ -143,23 +140,26 @@ static int wiimote_send_ack(u8 rpt_id, u8 error_code)
 
 void fakedev_init(void)
 {
-	fakedev.baseband_state = FAKEDEV_BASEBAND_STATE_INACTIVE;
-	fakedev.acl_state = FAKEDEV_L2CAP_CHANNEL_STATE_INACTIVE;
-	fakedev.psm_sdp_chn.valid = false;
-	fakedev.psm_hid_cntl_chn.valid = false;
-	fakedev.psm_hid_intr_chn.valid = false;
+	for (int i = 0; i < MAX_FAKEDEVS; i++) {
+		fakedevs[i].bdaddr = (bdaddr_t){.b = {0x11 + i, 0x22, 0x33, 0x44, 0x55, 0x66}};
+		fakedevs[i].baseband_state = FAKEDEV_BASEBAND_STATE_INACTIVE;
+		fakedevs[i].acl_state = FAKEDEV_L2CAP_CHANNEL_STATE_INACTIVE;
+		fakedevs[i].psm_sdp_chn.valid = false;
+		fakedevs[i].psm_hid_cntl_chn.valid = false;
+		fakedevs[i].psm_hid_intr_chn.valid = false;
+	}
 
 	/* Activate */
-	fakedev.baseband_state = FAKEDEV_BASEBAND_STATE_REQUEST_CONNECTION;
+	fakedevs[0].baseband_state = FAKEDEV_BASEBAND_STATE_REQUEST_CONNECTION;
 }
 
-static void check_send_config_for_new_channel(l2cap_channel_info_t *info)
+static void check_send_config_for_new_channel(u16 hci_con_handle, l2cap_channel_info_t *info)
 {
 	int ret;
 
 	if (l2cap_channel_is_accepted(info) &&
 	    (info->state == FAKEDEV_L2CAP_CHANNEL_STATE_INACTIVE)) {
-		ret = l2cap_send_config_req(fakedev.hci_con_handle, info->remote_cid,
+		ret = l2cap_send_config_req(hci_con_handle, info->remote_cid,
 					    WII_REQUEST_MTU, L2CAP_FLUSH_TIMO_DEFAULT);
 		if (ret == IOS_OK) {
 			info->state = FAKEDEV_L2CAP_CHANNEL_STATE_CONFIG_PEND;
@@ -167,61 +167,67 @@ static void check_send_config_for_new_channel(l2cap_channel_info_t *info)
 	}
 }
 
-void fakedev_tick_devices(void)
+static void fakedev_tick(fakedev_t *fakedev)
 {
 	int ret;
 	bool req;
 
-	if (fakedev.baseband_state == FAKEDEV_BASEBAND_STATE_REQUEST_CONNECTION) {
-		req = hci_request_connection(&fakedev.bdaddr, WIIMOTE_HCI_CLASS_0,
+	if (fakedev->baseband_state == FAKEDEV_BASEBAND_STATE_REQUEST_CONNECTION) {
+		req = hci_request_connection(&fakedev->bdaddr, WIIMOTE_HCI_CLASS_0,
 					     WIIMOTE_HCI_CLASS_1, WIIMOTE_HCI_CLASS_2,
 					     HCI_LINK_ACL);
 		/* After a connection request is visible to the controller switch to inactive */
 		if (req)
-			fakedev.baseband_state = FAKEDEV_BASEBAND_STATE_INACTIVE;
+			fakedev->baseband_state = FAKEDEV_BASEBAND_STATE_INACTIVE;
 	}
 
-	if (!fakedev_is_connected())
+	if (!fakedev_is_connected(fakedev))
 		return;
 
 	/*  Send configuration for any newly connected channels. */
-	check_send_config_for_new_channel(&fakedev.psm_sdp_chn);
-	check_send_config_for_new_channel(&fakedev.psm_hid_cntl_chn);
-	check_send_config_for_new_channel(&fakedev.psm_hid_intr_chn);
+	check_send_config_for_new_channel(fakedev->hci_con_handle, &fakedev->psm_sdp_chn);
+	check_send_config_for_new_channel(fakedev->hci_con_handle, &fakedev->psm_hid_cntl_chn);
+	check_send_config_for_new_channel(fakedev->hci_con_handle, &fakedev->psm_hid_intr_chn);
 
 	/* "If the connection originated from the device (Wiimote) it will create
 	 * HID control and interrupt channels (in that order)." */
-	if (fakedev.acl_state == FAKEDEV_ACL_STATE_LINKING) {
-		if (!fakedev.psm_hid_cntl_chn.valid) {
+	if (fakedev->acl_state == FAKEDEV_ACL_STATE_LINKING) {
+		if (!fakedev->psm_hid_cntl_chn.valid) {
 			u16 local_cid = generate_l2cap_channel_id();
-			ret = l2cap_send_connect_req(fakedev.hci_con_handle, L2CAP_PSM_HID_CNTL,
+			ret = l2cap_send_connect_req(fakedev->hci_con_handle, L2CAP_PSM_HID_CNTL,
 						     local_cid);
 			assert(ret == IOS_OK);
-			l2cap_channel_info_setup(&fakedev.psm_hid_cntl_chn, L2CAP_PSM_HID_CNTL, local_cid);
+			l2cap_channel_info_setup(&fakedev->psm_hid_cntl_chn, L2CAP_PSM_HID_CNTL, local_cid);
 			DEBUG("Generated local CID for HID CNTL: 0x%x\n", local_cid);
 		}
 
-		if (!fakedev.psm_hid_intr_chn.valid) {
+		if (!fakedev->psm_hid_intr_chn.valid) {
 			u16 local_cid = generate_l2cap_channel_id();
-			ret = l2cap_send_connect_req(fakedev.hci_con_handle, L2CAP_PSM_HID_INTR,
+			ret = l2cap_send_connect_req(fakedev->hci_con_handle, L2CAP_PSM_HID_INTR,
 						     local_cid);
 			assert(ret == IOS_OK);
-			l2cap_channel_info_setup(&fakedev.psm_hid_intr_chn, L2CAP_PSM_HID_INTR, local_cid);
+			l2cap_channel_info_setup(&fakedev->psm_hid_intr_chn, L2CAP_PSM_HID_INTR, local_cid);
 			DEBUG("Generated local CID for HID INTR: 0x%x\n", local_cid);
 		}
 
-		if (l2cap_channel_is_complete(&fakedev.psm_hid_cntl_chn) &&
-		    l2cap_channel_is_complete(&fakedev.psm_hid_intr_chn))
-			fakedev.acl_state = FAKEDEV_ACL_STATE_INACTIVE;
+		if (l2cap_channel_is_complete(&fakedev->psm_hid_cntl_chn) &&
+		    l2cap_channel_is_complete(&fakedev->psm_hid_intr_chn))
+			fakedev->acl_state = FAKEDEV_ACL_STATE_INACTIVE;
 	}
 
-	if (l2cap_channel_is_complete(&fakedev.psm_hid_intr_chn)) {
+	if (l2cap_channel_is_complete(&fakedev->psm_hid_intr_chn)) {
 		//DEBUG("Faking buttons...\n");
 		static u16 buttons = 0;
-		//buttons ^= 0x80;
-		//send_hid_input_report(fakedev.hci_con_handle, fakedev.psm_hid_intr_chn.remote_cid,
-		//	INPUT_REPORT_ID_REPORT_CORE, &buttons, sizeof(buttons));
+		buttons ^= 0x80;
+		send_hid_input_report(fakedev->hci_con_handle, fakedev->psm_hid_intr_chn.remote_cid,
+			INPUT_REPORT_ID_REPORT_CORE, &buttons, sizeof(buttons));
 	}
+}
+
+void fakedev_tick_devices(void)
+{
+	for (int i = 0; i < MAX_FAKEDEVS; i++)
+		fakedev_tick(&fakedevs[i]);
 }
 
 /* Functions called by the HCI state manager */
@@ -230,56 +236,64 @@ bool fakedev_handle_hci_cmd_accept_con(const bdaddr_t *bdaddr, u8 role)
 {
 	int ret;
 
-	/* Check if this bdaddr belongs to a fake device */
-	if (memcmp(bdaddr, &fakedev.bdaddr, sizeof(bdaddr_t) != 0))
-		return false;
+	/* Check if the bdaddr belongs to a fake device */
+	for (int i = 0; i < MAX_FAKEDEVS; i++) {
+		if (memcmp(bdaddr, &fakedevs[i].bdaddr, sizeof(bdaddr_t) != 0))
+			continue;
 
-	/* Connection accepted to our fake device */
-	DEBUG("Connection accepted for our fake device!\n");
+		/* Connection accepted to our fake device */
+		DEBUG("Connection accepted for our fake device!\n");
 
-	/* The Accept_Connection_Request command will cause the Command Status
-	   event to be sent from the Host Controller when the Host Controller
-	   begins setting up the connection */
+		/* The Accept_Connection_Request command will cause the Command Status
+		   event to be sent from the Host Controller when the Host Controller
+		   begins setting up the connection */
 
-	ret = enqueue_hci_event_command_status(HCI_CMD_ACCEPT_CON);
-	assert(ret == IOS_OK);
-
-	fakedev.baseband_state = FAKEDEV_BASEBAND_STATE_COMPLETE;
-	fakedev.hci_con_handle = hci_con_handle_virt_alloc();
-	DEBUG("Our fake device got HCI con_handle: 0x%x\n", fakedev.hci_con_handle);
-
-	/* We can start the ACL (L2CAP) linking now */
-	fakedev.acl_state = FAKEDEV_ACL_STATE_LINKING;
-
-	if (role == HCI_ROLE_MASTER) {
-		ret = enqueue_hci_event_role_change(bdaddr, HCI_ROLE_MASTER);
+		ret = enqueue_hci_event_command_status(HCI_CMD_ACCEPT_CON);
 		assert(ret == IOS_OK);
+
+		fakedevs[i].baseband_state = FAKEDEV_BASEBAND_STATE_COMPLETE;
+		fakedevs[i].hci_con_handle = hci_con_handle_virt_alloc();
+		DEBUG("Our fake device got HCI con_handle: 0x%x\n", fakedevs[i].hci_con_handle);
+
+		/* We can start the ACL (L2CAP) linking now */
+		fakedevs[i].acl_state = FAKEDEV_ACL_STATE_LINKING;
+
+		if (role == HCI_ROLE_MASTER) {
+			ret = enqueue_hci_event_role_change(bdaddr, HCI_ROLE_MASTER);
+			assert(ret == IOS_OK);
+		}
+
+		/* In addition, when the Link Manager determines the connection is established,
+		 * the Host Controllers on both Bluetooth devices that form the connection
+		 * will send a Connection Complete event to each Host */
+		ret = enqueue_hci_event_con_compl(bdaddr, fakedevs[i].hci_con_handle, 0);
+		assert(ret == IOS_OK);
+
+		DEBUG("Connection complete sent, starting ACL linking!\n");
+		return true;
 	}
 
-	/* In addition, when the Link Manager determines the connection is established,
-	 * the Host Controllers on both Bluetooth devices that form the connection
-	 * will send a Connection Complete event to each Host */
-	ret = enqueue_hci_event_con_compl(bdaddr, fakedev.hci_con_handle, 0);
-	assert(ret == IOS_OK);
-
-	DEBUG("Connection complete sent, starting ACL linking!\n");
-
-	return true;
+	return false;
 }
 
 bool fakedev_handle_hci_cmd_from_host(u16 hci_con_handle, const hci_cmd_hdr_t *hdr)
 {
-	/* Check if this HCI connection handle belongs to a fake device */
-	if (!fakedev_is_connected() || (fakedev.hci_con_handle != hci_con_handle))
-		return false;
+	/* Check if the HCI connection handle belongs to a fake device */
+	for (int i = 0; i < MAX_FAKEDEVS; i++) {
+		if (!fakedev_is_connected(&fakedevs[i]) ||
+		    (fakedevs[i].hci_con_handle != hci_con_handle))
+			continue;
 
-	/* TODO */
-	DEBUG("FAKEDEV H > C HCI CMD: 0x%x\n", hci_con_handle);
+		/* TODO */
+		DEBUG("FAKEDEV H > C HCI CMD: 0x%x\n", le16toh(hdr->opcode));
+		return true;
+	}
 
-	return true;
+	return false;
 }
 
-static void handle_l2cap_config_req(u8 ident, u16 dcid, u16 flags, const u8 *options, u16 options_size)
+static void handle_l2cap_config_req(fakedev_t *fakedev, u8 ident, u16 dcid, u16 flags,
+				    const u8 *options, u16 options_size)
 {
 	u8 tmp[256];
 	u32 opt_size;
@@ -295,7 +309,7 @@ static void handle_l2cap_config_req(u8 ident, u16 dcid, u16 flags, const u8 *opt
 	assert(flags == 0x00);
 	assert(options_size <= sizeof(tmp));
 
-	info = get_channel_info(&fakedev, dcid);
+	info = get_channel_info(fakedev, dcid);
 	assert(info);
 
 	/* Response to the config request */
@@ -333,13 +347,14 @@ static void handle_l2cap_config_req(u8 ident, u16 dcid, u16 flags, const u8 *opt
 	}
 
 	/* Send Respone */
-	l2cap_send_config_rsp(fakedev.hci_con_handle, dcid, ident, tmp, resp_len);
+	l2cap_send_config_rsp(fakedev->hci_con_handle, dcid, ident, tmp, resp_len);
 
 	/* Set the MTU */
 	info->remote_mtu = remote_mtu;
 }
 
-static void handle_l2cap_signal_channel(u8 code, u8 ident, const void *payload, u16 size)
+static void handle_l2cap_signal_channel(fakedev_t *fakedev, u8 code, u8 ident,
+					const void *payload, u16 size)
 {
 	l2cap_channel_info_t *info;
 
@@ -362,9 +377,16 @@ static void handle_l2cap_signal_channel(u8 code, u8 ident, const void *payload, 
 		DEBUG("  L2CAP_CONNECT_RSP: dcid: 0x%x, scid: 0x%x, result: 0x%x, status: 0x%x\n",
 			dcid, scid, result, status);
 
+		/* libogc/master/lwbt/l2cap.c#L318 sets it to the "dcid" and not to
+		 * the "result" field (and scid to 0)... */
+		if ((dcid == L2CAP_PSM_NOT_SUPPORTED) &&
+		    (scid == 0)) {
+			assert(1);
+		}
+
 		assert(result == L2CAP_SUCCESS);
 		assert(status == L2CAP_NO_INFO);
-		info = get_channel_info(&fakedev, scid);
+		info = get_channel_info(fakedev, scid);
 		assert(info);
 
 		/* Save endpoint's Destination CID  */
@@ -378,7 +400,8 @@ static void handle_l2cap_signal_channel(u8 code, u8 ident, const void *payload, 
 		const void *options = (const void *)((u8 *)rsp + sizeof(l2cap_cfg_req_cp));
 
 		DEBUG("  L2CAP_CONFIG_REQ: dcid: 0x%x, flags: 0x%x\n", dcid, flags);
-		handle_l2cap_config_req(ident, dcid, flags, options, size - sizeof(l2cap_cfg_req_cp));
+		handle_l2cap_config_req(fakedev, ident, dcid, flags, options,
+					size - sizeof(l2cap_cfg_req_cp));
 		break;
 	}
 	case L2CAP_CONFIG_RSP: {
@@ -390,7 +413,7 @@ static void handle_l2cap_signal_channel(u8 code, u8 ident, const void *payload, 
 			scid, flags, result);
 
 		assert(result == L2CAP_SUCCESS);
-		info = get_channel_info(&fakedev, scid);
+		info = get_channel_info(fakedev, scid);
 		assert(info);
 
 		/* Mark channel as complete!  */
@@ -400,7 +423,7 @@ static void handle_l2cap_signal_channel(u8 code, u8 ident, const void *payload, 
 	}
 }
 
-static void handle_l2cap_signal_channel_request(const void *data, u16 length)
+static void handle_l2cap_signal_channel_request(fakedev_t *fakedev, const void *data, u16 length)
 {
 	const l2cap_cmd_hdr_t *cmd_hdr;
 	const void *cmd_payload;
@@ -411,7 +434,7 @@ static void handle_l2cap_signal_channel_request(const void *data, u16 length)
 		cmd_len = le16toh(cmd_hdr->length);
 		cmd_payload = (const void *)((u8 *)data + sizeof(*cmd_hdr));
 
-		handle_l2cap_signal_channel(cmd_hdr->code, cmd_hdr->ident,
+		handle_l2cap_signal_channel(fakedev, cmd_hdr->code, cmd_hdr->ident,
 					    cmd_payload, cmd_len);
 
 		data += sizeof(l2cap_cmd_hdr_t) + cmd_len;
@@ -432,7 +455,7 @@ static void extension_read_data(void *dst, u16 address, u16 size)
 	memcpy(dst, ((u8 *)&regs) + address, size);
 }
 
-static void handle_hid_intr_data_output(const u8 *data, u16 size)
+static void handle_hid_intr_data_output(fakedev_t *fakedev, const u8 *data, u16 size)
 {
 	DEBUG("handle_hid_intr_data_output: size: 0x%x, 0x%x\n", size, *(u32 *)(data-1));
 
@@ -443,7 +466,7 @@ static void handle_hid_intr_data_output(const u8 *data, u16 size)
 	case OUTPUT_REPORT_ID_LED: {
 		struct wiimote_output_report_led_t *led = (void *)&data[1];
 		if (led->ack)
-			wiimote_send_ack(OUTPUT_REPORT_ID_LED, ERROR_CODE_SUCCESS);
+			wiimote_send_ack(fakedev, OUTPUT_REPORT_ID_LED, ERROR_CODE_SUCCESS);
 		break;
 	}
 	case OUTPUT_REPORT_ID_STATUS: {
@@ -451,8 +474,8 @@ static void handle_hid_intr_data_output(const u8 *data, u16 size)
 		memset(&status, 0, sizeof(status));
 		status.extension = 1;
 		status.buttons = 0;
-		send_hid_input_report(fakedev.hci_con_handle,
-				     fakedev.psm_hid_intr_chn.remote_cid,
+		send_hid_input_report(fakedev->hci_con_handle,
+				     fakedev->psm_hid_intr_chn.remote_cid,
 				     INPUT_REPORT_ID_STATUS, &status, sizeof(status));
 		break;
 	}
@@ -461,7 +484,7 @@ static void handle_hid_intr_data_output(const u8 *data, u16 size)
 		DEBUG("  Report mode: 0x%02x, cont: %d, rumble: %d, ack: %d\n",
 			mode->mode, mode->continuous, mode->rumble, mode->ack);
 		if (mode->ack)
-			wiimote_send_ack(OUTPUT_REPORT_ID_REPORT_MODE, ERROR_CODE_SUCCESS);
+			wiimote_send_ack(fakedev, OUTPUT_REPORT_ID_REPORT_MODE, ERROR_CODE_SUCCESS);
 		break;
 	}
 	case OUTPUT_REPORT_ID_WRITE_DATA: {
@@ -469,7 +492,7 @@ static void handle_hid_intr_data_output(const u8 *data, u16 size)
 		DEBUG("  Write data to slave 0x%02x, address: 0x%x, size: 0x%x 0x%x\n",
 			write->slave_address, write->address, write->size, write->data[0]);
 		/* Write data is, among other things, used to decrypt the extension bytes */
-		wiimote_send_ack(OUTPUT_REPORT_ID_WRITE_DATA, ERROR_CODE_SUCCESS);
+		wiimote_send_ack(fakedev, OUTPUT_REPORT_ID_WRITE_DATA, ERROR_CODE_SUCCESS);
 		break;
 	}
 	case OUTPUT_REPORT_ID_READ_DATA: {
@@ -513,8 +536,8 @@ static void handle_hid_intr_data_output(const u8 *data, u16 size)
 			reply.size_minus_one = read_size - 1;
 			reply.error = error;
 			reply.address = offset;
-			send_hid_input_report(fakedev.hci_con_handle,
-					      fakedev.psm_hid_intr_chn.remote_cid,
+			send_hid_input_report(fakedev->hci_con_handle,
+					      fakedev->psm_hid_intr_chn.remote_cid,
 					      INPUT_REPORT_ID_READ_DATA_REPLY,
 					      &reply, sizeof(reply));
 			if (error != ERROR_CODE_SUCCESS)
@@ -536,43 +559,49 @@ bool fakedev_handle_acl_data_out_request_from_host(u16 hci_con_handle, const hci
 	u16 dcid, length;
 	const u8 *payload;
 
-	/* Check if this HCI connection handle belongs to a fake device */
-	if (!fakedev_is_connected() || (fakedev.hci_con_handle != hci_con_handle))
-		return false;
+	/* Check if the HCI connection handle belongs to a fake device */
+	for (int i = 0; i < MAX_FAKEDEVS; i++) {
+		if (!fakedev_is_connected(&fakedevs[i]) ||
+		    (fakedevs[i].hci_con_handle != hci_con_handle))
+			continue;
 
-	/* L2CAP header */
-	header  = (const void *)((u8 *)acl + sizeof(hci_acldata_hdr_t));
-	length  = le16toh(header->length);
-	dcid    = le16toh(header->dcid);
-	payload = (u8 *)header + sizeof(l2cap_hdr_t);
+		/* L2CAP header */
+		header  = (const void *)((u8 *)acl + sizeof(hci_acldata_hdr_t));
+		length  = le16toh(header->length);
+		dcid    = le16toh(header->dcid);
+		payload = (u8 *)header + sizeof(l2cap_hdr_t);
 
-	DEBUG("FD ACL OUT: con_handle: 0x%x, dcid: 0x%x, len: 0x%x\n", hci_con_handle, dcid, length);
+		DEBUG("FD ACL OUT: con_handle: 0x%x, dcid: 0x%x, len: 0x%x\n", hci_con_handle, dcid, length);
 
-	if (dcid == L2CAP_SIGNAL_CID) {
-		handle_l2cap_signal_channel_request(payload, length);
-	} else {
-		l2cap_channel_info_t *info = get_channel_info(&fakedev, dcid);
-		if (info) {
-			switch (info->psm) {
-			case L2CAP_PSM_SDP:
-				/* TODO */
-				DEBUG("  PSM HID SDP\n");
-				break;
-			case L2CAP_PSM_HID_CNTL:
-				/* TODO */
-				DEBUG("  PSM HID CNTL\n");
-				break;
-			case L2CAP_PSM_HID_INTR:
-				if (payload[0] == ((HID_TYPE_DATA << 4) | HID_PARAM_OUTPUT))
-					handle_hid_intr_data_output(&payload[1], length - 1);
-				break;
-			}
+		if (dcid == L2CAP_SIGNAL_CID) {
+			handle_l2cap_signal_channel_request(&fakedevs[i], payload, length);
 		} else {
-			DEBUG("Received L2CAP packet to unknown channel: 0x%x\n", dcid);
+			l2cap_channel_info_t *info = get_channel_info(&fakedevs[i], dcid);
+			if (info) {
+				switch (info->psm) {
+				case L2CAP_PSM_SDP:
+					/* TODO */
+					DEBUG("  PSM HID SDP\n");
+					break;
+				case L2CAP_PSM_HID_CNTL:
+					/* TODO */
+					DEBUG("  PSM HID CNTL\n");
+					break;
+				case L2CAP_PSM_HID_INTR:
+					if (payload[0] == ((HID_TYPE_DATA << 4) | HID_PARAM_OUTPUT))
+						handle_hid_intr_data_output(&fakedevs[i],
+									    &payload[1],
+									    length - 1);
+					break;
+				}
+			} else {
+				DEBUG("Received L2CAP packet to unknown channel: 0x%x\n", dcid);
+			}
 		}
+		return true;
 	}
 
-	return true;
+	return false;
 }
 
 void fakedev_handle_hci_event_request_from_host(u32 length)

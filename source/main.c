@@ -105,6 +105,8 @@ int main(int argc, char **argv)
 	SYS_SetPowerCallback(button_pressed);
 
 	VIDEO_Init();
+	printf("\x1b[2;0H");
+
 	WPAD_Init();
 
 	rmode = VIDEO_GetPreferredMode(NULL);
@@ -117,8 +119,6 @@ int main(int argc, char **argv)
 	VIDEO_WaitVSync();
 	if (rmode->viTVMode&VI_NON_INTERLACE)
 		VIDEO_WaitVSync();
-
-	printf("\x1b[2;0H");
 
 	/*u32 *rb_head = memalign(32, sizeof(u32));
 	u32 *rb_tail = memalign(32, sizeof(u32));
@@ -152,6 +152,13 @@ int main(int argc, char **argv)
 			printf("Pressed[0]: 0x%08x\n", pressed0);
 		if (pressed1)
 			printf("Pressed[1]: 0x%08x\n", pressed1);
+
+		u32 exp_type;
+		WPAD_Probe(0, &exp_type);
+		WPADData *data = WPAD_Data(0);
+		if (exp_type == WPAD_EXP_NUNCHUK) {
+			//printf("ang %f, mag: %f\n", data->exp.nunchuk.js.mag, data->exp.nunchuk.js.mag);
+		}
 
 #if 0
 		/* Log ringbuffer consumer */
