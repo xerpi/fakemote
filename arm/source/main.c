@@ -5,6 +5,7 @@
 #include <stdarg.h>
 
 #include "conf.h"
+#include "event_loop.h"
 #include "fakedev.h"
 #include "ipc.h"
 #include "hci_state.h"
@@ -58,7 +59,7 @@
 char *moduleName = "TST";
 
 /* Queue ID created by OH1 that receives ipcmessages from /dev/usb/oh1 */
-static int orig_msg_queueid;
+int orig_msg_queueid;
 
 /* Periodic timer with large period to tick fakedevices to check their state */
 static int periodic_timer_id;
@@ -453,7 +454,6 @@ static int handle_oh1_dev_ioctlv(ipcmessage *recv_msg, ipcmessage **ret_msg, u32
 		} else if (bEndpoint == EP_ACL_DATA_IN) {
 			/* We are given an ACL buffer to fill */
 			wLength = *(u16 *)vector[1].data;
-			hci_state_handle_acl_data_in_request_from_host(wLength);
 			ret = handle_bulk_intr_pending_message(recv_msg, wLength, ret_msg,
 							       ready_usb_bulk_in_msg_queue_id,
 							       pending_usb_bulk_in_msg_queue_id,
@@ -468,7 +468,6 @@ static int handle_oh1_dev_ioctlv(ipcmessage *recv_msg, ipcmessage **ret_msg, u32
 		if (bEndpoint == EP_HCI_EVENT) {
 			wLength = *(u16 *)vector[1].data;
 			/* We are given a HCI buffer to fill */
-			hci_state_handle_hci_event_request_from_host(wLength);
 			ret = handle_bulk_intr_pending_message(recv_msg, wLength, ret_msg,
 							       ready_usb_intr_msg_queue_id,
 							       pending_usb_intr_msg_queue_id,
@@ -584,6 +583,8 @@ static int handle_bulk_intr_ready_message(void *ready_msg, int pending_queue_id,
 static int OH1_IOS_ReceiveMessage_hook(int queueid, ipcmessage **ret_msg, u32 flags)
 {
 	int ret;
+	uintptr_t recv_data;
+	event_loop_async_cb_msg_t *cb_msg;
 	ipcmessage *recv_msg;
 	bool fwd_to_usb;
 
@@ -594,17 +595,21 @@ static int OH1_IOS_ReceiveMessage_hook(int queueid, ipcmessage **ret_msg, u32 fl
 	ensure_initalized();
 
 	while (1) {
-		ret = os_message_queue_receive(queueid, (void *)&recv_msg, flags);
+		ret = os_message_queue_receive(queueid, &recv_data, flags);
 		if (ret != IOS_OK) {
 			DEBUG("Message queue recv err: %d\n", ret);
 			break;
-		} else if (recv_msg == (ipcmessage *)0xcafef00d) {
+		} else if (recv_data == 0xcafef00d) {
 			*ret_msg = (ipcmessage *)0xcafef00d;
 			break;
-		} else if (recv_msg == (void *)&periodic_timer_cookie) {
+		} else if (recv_data == (uintptr_t)&periodic_timer_cookie) {
 			fakedev_tick_devices();
 			fwd_to_usb = false;
+		} else if (*(u32 *)recv_data == EVENT_LOOP_ASYNC_CB_MSG_ID) {
+			cb_msg = (void *)recv_data;
+			cb_msg->cb(cb_msg->usrdata);
 		} else {
+			recv_msg = (ipcmessage *)recv_data;
 			*ret_msg = NULL;
 			/* Default to forward message to OH1 */
 			fwd_to_usb = true;
@@ -625,7 +630,7 @@ static int OH1_IOS_ReceiveMessage_hook(int queueid, ipcmessage **ret_msg, u32 fl
 			/* Just send the original message we received if we don't
 			 * want to hand down an injected message to OH1 */
 			if (*ret_msg == NULL)
-				*ret_msg = recv_msg;
+				*ret_msg = (ipcmessage *)recv_data;
 			break;
 		}
 	}

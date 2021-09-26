@@ -598,13 +598,3 @@ bool fakedev_handle_acl_data_out_request_from_host(u16 hci_con_handle, const hci
 
 	return false;
 }
-
-void fakedev_handle_hci_event_request_from_host(u32 length)
-{
-
-}
-
-void fakedev_handle_acl_data_in_request_from_host(u32 length)
-{
-
-}

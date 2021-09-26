@@ -352,16 +352,6 @@ void hci_state_handle_hci_event_from_controller(void *data, u32 length)
 #undef TRANSLATE_CON_HANDLE
 }
 
-void hci_state_handle_hci_event_request_from_host(u32 length)
-{
-	fakedev_handle_hci_event_request_from_host(length);
-}
-
-void hci_state_handle_acl_data_in_request_from_host(u32 length)
-{
-	fakedev_handle_acl_data_in_request_from_host(length);
-}
-
 void hci_state_handle_acl_data_in_response_from_controller(void *data, u32 length)
 {
 	bool ret;
