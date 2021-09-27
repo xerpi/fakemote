@@ -2,7 +2,7 @@
 #include "utils.h"
 #include "wiimote.h"
 
-struct ds4_input {
+struct ds4_input_report {
 	u8 report_id;
 	u8 left_x;
 	u8 left_y;
@@ -67,18 +67,18 @@ struct ds4_input {
 	u8 trackpadpackets;
 	u8 packetcnt;
 
-	u32 finger1active : 1;
-	u32 finger1_id     : 7;
-	u32 finger1_x      : 12;
-	u32 finger1_y      : 12;
+	u32 finger1_nactive : 1;
+	u32 finger1_id      : 7;
+	u32 finger1_x       : 12;
+	u32 finger1_y       : 12;
 
-	u32 finger2active : 1;
-	u32 finger2_id    : 7;
-	u32 finger2_x     : 12;
-	u32 finger2_y     : 12;
-} __attribute__((packed, aligned(32)));
+	u32 finger2_nactive : 1;
+	u32 finger2_id      : 7;
+	u32 finger2_x       : 12;
+	u32 finger2_y       : 12;
+} ATTRIBUTE_PACKED;
 
-static inline void ds4_map_buttons(const struct ds4_input *input, u16 *buttons)
+static inline void ds4_map_buttons(const struct ds4_input_report *input, u16 *buttons)
 {
 	if (input->cross)
 		*buttons |= WPAD_BUTTON_A;
@@ -137,7 +137,7 @@ int ds4_driver_ops_slot_changed(usb_input_device_t *device, u8 slot)
 		{255,   0, 255},
 	};
 
-	slot = slot % 5;
+	slot = slot % ARRAY_SIZE(colors[0]);
 
 	u8 r = colors[slot][0],
 	   g = colors[slot][1],
@@ -146,11 +146,11 @@ int ds4_driver_ops_slot_changed(usb_input_device_t *device, u8 slot)
 	return ds4_set_leds_rumble(device, r, g, b);
 }
 
-int ds4_driver_ops_usb_intr_in_resp(usb_input_device_t *device)
+int ds4_driver_ops_usb_async_resp(usb_input_device_t *device)
 {
 	u16 buttons = 0;
 
-	ds4_map_buttons((struct ds4_input *)device->usb_intr_in_data, &buttons);
+	ds4_map_buttons((struct ds4_input_report *)device->usb_async_resp, &buttons);
 
 	fake_wiimote_mgr_report_input(device->wiimote, buttons);
 
