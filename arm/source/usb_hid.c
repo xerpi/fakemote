@@ -270,11 +270,11 @@ int usb_device_driver_issue_write_intr_async(usb_input_device_t *device)
 					   queue_id, &device->usb_intr_in_resp_msg);
 }
 
-static int usb_device_ops_connected(void *usrdata, fake_wiimote_t *wiimote)
+static int usb_device_ops_assigned(void *usrdata, fake_wiimote_t *wiimote)
 {
 	usb_input_device_t *device = usrdata;
 
-	DEBUG("usb_device_ops_connected\n");
+	DEBUG("usb_device_ops_assigned\n");
 
 	/* Store assigned fake Wiimote */
 	device->wiimote = wiimote;
@@ -317,7 +317,7 @@ static int usb_device_ops_set_leds(void *usrdata, int leds)
 }
 
 static const input_device_ops_t input_device_usb_ops = {
-	.connected  = usb_device_ops_connected,
+	.assigned   = usb_device_ops_assigned,
 	.disconnect = usb_device_ops_disconnect,
 	.set_leds   = usb_device_ops_set_leds
 };
@@ -330,13 +330,39 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 	u16 vid, pid;
 	u32 dev_id;
 	int ret;
+	bool found;
+
+	DEBUG("Device change, #Attached devices: %ld\n", reply->result);
 
 	if (reply->result < 0)
 		return;
 
-	/* TODO: Support disconnects */
+	/* First look for disconnections */
+	for (int i = 0; i < ARRAY_SIZE(usb_devices); i++) {
+		device = &usb_devices[i];
+		if (!device->valid)
+			continue;
 
-	DEBUG("Device change, #Attached devices: %ld\n", reply->result);
+		found = false;
+		for (int j = 0; j < reply->result; j++) {
+			if (device->dev_id == device_change_devices[j].device_id) {
+				found = true;
+				break;
+			}
+		}
+
+		/* Oops, it got disconnected */
+		if (!found) {
+			if (device->driver->disconnect)
+				ret = device->driver->disconnect(device);
+			/* Tell the fake Wiimote manager we got a disconnection */
+			fake_wiimote_mgr_remove_input_device(device->wiimote);
+			/* Set this device as not valid */
+			device->valid = false;
+		}
+	}
+
+	/* Now look for new connections */
 	for (int i = 0; i < reply->result; i++) {
 		vid = device_change_devices[i].vid;
 		pid = device_change_devices[i].pid;
@@ -386,7 +412,7 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 		device->host_fd = host_fd;
 		device->dev_id = dev_id;
 		device->driver = driver;
-		/* We will get the assigned fake Wiimote on the connected callback */
+		/* We will get the assigned fake Wiimote on the assigned() callback */
 		device->wiimote = NULL;
 		device->valid = true;
 

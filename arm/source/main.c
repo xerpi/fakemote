@@ -252,6 +252,21 @@ int enqueue_hci_event_con_req(const bdaddr_t *bdaddr, u8 uclass0, u8 uclass1, u8
 	return inject_msg_to_usb_intr_ready_queue(msg);
 }
 
+int enqueue_hci_event_discon_compl(u16 con_handle, u8 status, u8 reason)
+{
+	hci_discon_compl_ep *ep;
+	injmessage *msg = alloc_hci_event_msg((void *)&ep, HCI_EVENT_DISCON_COMPL, sizeof(*ep));
+	if (!msg)
+		return IOS_ENOMEM;
+
+	/* Fill event data */
+	ep->status = status;
+	ep->con_handle = htole16(con_handle);
+	ep->reason = reason;
+
+	return inject_msg_to_usb_intr_ready_queue(msg);
+}
+
 int enqueue_hci_event_con_compl(const bdaddr_t *bdaddr, u16 con_handle, u8 status)
 {
 	hci_con_compl_ep *ep;

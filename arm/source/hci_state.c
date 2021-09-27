@@ -121,7 +121,7 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 	u16 opcode = le16toh(hdr->opcode);
 	DEBUG("H > C HCI CMD: opcode: 0x%x\n", opcode);
 
-	/* If the request targets a "fake device", we don't have to hand it down to OH1.
+	/* If the request targets a "fake wiimote", we don't have to hand it down to OH1.
 	 * Otherwise, we just have to patch the HCI connection handle from virtual to physical.
 	 */
 
@@ -129,7 +129,7 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 	case event: { \
 		type *cp = (type *)payload; \
 		u16 phys, virt = le16toh(cp->con_handle); \
-		/* First check if the virtual connection handle corresponds to a fake device. \
+		/* First check if the virtual connection handle corresponds to a fake wiimote. \
 		 * If so, we don't have to forward the HCI command to the USB BT dongle. */ \
 		if (fake_wiimote_mgr_handle_hci_cmd_from_host(virt, hdr)) { \
 			*fwd_to_usb = false; \
@@ -143,7 +143,7 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 
 	switch (opcode) {
 	case HCI_CMD_CREATE_CON:
-		//DEBUG("HCI_CMD_CREATE_CON\n");
+		DEBUG("HCI_CMD_CREATE_CON\n");
 		break;
 	case HCI_CMD_ACCEPT_CON: {
 		char mac[MAC_STR_LEN];
@@ -155,23 +155,22 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 
 		bdaddr_to_str(mac, &cp->bdaddr);
 		DEBUG("HCI_CMD_ACCEPT_CON MAC: %s, role: %s\n", mac, roles[cp->role]);
-
-		/* If the connection was accepted on a fake device, don't
+		/* If the connection was accepted on a fake wiimote, don't
 		 * forward this packet to the real USB BT dongle! */
 		if (fake_wiimote_mgr_handle_hci_cmd_accept_con(&cp->bdaddr, cp->role))
 			*fwd_to_usb = false;
 		break;
 	}
-	case HCI_CMD_REJECT_CON:
-		/* TODO */
-		DEBUG("HCI_CMD_REJECT_CON\n");
-		break;
-	case HCI_CMD_INQUIRY:
-		//DEBUG("  HCI_CMD_INQUIRY\n");
-		break;
-	case HCI_CMD_WRITE_LOCAL_NAME: {
-		hci_write_local_name_cp *cp = payload;
-		DEBUG("  HCI_CMD_WRITE_LOCAL_NAME: %s\n", cp->name);
+	case HCI_CMD_REJECT_CON: {
+		char mac[MAC_STR_LEN];
+		hci_reject_con_cp *cp = payload;
+
+		bdaddr_to_str(mac, &cp->bdaddr);
+		DEBUG("HCI_CMD_REJECT_CON MAC: %s, reason: %s\n", mac, cp->reason);
+		/* If the connection was accepted on a fake wiimote, don't
+		 * forward this packet to the real USB BT dongle! */
+		if (fake_wiimote_mgr_handle_hci_cmd_reject_con(&cp->bdaddr, cp->reason))
+			*fwd_to_usb = false;
 		break;
 	}
 	case HCI_CMD_WRITE_SCAN_ENABLE: {
@@ -196,28 +195,7 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 		hci_unit_class[2] = cp->uclass[2];
 		break;
 	}
-	case HCI_CMD_WRITE_INQUIRY_SCAN_TYPE: {
-		hci_write_inquiry_scan_type_cp *cp = payload;
-		DEBUG("  HCI_CMD_WRITE_INQUIRY_SCAN_TYPE: 0x%x\n", cp->type);
-		break;
-	}
-	case HCI_CMD_WRITE_PAGE_SCAN_TYPE: {
-		hci_write_page_scan_type_cp *cp = payload;
-		DEBUG("  HCI_CMD_WRITE_PAGE_SCAN_TYPE: 0x%x\n", cp->type);
-		break;
-	}
-	case HCI_CMD_WRITE_INQUIRY_MODE: {
-		hci_write_inquiry_mode_cp *cp = payload;
-		DEBUG("  HCI_CMD_WRITE_INQUIRY_MODE: 0x%x\n", cp->mode);
-		break;
-	}
-	case HCI_CMD_SET_EVENT_FILTER: {
-		hci_set_event_filter_cp *cp = payload;
-		DEBUG("  HCI_CMD_SET_EVENT_FILTER: 0x%x 0x%x\n",
-			cp->filter_type, cp->filter_condition_type);
-		break;
-	}
-	TRANSLATE_CON_HANDLE(HCI_CMD_DISCONNECT, hci_discon_cp)
+	TRANSLATE_CON_HANDLE(HCI_CMD_DISCONNECT, hci_discon_cp) /* TODO */
 	TRANSLATE_CON_HANDLE(HCI_CMD_ADD_SCO_CON, hci_add_sco_con_cp)
 	TRANSLATE_CON_HANDLE(HCI_CMD_CHANGE_CON_PACKET_TYPE, hci_change_con_pkt_type_cp)
 	TRANSLATE_CON_HANDLE(HCI_CMD_AUTH_REQ, hci_auth_req_cp)
@@ -388,7 +366,7 @@ void hci_state_handle_acl_data_out_request_from_host(void *data, u32 length, boo
 
 	DEBUG("H > C ACL OUT: vcon_handle: 0x%x, len: 0x%x\n", virt, payload_len);
 
-	/* First check if the virtual connection handle corresponds to a fake device */
+	/* First check if the virtual connection handle corresponds to a fake wiimote */
 	if (fake_wiimote_mgr_handle_acl_data_out_request_from_host(virt, hdr)) {
 		*fwd_to_usb = false;
 		DEBUG("  (to fakedev)\n");

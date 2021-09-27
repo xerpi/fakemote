@@ -35,6 +35,7 @@ static inline void bdaddr_to_str(char str[static MAC_STR_LEN], const bdaddr_t *b
 int enqueue_hci_event_command_status(u16 opcode);
 int enqueue_hci_event_command_compl(u16 opcode, const void *payload, u32 payload_size);
 int enqueue_hci_event_con_req(const bdaddr_t *bdaddr, u8 uclass0, u8 uclass1, u8 uclass2, u8 link_type);
+int enqueue_hci_event_discon_compl(u16 con_handle, u8 status, u8 reason);
 int enqueue_hci_event_con_compl(const bdaddr_t *bdaddr, u16 con_handle, u8 status);
 int enqueue_hci_event_role_change(const bdaddr_t *bdaddr, u8 role);
 

@@ -1,4 +1,5 @@
 #include "usb_device_drivers.h"
+#include "utils.h"
 #include "wiimote.h"
 
 struct ds4_input {
@@ -122,7 +123,7 @@ int ds4_driver_ops_init(usb_input_device_t *device)
 
 int ds4_driver_ops_disconnect(usb_input_device_t *device)
 {
-	/* TODO */
+	/* Do nothing */
 	return 0;
 }
 
@@ -135,6 +136,8 @@ int ds4_driver_ops_slot_changed(usb_input_device_t *device, u8 slot)
 		{0,   255,   0},
 		{255,   0, 255},
 	};
+
+	slot = slot % 5;
 
 	u8 r = colors[slot][0],
 	   g = colors[slot][1],
