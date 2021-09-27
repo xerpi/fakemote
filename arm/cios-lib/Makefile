@@ -31,13 +31,10 @@ TARGET	=	cios-lib
 
 # Objects
 OBJS	=	direct_syscalls.o	\
-		fat_tools.o		\
 		ios.o			\
 		ipc.o			\
-		isfs.o			\
 		log.o			\
 		mem.o			\
-		sdio.o			\
 		stealth.o		\
 		str_utils.o		\
 		swi_mload.o		\
@@ -45,17 +42,12 @@ OBJS	=	direct_syscalls.o	\
 		syscalls_dbg.o		\
 		timer.o			\
 		tools.o			\
-		usbstorage.o		\
 		tiny-printf.o
 
-OBJS2	=	libwbfs/libwbfs.o	\
-		libwbfs/rijndael.o	\
-		libwbfs/wiidisc.o
 
-
-$(TARGET).a: $(OBJS) $(OBJS2)
+$(TARGET).a: $(OBJS)
 	@echo -e " AR\t$@"
-	@$(AR) $(ARFLAGS) $@ $(OBJS) $(OBJS2)
+	@$(AR) $(ARFLAGS) $@ $(OBJS)
 
 %.o: %.s
 	@echo -e " CC\t$@"
@@ -71,4 +63,4 @@ libwbfs/%.o: libwbfs/%.c
 
 clean:
 	@echo -e "Cleaning..."
-	@rm -f $(OBJS) $(OBJS2) $(TARGET).a
+	@rm -f $(OBJS) $(TARGET).a

@@ -58,7 +58,7 @@
 #define IOS_MESSAGE_NOBLOCK	1
 
 /* IOS syscalls */
-s32   os_thread_create(s32 (*entry)(void *arg), void *arg, void *stack, u32 stacksize, u32 priority, s32 autostart);
+s32   os_thread_create(int (*entry)(void *arg), void *arg, void *stack, u32 stacksize, u32 priority, s32 autostart);
 s32   os_thread_joint(s32 id, u32 *ret);
 s32   os_thread_cancel(s32 id, u32 *ret);
 void  os_thread_set_priority(s32 id, s32 priority);
@@ -95,7 +95,7 @@ s32   os_write(s32 fd, void *s, s32 len);
 s32   os_seek(s32 fd, s32 offset, s32 mode);
 s32   os_ioctlv(s32 fd, s32 request, s32 bytes_in, s32 bytes_out, ioctlv *vector);
 s32   os_ioctl(s32 fd, s32 request, void *in,  s32 bytes_in, void *out, s32 bytes_out);
-s32   os_open_async(const char *device, s32 mode, void *ipc_cb, void *usrdata);
+s32   os_open_async(const char *device, s32 mode, int queue_id, void *message);
 s32   os_close_async(s32 fd, void *ipc_cb, void *usrdata);
 s32   os_ioctlv_async(s32 fd, s32 request, s32 bytes_in, s32 bytes_out, ioctlv *vector, ...);
 s32   os_ioctl_async(s32 fd, s32 request, void *in,  s32 bytes_in, void *out, s32 bytes_out, ...);

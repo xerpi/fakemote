@@ -2,6 +2,7 @@
 #define UTILS_H
 
 #include <stdio.h>
+#include "hci.h"
 
 #define bswap16 __builtin_bswap16
 #define le16toh bswap16
@@ -19,8 +20,8 @@
 #endif
 #define assert(exp) ( (exp) ? (void)0 : my_assert_func(__FILE__, __LINE__, __FUNCTION__, #exp))
 
-#define DEBUG(...) printf(__VA_ARGS__)
-//#define DEBUG(...) (void)0
+//#define DEBUG(...) printf(__VA_ARGS__)
+#define DEBUG(...) (void)0
 
 extern void my_assert_func(const char *file, int line, const char *func, const char *failedexpr);
 

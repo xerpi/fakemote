@@ -5,16 +5,16 @@
 #include <stdarg.h>
 
 #include "conf.h"
-#include "event_loop.h"
-#include "fakedev.h"
+#include "fake_wiimote_mgr.h"
 #include "ipc.h"
+#include "hci.h"
 #include "hci_state.h"
+#include "l2cap.h"
 #include "mem.h"
 #include "syscalls.h"
 #include "tools.h"
 #include "types.h"
-#include "hci.h"
-#include "l2cap.h"
+#include "usb_hid.h"
 #include "utils.h"
 
 /* OH1 module hook information */
@@ -584,7 +584,6 @@ static int OH1_IOS_ReceiveMessage_hook(int queueid, ipcmessage **ret_msg, u32 fl
 {
 	int ret;
 	uintptr_t recv_data;
-	event_loop_async_cb_msg_t *cb_msg;
 	ipcmessage *recv_msg;
 	bool fwd_to_usb;
 
@@ -603,11 +602,8 @@ static int OH1_IOS_ReceiveMessage_hook(int queueid, ipcmessage **ret_msg, u32 fl
 			*ret_msg = (ipcmessage *)0xcafef00d;
 			break;
 		} else if (recv_data == (uintptr_t)&periodic_timer_cookie) {
-			fakedev_tick_devices();
+			fake_wiimote_mgr_tick_devices();
 			fwd_to_usb = false;
-		} else if (*(u32 *)recv_data == EVENT_LOOP_ASYNC_CB_MSG_ID) {
-			cb_msg = (void *)recv_data;
-			cb_msg->cb(cb_msg->usrdata);
 		} else {
 			recv_msg = (ipcmessage *)recv_data;
 			*ret_msg = NULL;
@@ -716,6 +712,17 @@ static int ensure_initalized(void)
 		if (ret < 0)
 			return ret;
 
+		/* Initialize heaps for inject messages */
+		ret = os_heap_create(injmessages_heap_data, sizeof(injmessages_heap_data));
+		if (ret < 0)
+			return ret;
+		injmessages_heap_id = ret;
+
+		/* Initialize global state */
+		hci_state_init();
+		fake_wiimote_mgr_init();
+		usb_hid_init();
+
 		initialized = 1;
 	}
 
@@ -760,17 +767,7 @@ int main(void)
 	/* Print info */
 	printf("Hello world from Starlet!\n");
 
-	/* Initialize heaps for inject messages */
-	ret = os_heap_create(injmessages_heap_data, sizeof(injmessages_heap_data));
-	if (ret < 0)
-		return ret;
-	injmessages_heap_id = ret;
 
-	/* Initialize global state */
-	hci_state_init();
-	fakedev_init();
-
-#if 0
 	static u8 conf_buffer[0x4000] ATTRIBUTE_ALIGN(32);
 	static struct conf_pads_setting conf_pads ATTRIBUTE_ALIGN(32);
 
@@ -795,7 +792,6 @@ int main(void)
 	fd = os_open("/shared2/sys/SYSCONF", IOS_OPEN_WRITE);
 	os_write(fd, conf_buffer, sizeof(conf_buffer));
 	os_close(fd);
-#endif
 
 	/* System patchers */
 	patcher patchers[] = {
@@ -806,7 +802,7 @@ int main(void)
 	ret = IOS_InitSystem(patchers, sizeof(patchers));
 	DEBUG("IOS_InitSystem(): %d\n", ret);
 
-	return 0;
+	return ret;
 }
 
 void my_assert_func(const char *file, int line, const char *func, const char *failedexpr)

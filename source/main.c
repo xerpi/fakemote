@@ -144,8 +144,8 @@ int main(int argc, char **argv)
 
 	while (run) {
 		WPAD_ScanPads();
-		u32 pressed0 = WPAD_ButtonsDown(0);
-		u32 pressed1 = WPAD_ButtonsDown(1);
+		u32 pressed0 = WPAD_ButtonsHeld(0);
+		u32 pressed1 = WPAD_ButtonsHeld(1);
 		if ((pressed0 | pressed1) & WPAD_BUTTON_HOME)
 			run = 0;
 		if (pressed0)

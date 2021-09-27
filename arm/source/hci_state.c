@@ -1,6 +1,6 @@
 #include <stdbool.h>
 #include <string.h>
-#include "fakedev.h"
+#include "fake_wiimote_mgr.h"
 #include "hci.h"
 #include "hci_state.h"
 #include "l2cap.h"
@@ -131,7 +131,7 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 		u16 phys, virt = le16toh(cp->con_handle); \
 		/* First check if the virtual connection handle corresponds to a fake device. \
 		 * If so, we don't have to forward the HCI command to the USB BT dongle. */ \
-		if (fakedev_handle_hci_cmd_from_host(virt, hdr)) { \
+		if (fake_wiimote_mgr_handle_hci_cmd_from_host(virt, hdr)) { \
 			*fwd_to_usb = false; \
 			break; \
 		} \
@@ -158,7 +158,7 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 
 		/* If the connection was accepted on a fake device, don't
 		 * forward this packet to the real USB BT dongle! */
-		if (fakedev_handle_hci_cmd_accept_con(&cp->bdaddr, cp->role))
+		if (fake_wiimote_mgr_handle_hci_cmd_accept_con(&cp->bdaddr, cp->role))
 			*fwd_to_usb = false;
 		break;
 	}
@@ -389,7 +389,7 @@ void hci_state_handle_acl_data_out_request_from_host(void *data, u32 length, boo
 	DEBUG("H > C ACL OUT: vcon_handle: 0x%x, len: 0x%x\n", virt, payload_len);
 
 	/* First check if the virtual connection handle corresponds to a fake device */
-	if (fakedev_handle_acl_data_out_request_from_host(virt, hdr)) {
+	if (fake_wiimote_mgr_handle_acl_data_out_request_from_host(virt, hdr)) {
 		*fwd_to_usb = false;
 		DEBUG("  (to fakedev)\n");
 		return;

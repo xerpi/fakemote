@@ -1,59 +1,62 @@
 #include <string.h>
-#include "fakedev.h"
+#include "fake_wiimote_mgr.h"
+#include "hci.h"
 #include "hci_state.h"
 #include "l2cap.h"
 #include "syscalls.h"
 #include "utils.h"
 #include "wiimote.h"
 
-/* Fake devices */
-// 00:21:BD:2D:57:FF Name: Nintendo RVL-CNT-01
-
-#define MAX_FAKEDEVS	4
+typedef enum {
+	BASEBAND_STATE_INACTIVE,
+	BASEBAND_STATE_REQUEST_CONNECTION,
+	BASEBAND_STATE_COMPLETE
+} baseband_state_e;
 
 typedef enum {
-	FAKEDEV_BASEBAND_STATE_INACTIVE,
-	FAKEDEV_BASEBAND_STATE_REQUEST_CONNECTION,
-	FAKEDEV_BASEBAND_STATE_COMPLETE
-} fakedev_baseband_state_e;
+	ACL_STATE_INACTIVE,
+	ACL_STATE_LINKING
+} acl_state_e;
 
 typedef enum {
-	FAKEDEV_ACL_STATE_INACTIVE,
-	FAKEDEV_ACL_STATE_LINKING
-} fakedev_acl_state_e;
-
-typedef enum {
-	FAKEDEV_L2CAP_CHANNEL_STATE_INACTIVE,
-	FAKEDEV_L2CAP_CHANNEL_STATE_CONFIG_PEND,
-	FAKEDEV_L2CAP_CHANNEL_STATE_COMPLETE
-} fakedev_l2cap_channel_state_e;
+	L2CAP_CHANNEL_STATE_INACTIVE_INACTIVE,
+	L2CAP_CHANNEL_STATE_INACTIVE_CONFIG_PEND,
+	L2CAP_CHANNEL_STATE_INACTIVE_COMPLETE
+} l2cap_channel_state_e;
 
 typedef struct {
 	bool valid;
-	fakedev_l2cap_channel_state_e state;
+	l2cap_channel_state_e state;
 	u16 psm;
 	u16 local_cid;
 	u16 remote_cid;
 	u16 remote_mtu;
 } l2cap_channel_info_t;
 
-typedef struct {
+typedef struct fake_wiimote_t {
+	bool active;
 	bdaddr_t bdaddr;
+	/* Bluetooth connection state */
 	u16 hci_con_handle;
-	fakedev_baseband_state_e baseband_state;
-	fakedev_acl_state_e acl_state;
+	baseband_state_e baseband_state;
+	acl_state_e acl_state;
 	l2cap_channel_info_t psm_sdp_chn;
 	l2cap_channel_info_t psm_hid_cntl_chn;
 	l2cap_channel_info_t psm_hid_intr_chn;
-} fakedev_t;
+	/* Associated input device with this fake Wiimote */
+	void *usrdata;
+	const input_device_ops_t *input_device_ops;
+	/* Input state */
+	u16 buttons;
+} fake_wiimote_t;
 
-static fakedev_t fakedevs[MAX_FAKEDEVS];
+static fake_wiimote_t fake_wiimotes[MAX_FAKE_WIIMOTES];
 
 /* Helper functions */
 
-static inline bool fakedev_is_connected(const fakedev_t *fakedev)
+static inline bool fake_wiimote_is_connected(const fake_wiimote_t *wiimote)
 {
-	return fakedev->baseband_state == FAKEDEV_BASEBAND_STATE_COMPLETE;
+	return wiimote->baseband_state == BASEBAND_STATE_COMPLETE;
 }
 
 /* Channel bookkeeping */
@@ -80,10 +83,10 @@ static inline bool l2cap_channel_is_complete(const l2cap_channel_info_t *info)
 	return info->valid &&
 	       l2cap_channel_is_accepted(info) &&
 	       l2cap_channel_is_is_remote_configured(info) &&
-	       (info->state == FAKEDEV_L2CAP_CHANNEL_STATE_COMPLETE);
+	       (info->state == L2CAP_CHANNEL_STATE_INACTIVE_COMPLETE);
 }
 
-static l2cap_channel_info_t *get_channel_info(fakedev_t *dev, u16 local_cid)
+static l2cap_channel_info_t *get_channel_info(fake_wiimote_t *dev, u16 local_cid)
 {
 	if (dev->psm_sdp_chn.valid && (local_cid == dev->psm_sdp_chn.local_cid)) {
 		return &dev->psm_sdp_chn;
@@ -98,7 +101,7 @@ static l2cap_channel_info_t *get_channel_info(fakedev_t *dev, u16 local_cid)
 static void l2cap_channel_info_setup(l2cap_channel_info_t *info, u16 psm, u16 local_cid)
 {
 	info->psm = psm;
-	info->state = FAKEDEV_L2CAP_CHANNEL_STATE_INACTIVE;
+	info->state = L2CAP_CHANNEL_STATE_INACTIVE_INACTIVE;
 	info->local_cid = local_cid;
 	info->remote_cid = L2CAP_NULL_CID;
 	info->remote_mtu = 0;
@@ -126,31 +129,69 @@ static inline int send_hid_input_report(u16 hci_con_handle, u16 dcid, u8 report_
 	return send_hid_data(hci_con_handle, dcid, (HID_TYPE_DATA << 4) | HID_PARAM_INPUT, buf, size + 1);
 }
 
-static int wiimote_send_ack(const fakedev_t *fakedev, u8 rpt_id, u8 error_code)
+static int wiimote_send_ack(const fake_wiimote_t *wiimote, u8 rpt_id, u8 error_code)
 {
 	struct wiimote_input_report_ack_t ack ATTRIBUTE_ALIGN(32);
 	ack.buttons = 0;
 	ack.rpt_id = rpt_id;
 	ack.error_code = error_code;
-	return send_hid_input_report(fakedev->hci_con_handle, fakedev->psm_hid_intr_chn.remote_cid,
+	return send_hid_input_report(wiimote->hci_con_handle, wiimote->psm_hid_intr_chn.remote_cid,
 				     INPUT_REPORT_ID_ACK, &ack, sizeof(ack));
 }
 
 /* Init state */
 
-void fakedev_init(void)
+void fake_wiimote_mgr_init(void)
 {
-	for (int i = 0; i < MAX_FAKEDEVS; i++) {
-		fakedevs[i].bdaddr = (bdaddr_t){.b = {0x11 + i, 0x22, 0x33, 0x44, 0x55, 0x66}};
-		fakedevs[i].baseband_state = FAKEDEV_BASEBAND_STATE_INACTIVE;
-		fakedevs[i].acl_state = FAKEDEV_L2CAP_CHANNEL_STATE_INACTIVE;
-		fakedevs[i].psm_sdp_chn.valid = false;
-		fakedevs[i].psm_hid_cntl_chn.valid = false;
-		fakedevs[i].psm_hid_intr_chn.valid = false;
+	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
+		fake_wiimotes[i].active = false;
+		fake_wiimotes[i].bdaddr = (bdaddr_t){.b = {0x11 + i, 0x22, 0x33, 0x44, 0x55, 0x66}};
+		fake_wiimotes[i].baseband_state = BASEBAND_STATE_INACTIVE;
+		fake_wiimotes[i].acl_state = L2CAP_CHANNEL_STATE_INACTIVE_INACTIVE;
+		fake_wiimotes[i].psm_sdp_chn.valid = false;
+		fake_wiimotes[i].psm_hid_cntl_chn.valid = false;
+		fake_wiimotes[i].psm_hid_intr_chn.valid = false;
+		fake_wiimotes[i].usrdata = NULL;
+		fake_wiimotes[i].input_device_ops = NULL;
+		fake_wiimotes[i].buttons = 0;
 	}
 
 	/* Activate */
-	fakedevs[0].baseband_state = FAKEDEV_BASEBAND_STATE_REQUEST_CONNECTION;
+	//fake_wiimotes[0].baseband_state = BASEBAND_STATE_REQUEST_CONNECTION;
+	//fake_wiimotes[0].active = true;
+}
+
+bool fake_wiimote_mgr_add_input_device(void *usrdata, const input_device_ops_t *ops)
+{
+	if (!ops)
+		return false;
+
+	/* Find an inactive fake Wiimote */
+	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
+		if (!fake_wiimotes[i].active) {
+			fake_wiimotes[i].baseband_state = BASEBAND_STATE_REQUEST_CONNECTION;
+			fake_wiimotes[i].usrdata = usrdata;
+			fake_wiimotes[i].input_device_ops = ops;
+			fake_wiimotes[i].active = true;
+			return true;
+		}
+	}
+	return false;
+}
+
+int fake_wiimote_mgr_report_input(fake_wiimote_t *wiimote, u16 buttons)
+{
+	u16 changed = wiimote->buttons ^ buttons;
+
+	if (changed) {
+		if (l2cap_channel_is_complete(&wiimote->psm_hid_intr_chn)) {
+			send_hid_input_report(wiimote->hci_con_handle,
+					      wiimote->psm_hid_intr_chn.remote_cid,
+					      INPUT_REPORT_ID_REPORT_CORE,
+					      &buttons, sizeof(buttons));
+		}
+		wiimote->buttons = buttons;
+	}
 }
 
 static void check_send_config_for_new_channel(u16 hci_con_handle, l2cap_channel_info_t *info)
@@ -158,82 +199,86 @@ static void check_send_config_for_new_channel(u16 hci_con_handle, l2cap_channel_
 	int ret;
 
 	if (l2cap_channel_is_accepted(info) &&
-	    (info->state == FAKEDEV_L2CAP_CHANNEL_STATE_INACTIVE)) {
+	    (info->state == L2CAP_CHANNEL_STATE_INACTIVE_INACTIVE)) {
 		ret = l2cap_send_config_req(hci_con_handle, info->remote_cid,
 					    WII_REQUEST_MTU, L2CAP_FLUSH_TIMO_DEFAULT);
 		if (ret == IOS_OK) {
-			info->state = FAKEDEV_L2CAP_CHANNEL_STATE_CONFIG_PEND;
+			info->state = L2CAP_CHANNEL_STATE_INACTIVE_CONFIG_PEND;
 		}
 	}
 }
 
-static void fakedev_tick(fakedev_t *fakedev)
+static void fake_wiimote_tick(fake_wiimote_t *wiimote)
 {
 	int ret;
 	bool req;
 
-	if (fakedev->baseband_state == FAKEDEV_BASEBAND_STATE_REQUEST_CONNECTION) {
-		req = hci_request_connection(&fakedev->bdaddr, WIIMOTE_HCI_CLASS_0,
+	if (wiimote->baseband_state == BASEBAND_STATE_REQUEST_CONNECTION) {
+		req = hci_request_connection(&wiimote->bdaddr, WIIMOTE_HCI_CLASS_0,
 					     WIIMOTE_HCI_CLASS_1, WIIMOTE_HCI_CLASS_2,
 					     HCI_LINK_ACL);
 		/* After a connection request is visible to the controller switch to inactive */
 		if (req)
-			fakedev->baseband_state = FAKEDEV_BASEBAND_STATE_INACTIVE;
-	} else if (fakedev->baseband_state == FAKEDEV_BASEBAND_STATE_COMPLETE) {
+			wiimote->baseband_state = BASEBAND_STATE_INACTIVE;
+	} else if (wiimote->baseband_state == BASEBAND_STATE_COMPLETE) {
 		/* "If the connection originated from the device (Wiimote) it will create
 		 * HID control and interrupt channels (in that order)." */
-		if (fakedev->acl_state == FAKEDEV_ACL_STATE_LINKING) {
+		if (wiimote->acl_state == ACL_STATE_LINKING) {
 			/* If-else-if cascade to avoid sending too many packets on the same "tick" */
-			if (!fakedev->psm_hid_cntl_chn.valid) {
+			if (!wiimote->psm_hid_cntl_chn.valid) {
 				u16 local_cid = generate_l2cap_channel_id();
-				ret = l2cap_send_connect_req(fakedev->hci_con_handle, L2CAP_PSM_HID_CNTL,
+				ret = l2cap_send_connect_req(wiimote->hci_con_handle, L2CAP_PSM_HID_CNTL,
 							     local_cid);
 				assert(ret == IOS_OK);
-				l2cap_channel_info_setup(&fakedev->psm_hid_cntl_chn, L2CAP_PSM_HID_CNTL, local_cid);
+				l2cap_channel_info_setup(&wiimote->psm_hid_cntl_chn, L2CAP_PSM_HID_CNTL, local_cid);
 				DEBUG("Generated local CID for HID CNTL: 0x%x\n", local_cid);
-			} else if (!fakedev->psm_hid_intr_chn.valid) {
+			} else if (!wiimote->psm_hid_intr_chn.valid) {
 				u16 local_cid = generate_l2cap_channel_id();
-				ret = l2cap_send_connect_req(fakedev->hci_con_handle, L2CAP_PSM_HID_INTR,
+				ret = l2cap_send_connect_req(wiimote->hci_con_handle, L2CAP_PSM_HID_INTR,
 							     local_cid);
 				assert(ret == IOS_OK);
-				l2cap_channel_info_setup(&fakedev->psm_hid_intr_chn, L2CAP_PSM_HID_INTR, local_cid);
+				l2cap_channel_info_setup(&wiimote->psm_hid_intr_chn, L2CAP_PSM_HID_INTR, local_cid);
 				DEBUG("Generated local CID for HID INTR: 0x%x\n", local_cid);
-			} else if (l2cap_channel_is_complete(&fakedev->psm_hid_cntl_chn) &&
-				   l2cap_channel_is_complete(&fakedev->psm_hid_intr_chn)) {
-				fakedev->acl_state = FAKEDEV_ACL_STATE_INACTIVE;
+			} else if (l2cap_channel_is_complete(&wiimote->psm_hid_cntl_chn) &&
+				   l2cap_channel_is_complete(&wiimote->psm_hid_intr_chn)) {
+				wiimote->acl_state = ACL_STATE_INACTIVE;
+				/* Call connected() input_device callback */
+				wiimote->input_device_ops->connected(wiimote->usrdata, wiimote);
 			}
 		}
 
 		/* Send configuration for any newly connected channels. */
-		check_send_config_for_new_channel(fakedev->hci_con_handle, &fakedev->psm_sdp_chn);
-		check_send_config_for_new_channel(fakedev->hci_con_handle, &fakedev->psm_hid_cntl_chn);
-		check_send_config_for_new_channel(fakedev->hci_con_handle, &fakedev->psm_hid_intr_chn);
+		check_send_config_for_new_channel(wiimote->hci_con_handle, &wiimote->psm_sdp_chn);
+		check_send_config_for_new_channel(wiimote->hci_con_handle, &wiimote->psm_hid_cntl_chn);
+		check_send_config_for_new_channel(wiimote->hci_con_handle, &wiimote->psm_hid_intr_chn);
 
-		if (l2cap_channel_is_complete(&fakedev->psm_hid_intr_chn)) {
+		/*if (l2cap_channel_is_complete(&wiimote->psm_hid_intr_chn)) {
 			//DEBUG("Faking buttons...\n");
 			static u16 buttons = 0;
-			buttons ^= 0x80;
-			send_hid_input_report(fakedev->hci_con_handle, fakedev->psm_hid_intr_chn.remote_cid,
-				INPUT_REPORT_ID_REPORT_CORE, &buttons, sizeof(buttons));
-		}
+			//buttons ^= 0x80;
+			//send_hid_input_report(wiimote->hci_con_handle, wiimote->psm_hid_intr_chn.remote_cid,
+			//	INPUT_REPORT_ID_REPORT_CORE, &buttons, sizeof(buttons));
+		}*/
 	}
 }
 
-void fakedev_tick_devices(void)
+void fake_wiimote_mgr_tick_devices(void)
 {
-	for (int i = 0; i < MAX_FAKEDEVS; i++)
-		fakedev_tick(&fakedevs[i]);
+	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
+		if (fake_wiimotes[i].active)
+			fake_wiimote_tick(&fake_wiimotes[i]);
+	}
 }
 
 /* Functions called by the HCI state manager */
 
-bool fakedev_handle_hci_cmd_accept_con(const bdaddr_t *bdaddr, u8 role)
+bool fake_wiimote_mgr_handle_hci_cmd_accept_con(const bdaddr_t *bdaddr, u8 role)
 {
 	int ret;
 
 	/* Check if the bdaddr belongs to a fake device */
-	for (int i = 0; i < MAX_FAKEDEVS; i++) {
-		if (memcmp(bdaddr, &fakedevs[i].bdaddr, sizeof(bdaddr_t) != 0))
+	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
+		if (memcmp(bdaddr, &fake_wiimotes[i].bdaddr, sizeof(bdaddr_t) != 0))
 			continue;
 
 		/* Connection accepted to our fake device */
@@ -246,12 +291,12 @@ bool fakedev_handle_hci_cmd_accept_con(const bdaddr_t *bdaddr, u8 role)
 		ret = enqueue_hci_event_command_status(HCI_CMD_ACCEPT_CON);
 		assert(ret == IOS_OK);
 
-		fakedevs[i].baseband_state = FAKEDEV_BASEBAND_STATE_COMPLETE;
-		fakedevs[i].hci_con_handle = hci_con_handle_virt_alloc();
-		DEBUG("Our fake device got HCI con_handle: 0x%x\n", fakedevs[i].hci_con_handle);
+		fake_wiimotes[i].baseband_state = BASEBAND_STATE_COMPLETE;
+		fake_wiimotes[i].hci_con_handle = hci_con_handle_virt_alloc();
+		DEBUG("Our fake device got HCI con_handle: 0x%x\n", fake_wiimotes[i].hci_con_handle);
 
 		/* We can start the ACL (L2CAP) linking now */
-		fakedevs[i].acl_state = FAKEDEV_ACL_STATE_LINKING;
+		fake_wiimotes[i].acl_state = ACL_STATE_LINKING;
 
 		if (role == HCI_ROLE_MASTER) {
 			ret = enqueue_hci_event_role_change(bdaddr, HCI_ROLE_MASTER);
@@ -261,7 +306,7 @@ bool fakedev_handle_hci_cmd_accept_con(const bdaddr_t *bdaddr, u8 role)
 		/* In addition, when the Link Manager determines the connection is established,
 		 * the Host Controllers on both Bluetooth devices that form the connection
 		 * will send a Connection Complete event to each Host */
-		ret = enqueue_hci_event_con_compl(bdaddr, fakedevs[i].hci_con_handle, 0);
+		ret = enqueue_hci_event_con_compl(bdaddr, fake_wiimotes[i].hci_con_handle, 0);
 		assert(ret == IOS_OK);
 
 		DEBUG("Connection complete sent, starting ACL linking!\n");
@@ -271,12 +316,12 @@ bool fakedev_handle_hci_cmd_accept_con(const bdaddr_t *bdaddr, u8 role)
 	return false;
 }
 
-bool fakedev_handle_hci_cmd_from_host(u16 hci_con_handle, const hci_cmd_hdr_t *hdr)
+bool fake_wiimote_mgr_handle_hci_cmd_from_host(u16 hci_con_handle, const hci_cmd_hdr_t *hdr)
 {
 	/* Check if the HCI connection handle belongs to a fake device */
-	for (int i = 0; i < MAX_FAKEDEVS; i++) {
-		if (!fakedev_is_connected(&fakedevs[i]) ||
-		    (fakedevs[i].hci_con_handle != hci_con_handle))
+	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
+		if (!fake_wiimote_is_connected(&fake_wiimotes[i]) ||
+		    (fake_wiimotes[i].hci_con_handle != hci_con_handle))
 			continue;
 
 		/* TODO */
@@ -287,7 +332,7 @@ bool fakedev_handle_hci_cmd_from_host(u16 hci_con_handle, const hci_cmd_hdr_t *h
 	return false;
 }
 
-static void handle_l2cap_config_req(fakedev_t *fakedev, u8 ident, u16 dcid, u16 flags,
+static void handle_l2cap_config_req(fake_wiimote_t *wiimote, u8 ident, u16 dcid, u16 flags,
 				    const u8 *options, u16 options_size)
 {
 	u8 tmp[256];
@@ -304,7 +349,7 @@ static void handle_l2cap_config_req(fakedev_t *fakedev, u8 ident, u16 dcid, u16 
 	assert(flags == 0x00);
 	assert(options_size <= sizeof(tmp));
 
-	info = get_channel_info(fakedev, dcid);
+	info = get_channel_info(wiimote, dcid);
 	assert(info);
 
 	/* Response to the config request */
@@ -342,13 +387,13 @@ static void handle_l2cap_config_req(fakedev_t *fakedev, u8 ident, u16 dcid, u16 
 	}
 
 	/* Send Respone */
-	l2cap_send_config_rsp(fakedev->hci_con_handle, dcid, ident, tmp, resp_len);
+	l2cap_send_config_rsp(wiimote->hci_con_handle, dcid, ident, tmp, resp_len);
 
 	/* Set the MTU */
 	info->remote_mtu = remote_mtu;
 }
 
-static void handle_l2cap_signal_channel(fakedev_t *fakedev, u8 code, u8 ident,
+static void handle_l2cap_signal_channel(fake_wiimote_t *wiimote, u8 code, u8 ident,
 					const void *payload, u16 size)
 {
 	l2cap_channel_info_t *info;
@@ -381,7 +426,7 @@ static void handle_l2cap_signal_channel(fakedev_t *fakedev, u8 code, u8 ident,
 
 		assert(result == L2CAP_SUCCESS);
 		assert(status == L2CAP_NO_INFO);
-		info = get_channel_info(fakedev, scid);
+		info = get_channel_info(wiimote, scid);
 		assert(info);
 
 		/* Save endpoint's Destination CID  */
@@ -395,7 +440,7 @@ static void handle_l2cap_signal_channel(fakedev_t *fakedev, u8 code, u8 ident,
 		const void *options = (const void *)((u8 *)rsp + sizeof(l2cap_cfg_req_cp));
 
 		DEBUG("  L2CAP_CONFIG_REQ: dcid: 0x%x, flags: 0x%x\n", dcid, flags);
-		handle_l2cap_config_req(fakedev, ident, dcid, flags, options,
+		handle_l2cap_config_req(wiimote, ident, dcid, flags, options,
 					size - sizeof(l2cap_cfg_req_cp));
 		break;
 	}
@@ -408,17 +453,17 @@ static void handle_l2cap_signal_channel(fakedev_t *fakedev, u8 code, u8 ident,
 			scid, flags, result);
 
 		assert(result == L2CAP_SUCCESS);
-		info = get_channel_info(fakedev, scid);
+		info = get_channel_info(wiimote, scid);
 		assert(info);
 
 		/* Mark channel as complete!  */
-		info->state = FAKEDEV_L2CAP_CHANNEL_STATE_COMPLETE;
+		info->state = L2CAP_CHANNEL_STATE_INACTIVE_COMPLETE;
 		break;
 	}
 	}
 }
 
-static void handle_l2cap_signal_channel_request(fakedev_t *fakedev, const void *data, u16 length)
+static void handle_l2cap_signal_channel_request(fake_wiimote_t *wiimote, const void *data, u16 length)
 {
 	const l2cap_cmd_hdr_t *cmd_hdr;
 	const void *cmd_payload;
@@ -429,7 +474,7 @@ static void handle_l2cap_signal_channel_request(fakedev_t *fakedev, const void *
 		cmd_len = le16toh(cmd_hdr->length);
 		cmd_payload = (const void *)((u8 *)data + sizeof(*cmd_hdr));
 
-		handle_l2cap_signal_channel(fakedev, cmd_hdr->code, cmd_hdr->ident,
+		handle_l2cap_signal_channel(wiimote, cmd_hdr->code, cmd_hdr->ident,
 					    cmd_payload, cmd_len);
 
 		data += sizeof(l2cap_cmd_hdr_t) + cmd_len;
@@ -450,7 +495,7 @@ static void extension_read_data(void *dst, u16 address, u16 size)
 	memcpy(dst, ((u8 *)&regs) + address, size);
 }
 
-static void handle_hid_intr_data_output(fakedev_t *fakedev, const u8 *data, u16 size)
+static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data, u16 size)
 {
 	DEBUG("handle_hid_intr_data_output: size: 0x%x, 0x%x\n", size, *(u32 *)(data-1));
 
@@ -460,8 +505,10 @@ static void handle_hid_intr_data_output(fakedev_t *fakedev, const u8 *data, u16 
 	switch (data[0]) {
 	case OUTPUT_REPORT_ID_LED: {
 		struct wiimote_output_report_led_t *led = (void *)&data[1];
+		/* Call set_leds() input_device callback */
+		wiimote->input_device_ops->set_leds(wiimote->usrdata, led->leds);
 		if (led->ack)
-			wiimote_send_ack(fakedev, OUTPUT_REPORT_ID_LED, ERROR_CODE_SUCCESS);
+			wiimote_send_ack(wiimote, OUTPUT_REPORT_ID_LED, ERROR_CODE_SUCCESS);
 		break;
 	}
 	case OUTPUT_REPORT_ID_STATUS: {
@@ -469,8 +516,8 @@ static void handle_hid_intr_data_output(fakedev_t *fakedev, const u8 *data, u16 
 		memset(&status, 0, sizeof(status));
 		status.extension = 1;
 		status.buttons = 0;
-		send_hid_input_report(fakedev->hci_con_handle,
-				     fakedev->psm_hid_intr_chn.remote_cid,
+		send_hid_input_report(wiimote->hci_con_handle,
+				     wiimote->psm_hid_intr_chn.remote_cid,
 				     INPUT_REPORT_ID_STATUS, &status, sizeof(status));
 		break;
 	}
@@ -479,7 +526,7 @@ static void handle_hid_intr_data_output(fakedev_t *fakedev, const u8 *data, u16 
 		DEBUG("  Report mode: 0x%02x, cont: %d, rumble: %d, ack: %d\n",
 			mode->mode, mode->continuous, mode->rumble, mode->ack);
 		if (mode->ack)
-			wiimote_send_ack(fakedev, OUTPUT_REPORT_ID_REPORT_MODE, ERROR_CODE_SUCCESS);
+			wiimote_send_ack(wiimote, OUTPUT_REPORT_ID_REPORT_MODE, ERROR_CODE_SUCCESS);
 		break;
 	}
 	case OUTPUT_REPORT_ID_WRITE_DATA: {
@@ -487,7 +534,7 @@ static void handle_hid_intr_data_output(fakedev_t *fakedev, const u8 *data, u16 
 		DEBUG("  Write data to slave 0x%02x, address: 0x%x, size: 0x%x 0x%x\n",
 			write->slave_address, write->address, write->size, write->data[0]);
 		/* Write data is, among other things, used to decrypt the extension bytes */
-		wiimote_send_ack(fakedev, OUTPUT_REPORT_ID_WRITE_DATA, ERROR_CODE_SUCCESS);
+		wiimote_send_ack(wiimote, OUTPUT_REPORT_ID_WRITE_DATA, ERROR_CODE_SUCCESS);
 		break;
 	}
 	case OUTPUT_REPORT_ID_READ_DATA: {
@@ -531,8 +578,8 @@ static void handle_hid_intr_data_output(fakedev_t *fakedev, const u8 *data, u16 
 			reply.size_minus_one = read_size - 1;
 			reply.error = error;
 			reply.address = offset;
-			send_hid_input_report(fakedev->hci_con_handle,
-					      fakedev->psm_hid_intr_chn.remote_cid,
+			send_hid_input_report(wiimote->hci_con_handle,
+					      wiimote->psm_hid_intr_chn.remote_cid,
 					      INPUT_REPORT_ID_READ_DATA_REPLY,
 					      &reply, sizeof(reply));
 			if (error != ERROR_CODE_SUCCESS)
@@ -548,16 +595,16 @@ static void handle_hid_intr_data_output(fakedev_t *fakedev, const u8 *data, u16 
 	}
 }
 
-bool fakedev_handle_acl_data_out_request_from_host(u16 hci_con_handle, const hci_acldata_hdr_t *acl)
+bool fake_wiimote_mgr_handle_acl_data_out_request_from_host(u16 hci_con_handle, const hci_acldata_hdr_t *acl)
 {
 	const l2cap_hdr_t *header;
 	u16 dcid, length;
 	const u8 *payload;
 
 	/* Check if the HCI connection handle belongs to a fake device */
-	for (int i = 0; i < MAX_FAKEDEVS; i++) {
-		if (!fakedev_is_connected(&fakedevs[i]) ||
-		    (fakedevs[i].hci_con_handle != hci_con_handle))
+	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
+		if (!fake_wiimote_is_connected(&fake_wiimotes[i]) ||
+		    (fake_wiimotes[i].hci_con_handle != hci_con_handle))
 			continue;
 
 		/* L2CAP header */
@@ -569,9 +616,9 @@ bool fakedev_handle_acl_data_out_request_from_host(u16 hci_con_handle, const hci
 		DEBUG("FD ACL OUT: con_handle: 0x%x, dcid: 0x%x, len: 0x%x\n", hci_con_handle, dcid, length);
 
 		if (dcid == L2CAP_SIGNAL_CID) {
-			handle_l2cap_signal_channel_request(&fakedevs[i], payload, length);
+			handle_l2cap_signal_channel_request(&fake_wiimotes[i], payload, length);
 		} else {
-			l2cap_channel_info_t *info = get_channel_info(&fakedevs[i], dcid);
+			l2cap_channel_info_t *info = get_channel_info(&fake_wiimotes[i], dcid);
 			if (info) {
 				switch (info->psm) {
 				case L2CAP_PSM_SDP:
@@ -584,7 +631,7 @@ bool fakedev_handle_acl_data_out_request_from_host(u16 hci_con_handle, const hci
 					break;
 				case L2CAP_PSM_HID_INTR:
 					if (payload[0] == ((HID_TYPE_DATA << 4) | HID_PARAM_OUTPUT))
-						handle_hid_intr_data_output(&fakedevs[i],
+						handle_hid_intr_data_output(&fake_wiimotes[i],
 									    &payload[1],
 									    length - 1);
 					break;
