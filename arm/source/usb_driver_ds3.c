@@ -71,6 +71,14 @@ struct ds3_input_report {
 
 static inline void ds3_map_buttons(const struct ds3_input_report *input, u16 *buttons)
 {
+	if (input->left)
+		*buttons |= WPAD_BUTTON_LEFT;
+	if (input->down)
+		*buttons |= WPAD_BUTTON_DOWN;
+	if (input->right)
+		*buttons |= WPAD_BUTTON_RIGHT;
+	if (input->up)
+		*buttons |= WPAD_BUTTON_UP;
 	if (input->cross)
 		*buttons |= WPAD_BUTTON_A;
 	if (input->circle)

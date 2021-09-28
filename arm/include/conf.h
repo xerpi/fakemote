@@ -28,7 +28,7 @@ enum {
 
 struct conf_pad_device {
 	u8 bdaddr[6];
-	char name[0x40];
+	char name[64];
 } ATTRIBUTE_PACKED;
 
 struct conf_pads_setting {

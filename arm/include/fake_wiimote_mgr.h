@@ -6,6 +6,8 @@
 
 #define MAX_FAKE_WIIMOTES	4
 
+#define FAKE_WIIMOTE_BDADDR(i) ((bdaddr_t){.b = {0xFE, 0xED, 0xBA, 0xDF, 0x00, 0xD0 + i}})
+
 typedef struct fake_wiimote_t fake_wiimote_t;
 
 /** Used by the main event loop **/

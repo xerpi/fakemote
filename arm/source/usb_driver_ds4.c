@@ -80,6 +80,14 @@ struct ds4_input_report {
 
 static inline void ds4_map_buttons(const struct ds4_input_report *input, u16 *buttons)
 {
+	if (input->dpad == 0 || input->dpad == 1 || input->dpad == 7)
+		*buttons |= WPAD_BUTTON_UP;
+	else if (input->dpad == 3 || input->dpad == 4 || input->dpad == 5)
+		*buttons |= WPAD_BUTTON_DOWN;
+	if (input->dpad == 1 || input->dpad == 2 || input->dpad == 3)
+		*buttons |= WPAD_BUTTON_RIGHT;
+	else if (input->dpad == 5 || input->dpad == 6 || input->dpad == 7)
+		*buttons |= WPAD_BUTTON_LEFT;
 	if (input->cross)
 		*buttons |= WPAD_BUTTON_A;
 	if (input->circle)

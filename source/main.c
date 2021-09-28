@@ -85,7 +85,7 @@ int __IOS_LoadStartupIOS(void)
 	data_elf info;
 
 	/* Load IOS before C runtime to have MLOAD before CONF_Init() is called */
-	IOS_ReloadIOS(249);
+	IOS_ReloadIOS(252);
 
 	mload_init();
 	mload_set_log_mode(DEBUG_BUFFER);

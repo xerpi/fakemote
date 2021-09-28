@@ -139,13 +139,57 @@ static int wiimote_send_ack(const fake_wiimote_t *wiimote, u8 rpt_id, u8 error_c
 				     INPUT_REPORT_ID_ACK, &ack, sizeof(ack));
 }
 
+/* Disconnection helper functions */
+
+static inline int disconnect_l2cap_channel(u16 hci_con_handle, l2cap_channel_info_t *info)
+{
+	int ret;
+	ret = l2cap_send_disconnect_req(hci_con_handle, info->remote_cid, info->local_cid);
+	info->valid = false;
+	return ret;
+}
+
+static int fake_wiimote_disconnect(fake_wiimote_t *wiimote)
+{
+	int ret = 0, ret2;
+
+	if (l2cap_channel_is_accepted(&wiimote->psm_sdp_chn)) {
+		ret2 = disconnect_l2cap_channel(wiimote->hci_con_handle, &wiimote->psm_sdp_chn);
+		if (ret2 < 0 && ret == 0)
+			ret = ret2;
+	}
+
+	if (l2cap_channel_is_accepted(&wiimote->psm_hid_cntl_chn)) {
+		ret2 = disconnect_l2cap_channel(wiimote->hci_con_handle, &wiimote->psm_hid_cntl_chn);
+		if (ret2 < 0 && ret == 0)
+			ret = ret2;
+	}
+
+	if (l2cap_channel_is_accepted(&wiimote->psm_hid_intr_chn)) {
+		ret2 = disconnect_l2cap_channel(wiimote->hci_con_handle, &wiimote->psm_hid_intr_chn);
+		if (ret2 < 0 && ret == 0)
+			ret = ret2;
+	}
+
+	if (wiimote->baseband_state == BASEBAND_STATE_COMPLETE) {
+		ret2 = enqueue_hci_event_discon_compl(wiimote->hci_con_handle,
+						      0, 0x13 /* User Ended Connection */);
+		if (ret2 < 0 && ret == 0)
+			ret = ret2;
+	}
+
+	wiimote->active = false;
+
+	return ret;
+}
+
 /* Init state */
 
 void fake_wiimote_mgr_init(void)
 {
 	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
 		fake_wiimotes[i].active = false;
-		fake_wiimotes[i].bdaddr = (bdaddr_t){.b = {0x11 + i, 0x22, 0x33, 0x44, 0x55, 0x66}};
+		fake_wiimotes[i].bdaddr = FAKE_WIIMOTE_BDADDR(i);
 		fake_wiimotes[i].baseband_state = BASEBAND_STATE_INACTIVE;
 		fake_wiimotes[i].acl_state = L2CAP_CHANNEL_STATE_INACTIVE_INACTIVE;
 		fake_wiimotes[i].psm_sdp_chn.valid = false;
@@ -177,15 +221,7 @@ bool fake_wiimote_mgr_add_input_device(void *usrdata, const input_device_ops_t *
 
 bool fake_wiimote_mgr_remove_input_device(fake_wiimote_t *wiimote)
 {
-	int ret;
-
-	/* TODO: Send L2CAP disconnect requests? */
-	ret = enqueue_hci_event_discon_compl(wiimote->hci_con_handle,
-					     0, 0x13 /* User Ended Connection */);
-	if (ret == IOS_OK)
-		wiimote->active = false;
-
-	return true;
+	return fake_wiimote_disconnect(wiimote) == IOS_OK;
 }
 
 int fake_wiimote_mgr_report_input(fake_wiimote_t *wiimote, u16 buttons)
@@ -286,7 +322,7 @@ bool fake_wiimote_mgr_handle_hci_cmd_accept_con(const bdaddr_t *bdaddr, u8 role)
 			continue;
 
 		/* Connection accepted to our fake wiimote */
-		DEBUG("Connection accepted for our fake wiimote!\n");
+		DEBUG("Connection accepted for fake Wiimote %d!\n", i);
 
 		/* The Accept_Connection_Request command will cause the Command Status
 		   event to be sent from the Host Controller when the Host Controller
@@ -297,7 +333,7 @@ bool fake_wiimote_mgr_handle_hci_cmd_accept_con(const bdaddr_t *bdaddr, u8 role)
 
 		fake_wiimotes[i].baseband_state = BASEBAND_STATE_COMPLETE;
 		fake_wiimotes[i].hci_con_handle = hci_con_handle_virt_alloc();
-		DEBUG("Our fake wiimote got HCI con_handle: 0x%x\n", fake_wiimotes[i].hci_con_handle);
+		DEBUG("Fake Wiimote %d got HCI con_handle: 0x%x\n", i, fake_wiimotes[i].hci_con_handle);
 
 		/* We can start the ACL (L2CAP) linking now */
 		fake_wiimotes[i].acl_state = ACL_STATE_LINKING;
@@ -322,16 +358,14 @@ bool fake_wiimote_mgr_handle_hci_cmd_accept_con(const bdaddr_t *bdaddr, u8 role)
 
 bool fake_wiimote_mgr_handle_hci_cmd_reject_con(const bdaddr_t *bdaddr, u8 reason)
 {
-	int ret;
-
 	/* Check if the bdaddr belongs to a fake wiimote */
 	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
 		if (memcmp(bdaddr, &fake_wiimotes[i].bdaddr, sizeof(bdaddr_t) != 0))
 			continue;
 
-		/* Connection accepted to our fake wiimote */
-		DEBUG("Connection to a fake wiimote rejected!\n");
-		fake_wiimotes[i].active = false;
+		/* Connection rejected to our fake wiimote. Disconnect */
+		DEBUG("Connection to fake Wiimote %d rejected!\n", i);
+		fake_wiimote_disconnect(&fake_wiimotes[i]);
 		return true;
 	}
 
@@ -346,7 +380,7 @@ bool fake_wiimote_mgr_handle_hci_cmd_from_host(u16 hci_con_handle, const hci_cmd
 		    (fake_wiimotes[i].hci_con_handle != hci_con_handle))
 			continue;
 
-		/* TODO */
+		/* Do we have to do anything here? We already have handle_hci_cmd_xxxx calls. */
 		DEBUG("FAKEDEV H > C HCI CMD: 0x%x\n", le16toh(hdr->opcode));
 		return true;
 	}
@@ -441,12 +475,12 @@ static void handle_l2cap_signal_channel(fake_wiimote_t *wiimote, u8 code, u8 ide
 
 		/* libogc/master/lwbt/l2cap.c#L318 sets it to the "dcid" and not to
 		 * the "result" field (and scid to 0)... */
-		if ((dcid == L2CAP_PSM_NOT_SUPPORTED) &&
-		    (scid == 0)) {
-			assert(1);
+		if ((result != L2CAP_SUCCESS) || ((dcid == L2CAP_PSM_NOT_SUPPORTED) &&
+						  (scid == 0))) {
+			fake_wiimote_disconnect(wiimote);
+			break;
 		}
 
-		assert(result == L2CAP_SUCCESS);
 		assert(status == L2CAP_NO_INFO);
 		info = get_channel_info(wiimote, scid);
 		assert(info);
@@ -613,7 +647,7 @@ static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data,
 		break;
 	}
 	default:
-		printf("Unhandled output report: 0x%x\n", data[0]);
+		DEBUG("Unhandled output report: 0x%x\n", data[0]);
 		break;
 	}
 }

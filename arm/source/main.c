@@ -366,6 +366,23 @@ int l2cap_send_connect_req(u16 hci_con_handle, u16 psm, u16 scid)
 	return inject_msg_to_usb_bulk_in_ready_queue(msg);
 }
 
+int l2cap_send_disconnect_req(u16 hci_con_handle, u16 dcid, u16 scid)
+{
+	injmessage *msg;
+	l2cap_discon_req_cp *req;
+
+	msg = alloc_l2cap_cmd_msg((void **)&req, hci_con_handle, L2CAP_DISCONNECT_REQ,
+				  L2CAP_DISCONNECT_REQ, sizeof(*req));
+	if (!msg)
+		return IOS_ENOMEM;
+
+	/* Fill message data */
+	req->dcid = htole16(dcid);
+	req->scid = htole16(scid);
+
+	return inject_msg_to_usb_bulk_in_ready_queue(msg);
+}
+
 int l2cap_send_config_req(u16 hci_con_handle, u16 remote_cid, u16 mtu, u16 flush_time_out)
 {
 	injmessage *msg;
@@ -775,6 +792,60 @@ static s32 Patch_OH1UsbModule(void)
 	return 0;
 }
 
+static int patch_conf_bt_dinf(void)
+{
+	static u8 conf_buffer[0x4000];
+	static struct conf_pads_setting conf_pads;
+	bdaddr_t bdaddr;
+	int fd, ret, start, count;
+
+	/* Read SYSCONF */
+	fd = os_open("/shared2/sys/SYSCONF", IOS_OPEN_READ);
+	if (fd < 0)
+		return fd;
+	ret = os_read(fd, conf_buffer, sizeof(conf_buffer));
+	os_close(fd);
+	if (ret != sizeof(conf_buffer))
+		return ret;
+
+	/* Get paired Wiimote configuration */
+	ret = conf_get(conf_buffer, "BT.DINF", &conf_pads, sizeof(conf_pads));
+	DEBUG("conf_get(): %d\n", ret);
+	DEBUG("  num_registered: %d\n", conf_pads.num_registered);
+	for (int i = 0; i < conf_pads.num_registered; i++)
+		DEBUG("  registered[%d]: \"%s\"\n", i, conf_pads.registered[i].name);
+
+	/* Give at least the last two entries (out of 10) for fake Wiimotes */
+	count = conf_pads.num_registered > 8 ? 2 : (CONF_PAD_MAX_REGISTERED - conf_pads.num_registered);
+	start = CONF_PAD_MAX_REGISTERED - count;
+	for (int i = 0; i < count; i++) {
+		bdaddr = FAKE_WIIMOTE_BDADDR(i);
+		/* Copy MAC address */
+		for (int j = 0; j < BLUETOOTH_BDADDR_SIZE; j++)
+			conf_pads.registered[start + i].bdaddr[j] =
+				bdaddr.b[BLUETOOTH_BDADDR_SIZE - 1 - j];
+		/* Generate and copy the name */
+		snprintf(conf_pads.registered[start + i].name,
+			 sizeof(conf_pads.registered[start + i].name), "Fake Wiimote %d", i);
+	}
+	conf_pads.num_registered = CONF_PAD_MAX_REGISTERED;
+
+	/* Write new paired Wiimote configuration back to the buffer */
+	conf_set(conf_buffer, "BT.DINF", &conf_pads, sizeof(conf_pads));
+
+	/* Write updated SYSCONF back */
+	fd = os_open("/shared2/sys/SYSCONF", IOS_OPEN_WRITE);
+	if (fd < 0)
+		return fd;
+
+	ret = os_write(fd, conf_buffer, sizeof(conf_buffer));
+	os_close(fd);
+	if (ret != sizeof(conf_buffer))
+		return ret;
+
+	return 0;
+}
+
 int main(void)
 {
 	int ret;
@@ -782,32 +853,7 @@ int main(void)
 	/* Print info */
 	printf("Hello world from Starlet!\n");
 
-#if 0
-	static u8 conf_buffer[0x4000] ATTRIBUTE_ALIGN(32);
-	static struct conf_pads_setting conf_pads ATTRIBUTE_ALIGN(32);
-
-	int fd = os_open("/shared2/sys/SYSCONF", IOS_OPEN_READ);
-	os_read(fd, conf_buffer, sizeof(conf_buffer));
-	os_close(fd);
-
-	ret = conf_get(conf_buffer, "BT.DINF", &conf_pads, sizeof(conf_pads));
-	DEBUG("conf_get(): %d\n", ret);
-	DEBUG("  num_registered: %d\n", conf_pads.num_registered);
-	DEBUG("  registered[0]: %s\n", conf_pads.registered[0].name);
-	DEBUG("  registered[1]: %s\n", conf_pads.registered[1].name);
-
-	bdaddr_t bdaddr = {.b = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66}};
-	for (int i = 0; i < 6; i++)
-		conf_pads.registered[1].bdaddr[i] = bdaddr.b[5 - i];
-	conf_pads.num_registered = 2;
-	memset(conf_pads.registered[1].name, 0, sizeof(conf_pads.registered[1].name));
-	strcpy(conf_pads.registered[1].name, "UwU");
-	conf_set(conf_buffer, "BT.DINF", &conf_pads, sizeof(conf_pads));
-
-	fd = os_open("/shared2/sys/SYSCONF", IOS_OPEN_WRITE);
-	os_write(fd, conf_buffer, sizeof(conf_buffer));
-	os_close(fd);
-#endif
+	patch_conf_bt_dinf();
 
 	/* System patchers */
 	patcher patchers[] = {
