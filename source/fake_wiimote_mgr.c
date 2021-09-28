@@ -132,7 +132,7 @@ static inline int send_hid_input_report(u16 hci_con_handle, u16 dcid, u8 report_
 static int wiimote_send_ack(const fake_wiimote_t *wiimote, u8 rpt_id, u8 error_code)
 {
 	struct wiimote_input_report_ack_t ack ATTRIBUTE_ALIGN(32);
-	ack.buttons = 0;
+	ack.buttons = wiimote->buttons;
 	ack.rpt_id = rpt_id;
 	ack.error_code = error_code;
 	return send_hid_input_report(wiimote->hci_con_handle, wiimote->psm_hid_intr_chn.remote_cid,
@@ -615,8 +615,8 @@ static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data,
 	case OUTPUT_REPORT_ID_STATUS: {
 		struct wiimote_input_report_status_t status;
 		memset(&status, 0, sizeof(status));
-		status.extension = 1;
-		status.buttons = 0;
+		status.extension = 0;
+		status.buttons = wiimote->buttons;
 		send_hid_input_report(wiimote->hci_con_handle,
 				     wiimote->psm_hid_intr_chn.remote_cid,
 				     INPUT_REPORT_ID_STATUS, &status, sizeof(status));
@@ -677,7 +677,7 @@ static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data,
 				break;
 			}
 
-			reply.buttons = 0;
+			reply.buttons = wiimote->buttons;
 			reply.size_minus_one = read_size - 1;
 			reply.error = error;
 			reply.address = offset;
