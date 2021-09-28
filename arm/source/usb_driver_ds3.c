@@ -115,6 +115,31 @@ static inline int ds3_request_data(usb_input_device_t *device)
 							   sizeof(device->usb_async_resp));
 }
 
+static int ds3_set_leds_rumble(usb_input_device_t *device, u8 led)
+{
+	static const u8 led_pattern[] = {0x0, 0x02, 0x04, 0x08, 0x10, 0x12, 0x14, 0x18};
+
+	u8 buf[] ATTRIBUTE_ALIGN(32) = {
+		0x00,                         /* Padding */
+		0x00, 0x00, 0x00, 0x00,       /* Rumble (r, r, l, l) */
+		0x00, 0x00, 0x00, 0x00,       /* Padding */
+		0x00,                         /* LED_1 = 0x02, LED_2 = 0x04, ... */
+		0xff, 0x27, 0x10, 0x00, 0x32, /* LED_4 */
+		0xff, 0x27, 0x10, 0x00, 0x32, /* LED_3 */
+		0xff, 0x27, 0x10, 0x00, 0x32, /* LED_2 */
+		0xff, 0x27, 0x10, 0x00, 0x32, /* LED_1 */
+		0x00, 0x00, 0x00, 0x00, 0x00  /* LED_5 (not soldered) */
+	};
+
+	buf[9] = led_pattern[led % ARRAY_SIZE(led_pattern)];
+
+	return usb_device_driver_issue_ctrl_transfer(device,
+						     USB_REQTYPE_INTERFACE_SET,
+						     USB_REQ_SETREPORT,
+						     (USB_REPTYPE_OUTPUT << 8) | 0x01, 0,
+						     buf, sizeof(buf));
+}
+
 int ds3_driver_ops_init(usb_input_device_t *device)
 {
 	int ret;
@@ -132,33 +157,13 @@ int ds3_driver_ops_init(usb_input_device_t *device)
 
 int ds3_driver_ops_disconnect(usb_input_device_t *device)
 {
-	/* Do nothing */
+	ds3_set_leds_rumble(device, 0);
 	return 0;
 }
 
 int ds3_driver_ops_slot_changed(usb_input_device_t *device, u8 slot)
 {
-	static const u8 led_pattern[] = {0x0, 0x02, 0x04, 0x08, 0x10, 0x12, 0x14, 0x18};
-
-	u8 buf[] ATTRIBUTE_ALIGN(32) = {
-		0x00,                         /* Padding */
-		0x00, 0x00, 0x00, 0x00,       /* Rumble (r, r, l, l) */
-		0x00, 0x00, 0x00, 0x00,       /* Padding */
-		0x00,                         /* LED_1 = 0x02, LED_2 = 0x04, ... */
-		0xff, 0x27, 0x10, 0x00, 0x32, /* LED_4 */
-		0xff, 0x27, 0x10, 0x00, 0x32, /* LED_3 */
-		0xff, 0x27, 0x10, 0x00, 0x32, /* LED_2 */
-		0xff, 0x27, 0x10, 0x00, 0x32, /* LED_1 */
-		0x00, 0x00, 0x00, 0x00, 0x00  /* LED_5 (not soldered) */
-	};
-
-	buf[9] = led_pattern[slot % ARRAY_SIZE(led_pattern)];
-
-	return usb_device_driver_issue_ctrl_transfer(device,
-						     USB_REQTYPE_INTERFACE_SET,
-						     USB_REQ_SETREPORT,
-						     (USB_REPTYPE_OUTPUT << 8) | 0x01, 0,
-						     buf, sizeof(buf));
+	return ds3_set_leds_rumble(device, slot);
 }
 
 int ds3_driver_ops_usb_async_resp(usb_input_device_t *device)

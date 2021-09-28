@@ -153,6 +153,12 @@ static int fake_wiimote_disconnect(fake_wiimote_t *wiimote)
 {
 	int ret = 0, ret2;
 
+	/* If we had a L2CAP Interrupt channel connection, notify the driver of disconnection */
+	if (l2cap_channel_is_complete(&wiimote->psm_hid_intr_chn)) {
+		if (wiimote->input_device_ops->disconnect)
+			wiimote->input_device_ops->disconnect(wiimote->usrdata);
+	}
+
 	if (l2cap_channel_is_accepted(&wiimote->psm_sdp_chn)) {
 		ret2 = disconnect_l2cap_channel(wiimote->hci_con_handle, &wiimote->psm_sdp_chn);
 		if (ret2 < 0 && ret == 0)
@@ -356,6 +362,23 @@ bool fake_wiimote_mgr_handle_hci_cmd_accept_con(const bdaddr_t *bdaddr, u8 role)
 	return false;
 }
 
+bool fake_wiimote_mgr_handle_hci_cmd_disconnect(u16 hci_con_handle, u8 reason)
+{
+	/* Check if the HCI connection handle belongs to a fake wiimote */
+	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
+		if (!fake_wiimote_is_connected(&fake_wiimotes[i]) ||
+		    (fake_wiimotes[i].hci_con_handle != hci_con_handle))
+			continue;
+
+		/* Host wants disconnection to our fake wiimote. Disconnect */
+		DEBUG("Host requested disconnection of fake Wiimote %d.\n", i);
+		fake_wiimote_disconnect(&fake_wiimotes[i]);
+		return true;
+	}
+
+	return false;
+}
+
 bool fake_wiimote_mgr_handle_hci_cmd_reject_con(const bdaddr_t *bdaddr, u8 reason)
 {
 	/* Check if the bdaddr belongs to a fake wiimote */
@@ -372,16 +395,12 @@ bool fake_wiimote_mgr_handle_hci_cmd_reject_con(const bdaddr_t *bdaddr, u8 reaso
 	return false;
 }
 
-bool fake_wiimote_mgr_handle_hci_cmd_from_host(u16 hci_con_handle, const hci_cmd_hdr_t *hdr)
+bool fake_wiimote_mgr_hci_handle_belongs_to_fake_wiimote(u16 hci_con_handle)
 {
 	/* Check if the HCI connection handle belongs to a fake wiimote */
 	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
-		if (!fake_wiimote_is_connected(&fake_wiimotes[i]) ||
-		    (fake_wiimotes[i].hci_con_handle != hci_con_handle))
-			continue;
-
-		/* Do we have to do anything here? We already have handle_hci_cmd_xxxx calls. */
-		DEBUG("FAKEDEV H > C HCI CMD: 0x%x\n", le16toh(hdr->opcode));
+		if (fake_wiimote_is_connected(&fake_wiimotes[i]) &&
+		    (fake_wiimotes[i].hci_con_handle == hci_con_handle))
 		return true;
 	}
 
@@ -519,6 +538,26 @@ static void handle_l2cap_signal_channel(fake_wiimote_t *wiimote, u8 code, u8 ide
 
 		/* Mark channel as complete!  */
 		info->state = L2CAP_CHANNEL_STATE_INACTIVE_COMPLETE;
+		break;
+	}
+	case L2CAP_DISCONNECT_REQ: {
+		const l2cap_discon_req_cp *req = payload;
+		u16 dcid = le16toh(req->dcid);
+		u16 scid = le16toh(req->scid);
+		DEBUG("  L2CAP_DISCONNECT_REQ: dcid: 0x%x, scid: 0x%x\n", dcid, scid);
+
+		info = get_channel_info(wiimote, scid);
+		assert(info);
+
+		/* If it's the L2CAP Interrupt channel connection, notify the driver of disconnection */
+		if ((info->psm == L2CAP_PSM_HID_INTR) && l2cap_channel_is_complete(info)) {
+			if (wiimote->input_device_ops->disconnect)
+				wiimote->input_device_ops->disconnect(wiimote->usrdata);
+			info->valid = false;
+		}
+
+		/* Send disconnect response */
+		l2cap_send_disconnect_rsp(wiimote->hci_con_handle, ident, dcid, scid);
 		break;
 	}
 	}

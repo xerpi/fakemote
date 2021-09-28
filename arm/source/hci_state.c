@@ -119,7 +119,7 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 		u16 phys, virt = le16toh(cp->con_handle); \
 		/* First check if the virtual connection handle corresponds to a fake wiimote. \
 		 * If so, we don't have to forward the HCI command to the USB BT dongle. */ \
-		if (fake_wiimote_mgr_handle_hci_cmd_from_host(virt, hdr)) { \
+		if (fake_wiimote_mgr_hci_handle_belongs_to_fake_wiimote(virt)) { \
 			*fwd_to_usb = false; \
 			break; \
 		} \
@@ -133,6 +133,21 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 	case HCI_CMD_CREATE_CON:
 		DEBUG("HCI_CMD_CREATE_CON\n");
 		break;
+	case HCI_CMD_DISCONNECT: {
+		hci_discon_cp *cp = payload;
+		u16 phys, virt = le16toh(cp->con_handle);
+		/* If the host wants to disconnect a fake Wiimote, don't
+		 * forward this packet to the real USB BT dongle! */
+		if (fake_wiimote_mgr_handle_hci_cmd_disconnect(virt, cp->reason)) {
+			*fwd_to_usb = false;
+			break;
+		}
+		/* Else, do HCI connection handle translation */
+		assert(hci_virt_con_handle_get_phys(virt, &phys));
+		cp->con_handle = htole16(phys);
+		os_sync_after_write(&cp->con_handle, sizeof(cp->con_handle));
+		break;
+	}
 	case HCI_CMD_ACCEPT_CON: {
 		char mac[MAC_STR_LEN];
 		hci_accept_con_cp *cp = payload;
@@ -186,7 +201,6 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 		hci_unit_class[2] = cp->uclass[2];
 		break;
 	}
-	TRANSLATE_CON_HANDLE(HCI_CMD_DISCONNECT, hci_discon_cp) /* TODO */
 	TRANSLATE_CON_HANDLE(HCI_CMD_ADD_SCO_CON, hci_add_sco_con_cp)
 	TRANSLATE_CON_HANDLE(HCI_CMD_CHANGE_CON_PACKET_TYPE, hci_change_con_pkt_type_cp)
 	TRANSLATE_CON_HANDLE(HCI_CMD_AUTH_REQ, hci_auth_req_cp)

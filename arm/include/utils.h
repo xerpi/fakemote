@@ -46,6 +46,7 @@ int enqueue_hci_event_role_change(const bdaddr_t *bdaddr, u8 role);
 int l2cap_send_msg(u16 hci_con_handle, u16 dcid, const void *data, u16 size);
 int l2cap_send_connect_req(u16 hci_con_handle, u16 psm, u16 scid);
 int l2cap_send_disconnect_req(u16 hci_con_handle, u16 dcid, u16 scid);
+int l2cap_send_disconnect_rsp(u16 hci_con_handle, u8 ident, u16 dcid, u16 scid);
 int l2cap_send_config_req(u16 hci_con_handle, u16 remote_cid, u16 mtu, u16 flush_time_out);
 int l2cap_send_config_rsp(u16 hci_con_handle, u16 remote_cid, u8 ident, const u8 *options, u32 options_len);
 

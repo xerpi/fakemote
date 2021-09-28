@@ -383,6 +383,23 @@ int l2cap_send_disconnect_req(u16 hci_con_handle, u16 dcid, u16 scid)
 	return inject_msg_to_usb_bulk_in_ready_queue(msg);
 }
 
+int l2cap_send_disconnect_rsp(u16 hci_con_handle, u8 ident, u16 dcid, u16 scid)
+{
+	injmessage *msg;
+	l2cap_discon_rsp_cp *req;
+
+	msg = alloc_l2cap_cmd_msg((void **)&req, hci_con_handle, L2CAP_DISCONNECT_RSP,
+				  ident, sizeof(*req));
+	if (!msg)
+		return IOS_ENOMEM;
+
+	/* Fill message data */
+	req->dcid = htole16(dcid);
+	req->scid = htole16(scid);
+
+	return inject_msg_to_usb_bulk_in_ready_queue(msg);
+}
+
 int l2cap_send_config_req(u16 hci_con_handle, u16 remote_cid, u16 mtu, u16 flush_time_out)
 {
 	injmessage *msg;

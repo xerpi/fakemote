@@ -132,7 +132,7 @@ int ds4_driver_ops_init(usb_input_device_t *device)
 
 int ds4_driver_ops_disconnect(usb_input_device_t *device)
 {
-	/* Do nothing */
+	ds4_set_leds_rumble(device, 0, 0, 0);
 	return 0;
 }
 
