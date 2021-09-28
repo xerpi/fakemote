@@ -25,6 +25,7 @@
 #ifndef _IPC_H_
 #define _IPC_H_
 
+#include "syscalls.h"
 #include "types.h"
 
 #define IPC_MAXPATH_LEN		64
@@ -97,9 +98,32 @@ typedef struct ipcmessage {
 	};
 } ATTRIBUTE_PACKED ipcmessage;
 
+/* Functions */
 
-/* Prototypes */
-void InvalidateVector(ioctlv *vector, u32 inlen, u32 iolen);
-void FlushVector(ioctlv *vector, u32 inlen, u32 iolen);
+static inline void InvalidateVector(ioctlv *vector, u32 inlen, u32 iolen)
+{
+	u32 cnt;
+
+	for (cnt = 0; cnt < (inlen + iolen); cnt++) {
+		void *buffer = vector[cnt].data;
+		u32   len    = vector[cnt].len;
+
+		/* Invalidate cache */
+		os_sync_before_read(buffer, len);
+	}
+}
+
+static inline void FlushVector(ioctlv *vector, u32 inlen, u32 iolen)
+{
+	u32 cnt;
+
+	for (cnt = inlen; cnt < (inlen + iolen); cnt++) {
+		void *buffer = vector[cnt].data;
+		u32   len    = vector[cnt].len;
+
+		/* Flush cache */
+		os_sync_after_write(buffer, len);
+	}
+}
 
 #endif

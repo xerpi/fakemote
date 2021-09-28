@@ -32,10 +32,8 @@ TARGET	=	cios-lib
 # Objects
 OBJS	=	direct_syscalls.o	\
 		ios.o			\
-		ipc.o			\
 		log.o			\
 		mem.o			\
-		stealth.o		\
 		str_utils.o		\
 		swi_mload.o		\
 		syscalls.o		\

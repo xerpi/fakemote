@@ -26,7 +26,6 @@
 #define _IOS_SYSCALLS_H_
 
 #include "ios.h"
-#include "ipc.h"
 #include "types.h"
 
 #ifdef CIOSLIB_DEBUG
@@ -56,6 +55,9 @@
 /* Message send/receive flags */
 #define IOS_MESSAGE_BLOCK	0
 #define IOS_MESSAGE_NOBLOCK	1
+
+/* Forward declarations */
+typedef struct iovec ioctlv;
 
 /* IOS syscalls */
 s32   os_thread_create(int (*entry)(void *arg), void *arg, void *stack, u32 stacksize, u32 priority, s32 autostart);

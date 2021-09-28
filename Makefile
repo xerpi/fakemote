@@ -1,149 +1,65 @@
-#---------------------------------------------------------------------------------
-# Clear the implicit built in rules
-#---------------------------------------------------------------------------------
-.SUFFIXES:
-#---------------------------------------------------------------------------------
-ifeq ($(strip $(DEVKITPPC)),)
-$(error "Please set DEVKITPPC in your environment. export DEVKITPPC=<path to>devkitPPC")
-endif
+# devkitARM path
+DEVKITARM ?=	/opt/devkitARM
 
-include $(DEVKITPPC)/wii_rules
+# Prefix
+PREFIX	=	$(DEVKITARM)/bin/arm-none-eabi-
 
-#---------------------------------------------------------------------------------
-# TARGET is the name of the output
-# BUILD is the directory where object files & intermediate files will be placed
-# SOURCES is a list of directories containing source code
-# INCLUDES is a list of directories containing extra header files
-#---------------------------------------------------------------------------------
-TARGET		:=	$(notdir $(CURDIR))
-BUILD		:=	build
-SOURCES		:=	source
-DATA		:=	data
-INCLUDES	:=	include
-ARM_MODULE	:=	arm/test-module.elf
+# Executables
+CC	=	$(PREFIX)gcc
+LD	=	$(PREFIX)gcc
+STRIP	=	stripios
 
-#---------------------------------------------------------------------------------
-# options for code generation
-#---------------------------------------------------------------------------------
-
-CFLAGS	= -g -O2 -Wall $(MACHDEP) $(INCLUDE)
-CXXFLAGS	=	$(CFLAGS)
-
-LDFLAGS	=	-g $(MACHDEP) -Wl,-Map,$(notdir $@).map
-
-#---------------------------------------------------------------------------------
-# any extra libraries we wish to link with the project
-#---------------------------------------------------------------------------------
-LIBS	:=	-lwiiuse -lbte -logc -lm
-
-#---------------------------------------------------------------------------------
-# list of directories containing libraries, this must be the top level containing
-# include and lib
-#---------------------------------------------------------------------------------
-LIBDIRS	:=
-
-#---------------------------------------------------------------------------------
-# no real need to edit anything past this point unless you need to add additional
-# rules for different file extensions
-#---------------------------------------------------------------------------------
-ifneq ($(BUILD),$(notdir $(CURDIR)))
-#---------------------------------------------------------------------------------
-
-export OUTPUT	:=	$(CURDIR)/$(TARGET)
-
-export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
-					$(foreach dir,$(DATA),$(CURDIR)/$(dir))
-
-export DEPSDIR	:=	$(CURDIR)/$(BUILD)
-
-#---------------------------------------------------------------------------------
-# automatically build a list of object files for our project
-#---------------------------------------------------------------------------------
-CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
-CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
-sFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
-SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.S)))
-BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
-
-#---------------------------------------------------------------------------------
-# use CXX for linking C++ projects, CC for standard C
-#---------------------------------------------------------------------------------
-ifeq ($(strip $(CPPFILES)),)
-	export LD	:=	$(CC)
+# Date & Time
+ifdef SOURCE_DATE_EPOCH
+    BUILD_DATE ?= $(shell LC_ALL=C date -u -d "@$(SOURCE_DATE_EPOCH)" "+'%b %e %Y'" 2>/dev/null || LC_ALL=C date -u -r "$(SOURCE_DATE_EPOCH)" "+'%b %e %Y'" 2>/dev/null || LC_ALL=C date -u "+'%b %e %Y'")
+    BUILD_TIME ?= $(shell LC_ALL=C date -u -d "@$(SOURCE_DATE_EPOCH)" "+'%T'" 2>/dev/null || LC_ALL=C date -u -r "$(SOURCE_DATE_EPOCH)" "+'%T'" 2>/dev/null || LC_ALL=C date -u "+'%T'")
 else
-	export LD	:=	$(CXX)
+    BUILD_DATE ?= $(shell LC_ALL=C date "+'%b %e %Y'")
+    BUILD_TIME ?= $(shell LC_ALL=C date "+'%T'")
 endif
 
-export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES)) $(notdir $(ARM_MODULE)).o
-export OFILES_SOURCES := $(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(sFILES:.s=.o) $(SFILES:.S=.o)
-export OFILES := $(OFILES_BIN) $(OFILES_SOURCES)
+# Flags
+ARCH	=	-mcpu=arm926ej-s -mthumb -mthumb-interwork -mbig-endian
+CFLAGS	=	$(ARCH) -Iinclude -Icios-lib -fomit-frame-pointer -O1 -g3 -Wall -Wstrict-prototypes -ffunction-sections -D__TIME__=\"$(BUILD_TIME)\" -D__DATE__=\"$(BUILD_DATE)\" -Wno-builtin-macro-redefined -nostdlib $(EXTRA_CFLAGS)
+LDFLAGS	=	$(ARCH) -nostartfiles -nostdlib -Wl,-T,link.ld,-Map,$(TARGET).map -Wl,--gc-sections -Wl,-static
 
-export HFILES := $(addsuffix .h,$(subst .,_,$(BINFILES)))
+# Libraries
+LIBS	=	cios-lib/cios-lib.a
 
-#---------------------------------------------------------------------------------
-# build a list of include paths
-#---------------------------------------------------------------------------------
-export INCLUDE	:=	$(foreach dir,$(INCLUDES), -iquote $(CURDIR)/$(dir)) \
-					$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
-					-I$(CURDIR)/$(BUILD) \
-					-I$(LIBOGC_INC)
+# Target
+TARGET	=	FAKEMOTE
 
-#---------------------------------------------------------------------------------
-# build a list of library paths
-#---------------------------------------------------------------------------------
-export LIBPATHS	:= -L$(LIBOGC_LIB) $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
+# Objects
+OBJS	= source/start.o source/main.o source/hci_state.o source/fake_wiimote_mgr.o source/libc.o \
+	  source/conf.o source/usb_hid.o source/usb_driver_ds3.o source/usb_driver_ds4.o
 
-export OUTPUT	:=	$(CURDIR)/$(TARGET)
-.PHONY: $(BUILD) clean
+# Dependency files
+DEPS	= $(OBJS:.o=.d)
 
-#---------------------------------------------------------------------------------
-$(BUILD):
-	@[ -d $@ ] || mkdir -p $@
-	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
+$(TARGET).app: $(TARGET).elf
+	@echo -e " STRIP\t$@"
+	@$(STRIP) $< $@
 
-#---------------------------------------------------------------------------------
+$(TARGET).elf: $(OBJS) $(LIBS) link.ld
+	@echo -e " LD\t$@"
+	@$(LD) $(LDFLAGS) $(OBJS) $(LIBS) -lgcc -o $@
+
+%.o: %.s
+	@echo -e " CC\t$@"
+	@$(CC) $(CFLAGS) -MMD -MP -D_LANGUAGE_ASSEMBLY -c -x assembler-with-cpp -o $@ $<
+
+%.o: %.c
+	@echo -e " CC\t$@"
+	@$(CC) $(CFLAGS) -MMD -MP -c -o $@ $<
+
+cios-lib/cios-lib.a:
+	@$(MAKE) -C cios-lib
+
+.PHONY: clean
+
 clean:
-	@echo clean ...
-	@rm -fr $(BUILD) $(OUTPUT).elf $(OUTPUT).dol
-	@$(MAKE) -C arm clean
+	@echo -e "Cleaning..."
+	@rm -f $(OBJS) $(DEPS) $(TARGET).app $(TARGET).elf $(TARGET).elf.orig $(TARGET).map
+	@$(MAKE) -C cios-lib clean
 
-#---------------------------------------------------------------------------------
-run:
-	@wiiload $(TARGET).dol
-
-#---------------------------------------------------------------------------------
-else
-
-DEPENDS	:=	$(OFILES:.o=.d)
-
-#---------------------------------------------------------------------------------
-# main targets
-#---------------------------------------------------------------------------------
-$(OUTPUT).dol: $(OUTPUT).elf
-$(OUTPUT).elf: $(OFILES)
-
-$(OFILES_SOURCES) : $(HFILES)
-
-#---------------------------------------------------------------------------------
-# This rule links in binary data with the .jpg extension
-#---------------------------------------------------------------------------------
-%.jpg.o	%_jpg.h :	%.jpg
-#---------------------------------------------------------------------------------
-	@echo $(notdir $<)
-	$(bin2o)
-
-#---------------------------------------------------------------------------------
-# This rule links in binary data for the ARM module
-#---------------------------------------------------------------------------------
-$(notdir $(ARM_MODULE).o) :       $(ARM_MODULE)
-#---------------------------------------------------------------------------------
-	@$(OBJCOPY) -I binary -O elf32-powerpc --binary-architecture powerpc ../$^ $@
-
-$(ARM_MODULE):
-	@$(MAKE) -C ../arm
-
--include $(DEPENDS)
-
-#---------------------------------------------------------------------------------
-endif
-#---------------------------------------------------------------------------------
+-include $(DEPS)
