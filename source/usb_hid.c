@@ -292,6 +292,12 @@ static int usb_device_ops_disconnect(void *usrdata)
 	if (device->driver->disconnect)
 		ret = device->driver->disconnect(device);
 
+	/* Suspend the device */
+	usb_hid_v5_suspend_resume(device->host_fd, device->dev_id, 0, 0);
+
+	/* Release the device */
+	usb_hid_v5_release(device->host_fd, device->dev_id);
+
 	/* Set this device as not valid */
 	device->valid = false;
 

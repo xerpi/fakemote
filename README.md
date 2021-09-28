@@ -4,9 +4,9 @@ _An IOS module that fakes Wiimotes from the input of USB game controllers._
 ### Supported USB game controllers
 | Device Name              | Vendor Name | Vendor ID | Product ID |
 |:------------------------:|:-----------:|:---------:|:----------:|
-| PlayStation 3 Controller | Sony Corp.  | 054C      | 0268       |
-| DualShock 4 [CUH-ZCT1x]  | Sony Corp.  | 054C      | 05c4       |
-| DualShock 4 [CUH-ZCT2x]  | Sony Corp.  | 054C      | 09cc       |
+| PlayStation 3 Controller | Sony Corp.  | 054c      | 0268       |
+| DualShock 4 [CUH-ZCT1x]  | Sony Corp.  | 054c      | 05c4       |
+| DualShock 4 [CUH-ZCT2x]  | Sony Corp.  | 054c      | 09cc       |
 
 ## Installation
 1) [Download](https://wii.guide/assets/files/d2x-cIOS-Installer-Wii.zip) and copy `d2x-cIOS-Installer-Wii/v10/beta52`  to `sd:/apps/d2x-cIOS-Installer-Wii/v10/beta52/d2x-v10-beta52-fake-wiimote`
