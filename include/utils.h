@@ -13,6 +13,7 @@
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
+#define MIN2(x, y)	(((x) < (y)) ? (x) : (y))
 #define ROUNDUP32(x)	(((u32)(x) + 0x1f) & ~0x1f)
 #define ROUNDDOWN32(x)	(((u32)(x) - 0x1f) & ~0x1f)
 

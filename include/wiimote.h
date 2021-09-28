@@ -48,6 +48,9 @@
 #define EEPROM_I2C_ADDR		0x50
 #define EXTENSION_I2C_ADDR	0x52
 
+/* Memory sizes */
+#define EEPROM_FREE_SIZE	0x1700
+
 /* Offsets in Wiimote memory */
 #define WIIMOTE_EXP_MEM_CALIBR	0x20
 #define WIIMOTE_EXP_ID		0xFA

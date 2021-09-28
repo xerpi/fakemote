@@ -48,6 +48,13 @@ typedef struct fake_wiimote_t {
 	const input_device_ops_t *input_device_ops;
 	/* Input state */
 	u16 buttons;
+	/* Current in-progress "memory read request" */
+	struct {
+		u8 space;
+		u8 slave_address;
+		u16 address;
+		u16 size;
+	} read_request;
 } fake_wiimote_t;
 
 static fake_wiimote_t fake_wiimotes[MAX_FAKE_WIIMOTES];
@@ -204,6 +211,7 @@ void fake_wiimote_mgr_init(void)
 		fake_wiimotes[i].usrdata = NULL;
 		fake_wiimotes[i].input_device_ops = NULL;
 		fake_wiimotes[i].buttons = 0;
+		fake_wiimotes[i].read_request.size = 0;
 	}
 }
 
@@ -218,6 +226,7 @@ bool fake_wiimote_mgr_add_input_device(void *usrdata, const input_device_ops_t *
 			fake_wiimotes[i].baseband_state = BASEBAND_STATE_REQUEST_CONNECTION;
 			fake_wiimotes[i].usrdata = usrdata;
 			fake_wiimotes[i].input_device_ops = ops;
+			fake_wiimotes[i].read_request.size = 0;
 			fake_wiimotes[i].active = true;
 			return true;
 		}
@@ -262,6 +271,71 @@ static void check_send_config_for_new_channel(u16 hci_con_handle, l2cap_channel_
 	}
 }
 
+static void extension_read_data(void *dst, u16 address, u16 size)
+{
+	struct wiimote_extension_registers_t regs;
+	assert(address + size <= sizeof(regs));
+
+	memset(&regs, 0, sizeof(regs));
+	/* Good for now... */
+	memcpy(regs.identifier, EXT_NUNCHUNK_ID, sizeof(regs.identifier));
+
+	/* Copy the requested data from the extension registers */
+	memcpy(dst, ((u8 *)&regs) + address, size);
+}
+
+static void fake_wiimote_process_read_request(fake_wiimote_t *wiimote)
+{
+	struct wiimote_input_report_read_data_t reply;
+	u8 error = ERROR_CODE_SUCCESS;
+	u16 address, read_size = MIN2(16, wiimote->read_request.size);
+
+	if (read_size == 0)
+		return;
+
+	address = wiimote->read_request.address;
+	memset(&reply.data, 0, sizeof(reply.data));
+
+	switch (wiimote->read_request.space) {
+	case ADDRESS_SPACE_EEPROM:
+		if (address + wiimote->read_request.size > EEPROM_FREE_SIZE) {
+			 error = ERROR_CODE_INVALID_ADDRESS;
+		} else {
+			/* TODO */
+		}
+		break;
+	case ADDRESS_SPACE_I2C_BUS:
+	case ADDRESS_SPACE_I2C_BUS_ALT:
+		if (wiimote->read_request.slave_address == EXTENSION_I2C_ADDR)
+			extension_read_data(reply.data, address, read_size);
+		else if (wiimote->read_request.slave_address == EEPROM_I2C_ADDR)
+			error = ERROR_CODE_INVALID_ADDRESS;
+		break;
+	default:
+		error = ERROR_CODE_INVALID_SPACE;
+		break;
+	}
+
+	/* Stop processing request on read error */
+	if (error != ERROR_CODE_SUCCESS) {
+		wiimote->read_request.size = 0;
+		/* Real wiimote seems to set size to max value on read errors */
+		read_size = 16;
+	} else {
+		wiimote->read_request.address += read_size;
+		wiimote->read_request.size -= read_size;
+	}
+
+	reply.buttons = wiimote->buttons;
+	reply.size_minus_one = read_size - 1;
+	reply.error = error;
+	reply.address = address;
+	send_hid_input_report(wiimote->hci_con_handle,
+			      wiimote->psm_hid_intr_chn.remote_cid,
+			      INPUT_REPORT_ID_READ_DATA_REPLY,
+			      &reply, sizeof(reply));
+}
+
 static void fake_wiimote_tick(fake_wiimote_t *wiimote)
 {
 	int ret;
@@ -299,12 +373,13 @@ static void fake_wiimote_tick(fake_wiimote_t *wiimote)
 				/* Call assigned() input_device callback */
 				wiimote->input_device_ops->assigned(wiimote->usrdata, wiimote);
 			}
+			/* Send configuration for any newly connected channels. */
+			check_send_config_for_new_channel(wiimote->hci_con_handle, &wiimote->psm_hid_cntl_chn);
+			check_send_config_for_new_channel(wiimote->hci_con_handle, &wiimote->psm_hid_intr_chn);
+		} else {
+			/* Both HID ctrl and intr channels are connected (we only need intr though) */
+			fake_wiimote_process_read_request(wiimote);
 		}
-
-		/* Send configuration for any newly connected channels. */
-		check_send_config_for_new_channel(wiimote->hci_con_handle, &wiimote->psm_sdp_chn);
-		check_send_config_for_new_channel(wiimote->hci_con_handle, &wiimote->psm_hid_cntl_chn);
-		check_send_config_for_new_channel(wiimote->hci_con_handle, &wiimote->psm_hid_intr_chn);
 	}
 }
 
@@ -582,19 +657,6 @@ static void handle_l2cap_signal_channel_request(fake_wiimote_t *wiimote, const v
 	}
 }
 
-static void extension_read_data(void *dst, u16 address, u16 size)
-{
-	struct wiimote_extension_registers_t regs;
-	assert(address + size <= sizeof(regs));
-
-	memset(&regs, 0, sizeof(regs));
-	/* Good for now... */
-	memcpy(regs.identifier, EXT_NUNCHUNK_ID, sizeof(regs.identifier));
-
-	/* Copy the requested data from the extension registers */
-	memcpy(dst, ((u8 *)&regs) + address, size);
-}
-
 static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data, u16 size)
 {
 	DEBUG("handle_hid_intr_data_output: size: 0x%x, 0x%x\n", size, *(u32 *)(data-1));
@@ -642,55 +704,25 @@ static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data,
 	}
 	case OUTPUT_REPORT_ID_READ_DATA: {
 		struct wiimote_output_report_read_data_t *read = (void *)&data[1];
-		struct wiimote_input_report_read_data_t reply;
-		u16 offset, size, read_size;
-		u8 error = ERROR_CODE_SUCCESS;
-		memset(&reply.data, 0, sizeof(reply.data));
-
 		DEBUG("  Read data from slave 0x%02x, addrspace: %d, address: 0x%x, size: 0x%x\n\n",
 			read->slave_address, read->space, read->address, read->size);
 
-		if (read->size == 0)
+		/* There is already an active read being processed */
+		if (wiimote->read_request.size) {
+			wiimote_send_ack(wiimote, OUTPUT_REPORT_ID_READ_DATA, ERROR_CODE_BUSY);
 			break;
-
-		offset = read->address;
-		size = read->size;
-		/* TODO: Move this to an update() function that runs periodically */
-		while (size > 0) {
-			read_size = (size < 16) ? size : 16;
-			switch (read->space) {
-			case ADDRESS_SPACE_EEPROM:
-				/* TODO */
-				break;
-			case ADDRESS_SPACE_I2C_BUS:
-			case ADDRESS_SPACE_I2C_BUS_ALT:
-				if (read->slave_address == EXTENSION_I2C_ADDR) {
-					extension_read_data(reply.data, offset, read_size);
-					break;
-				} else if (read->slave_address == EEPROM_I2C_ADDR) {
-					error = ERROR_CODE_INVALID_ADDRESS;
-					break;
-				}
-				break;
-			default:
-				error = ERROR_CODE_INVALID_SPACE;
-				break;
-			}
-
-			reply.buttons = wiimote->buttons;
-			reply.size_minus_one = read_size - 1;
-			reply.error = error;
-			reply.address = offset;
-			send_hid_input_report(wiimote->hci_con_handle,
-					      wiimote->psm_hid_intr_chn.remote_cid,
-					      INPUT_REPORT_ID_READ_DATA_REPLY,
-					      &reply, sizeof(reply));
-			if (error != ERROR_CODE_SUCCESS)
-				break;
-			offset += 16;
-			size -= read_size;
 		}
-		break;
+
+		 /* Save the request and process it on the next "tick()" call(s) */
+		wiimote->read_request.space = read->space;
+		wiimote->read_request.slave_address = read->slave_address;
+		wiimote->read_request.address = read->address;
+		/* A zero size request is just ignored, like on the real wiimote */
+		wiimote->read_request.size = read->size;
+
+		/* Send first "read-data reply". If more data needs to be sent,
+		 * it will happen on the next "tick()" */
+		fake_wiimote_process_read_request(wiimote);
 	}
 	default:
 		DEBUG("Unhandled output report: 0x%x\n", data[0]);
