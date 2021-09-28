@@ -34,15 +34,11 @@ typedef struct usb_device_driver_t {
 int usb_hid_init(void);
 
 /* Used by USB device drivers */
-int usb_device_driver_issue_write_ctrl(usb_input_device_t *device, u8 requesttype, u8 request,
-				       u16 value, u16 index, void *data, u16 length);
-int usb_device_driver_issue_read_intr(usb_input_device_t *device, void *data, u16 length);
-int usb_device_driver_issue_write_intr(usb_input_device_t *device, void *data, u16 length);
-
-int usb_device_driver_issue_read_ctrl_async(usb_input_device_t *device, u8 requesttype, u8 request,
-				            u16 value, u16 index);
-
-int usb_device_driver_issue_read_intr_async(usb_input_device_t *device);
-int usb_device_driver_issue_write_intr_async(usb_input_device_t *device);
+int usb_device_driver_issue_ctrl_transfer(usb_input_device_t *device, u8 requesttype, u8 request,
+					  u16 value, u16 index, void *data, u16 length);
+int usb_device_driver_issue_intr_transfer(usb_input_device_t *device, int out, void *data, u16 length);
+int usb_device_driver_issue_ctrl_transfer_async(usb_input_device_t *device, u8 requesttype,
+						u8 request, u16 value, u16 index, void *data, u16 length);
+int usb_device_driver_issue_intr_transfer_async(usb_input_device_t *device, int out, void *data, u16 length);
 
 #endif

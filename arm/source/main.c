@@ -393,7 +393,7 @@ int l2cap_send_config_req(u16 hci_con_handle, u16 remote_cid, u16 mtu, u16 flush
 		offset += sizeof(l2cap_cfg_opt_t);
 		opt->type = L2CAP_OPT_MTU;
 		opt->length = L2CAP_OPT_MTU_SIZE;
-		*(u16 *)(void *)((u8 *)req + offset) = htole16(mtu);
+		*(u16 *)((u8 *)req + offset) = htole16(mtu);
 		offset += L2CAP_OPT_MTU_SIZE;
 	}
 
@@ -402,7 +402,7 @@ int l2cap_send_config_req(u16 hci_con_handle, u16 remote_cid, u16 mtu, u16 flush
 		offset += sizeof(l2cap_cfg_opt_t);
 		opt->type = L2CAP_OPT_FLUSH_TIMO;
 		opt->length = L2CAP_OPT_FLUSH_TIMO_SIZE;
-		*(u16 *)(void *)((u8 *)req + offset) = htole16(flush_time_out);
+		*(u16 *)((u8 *)req + offset) = htole16(flush_time_out);
 		offset += L2CAP_OPT_FLUSH_TIMO_SIZE;
 	}
 
@@ -782,7 +782,7 @@ int main(void)
 	/* Print info */
 	printf("Hello world from Starlet!\n");
 
-
+#if 0
 	static u8 conf_buffer[0x4000] ATTRIBUTE_ALIGN(32);
 	static struct conf_pads_setting conf_pads ATTRIBUTE_ALIGN(32);
 
@@ -807,6 +807,7 @@ int main(void)
 	fd = os_open("/shared2/sys/SYSCONF", IOS_OPEN_WRITE);
 	os_write(fd, conf_buffer, sizeof(conf_buffer));
 	os_close(fd);
+#endif
 
 	/* System patchers */
 	patcher patchers[] = {

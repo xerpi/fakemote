@@ -107,8 +107,6 @@ int main(int argc, char **argv)
 	VIDEO_Init();
 	printf("\x1b[2;0H");
 
-	WPAD_Init();
-
 	rmode = VIDEO_GetPreferredMode(NULL);
 	xfb = MEM_K0_TO_K1(SYS_AllocateFramebuffer(rmode));
 	console_init(xfb, 0, 0, rmode->fbWidth, rmode->xfbHeight-2, rmode->fbWidth * VI_DISPLAY_PIX_SZ);
@@ -119,6 +117,8 @@ int main(int argc, char **argv)
 	VIDEO_WaitVSync();
 	if (rmode->viTVMode&VI_NON_INTERLACE)
 		VIDEO_WaitVSync();
+
+	WPAD_Init();
 
 	/*u32 *rb_head = memalign(32, sizeof(u32));
 	u32 *rb_tail = memalign(32, sizeof(u32));

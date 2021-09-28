@@ -1,6 +1,7 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include <assert.h>
 #include <stdio.h>
 #include "hci.h"
 

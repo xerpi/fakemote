@@ -108,12 +108,13 @@ static int ds4_set_leds_rumble(usb_input_device_t *device, u8 r, u8 g, u8 b)
 		0x00  // LED off duration
 	};
 
-	return usb_device_driver_issue_write_intr(device, buf, sizeof(buf));
+	return usb_device_driver_issue_intr_transfer(device, 1, buf, sizeof(buf));
 }
 
 static inline int ds4_request_data(usb_input_device_t *device)
 {
-	return usb_device_driver_issue_read_intr_async(device);
+	return usb_device_driver_issue_intr_transfer_async(device, 0, device->usb_async_resp,
+							   sizeof(device->usb_async_resp));
 }
 
 int ds4_driver_ops_init(usb_input_device_t *device)
@@ -148,11 +149,13 @@ int ds4_driver_ops_slot_changed(usb_input_device_t *device, u8 slot)
 
 int ds4_driver_ops_usb_async_resp(usb_input_device_t *device)
 {
+	struct ds4_input_report *report = (void *)device->usb_async_resp;
 	u16 buttons = 0;
 
-	ds4_map_buttons((struct ds4_input_report *)device->usb_async_resp, &buttons);
-
-	fake_wiimote_mgr_report_input(device->wiimote, buttons);
+	if (report->report_id == 0x01) {
+		ds4_map_buttons(report, &buttons);
+		fake_wiimote_mgr_report_input(device->wiimote, buttons);
+	}
 
 	return ds4_request_data(device);
 }

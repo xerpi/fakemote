@@ -3,9 +3,10 @@
 
 #include "usb_hid.h"
 
-#define SONY_VID 0x054C
-#define DS3_PID  0x0268
-#define DS4_PID  0x05C4
+#define SONY_VID  0x054c
+#define DS3_PID   0x0268
+#define DS4_PID   0x05c4
+#define DS4_2_PID 0x09cc
 
 extern int ds3_driver_ops_init(usb_input_device_t *device);
 extern int ds3_driver_ops_disconnect(usb_input_device_t *device);
