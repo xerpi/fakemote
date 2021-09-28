@@ -70,9 +70,9 @@ static u32 queue_data[32] ATTRIBUTE_ALIGN(32);
 static int queue_id = -1;
 
 /* Async notification messages */
-static areply notification_messages[1] = {0};
-#define MESSAGE_DEVCHANGE	&notification_messages[1]
-#define MESSAGE_ATTACHFINISH	&notification_messages[2]
+static areply notification_messages[2] = {0};
+#define MESSAGE_DEVCHANGE	&notification_messages[0]
+#define MESSAGE_ATTACHFINISH	&notification_messages[1]
 
 static inline usb_input_device_t *get_usb_device_for_dev_id(u32 dev_id)
 {
