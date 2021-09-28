@@ -461,7 +461,10 @@ static void handle_l2cap_signal_channel(fake_wiimote_t *wiimote, u8 code, u8 ide
 		const l2cap_con_req_cp *req = payload;
 		u16 psm = le16toh(req->psm);
 		u16 scid = le16toh(req->scid);
+		UNUSED(psm);
+		UNUSED(scid);
 		DEBUG("  L2CAP_CONNECT_REQ: psm: 0x%x, scid: 0x%x\n", psm, scid);
+		/* TODO */
 		break;
 	}
 	case L2CAP_CONNECT_RSP: {
@@ -494,6 +497,7 @@ static void handle_l2cap_signal_channel(fake_wiimote_t *wiimote, u8 code, u8 ide
 		u16 dcid = le16toh(rsp->dcid);
 		u16 flags = le16toh(rsp->flags);
 		const void *options = (const void *)((u8 *)rsp + sizeof(l2cap_cfg_req_cp));
+		UNUSED(flags);
 
 		DEBUG("  L2CAP_CONFIG_REQ: dcid: 0x%x, flags: 0x%x\n", dcid, flags);
 		handle_l2cap_config_req(wiimote, ident, dcid, flags, options,
@@ -505,6 +509,7 @@ static void handle_l2cap_signal_channel(fake_wiimote_t *wiimote, u8 code, u8 ide
 		u16 scid = le16toh(rsp->scid);
 		u16 flags = le16toh(rsp->flags);
 		u16 result = le16toh(rsp->result);
+		UNUSED(flags);
 		DEBUG("  L2CAP_CONFIG_RSP: scid: 0x%x, flags: 0x%x, result: 0x%x\n",
 			scid, flags, result);
 
@@ -588,8 +593,10 @@ static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data,
 	}
 	case OUTPUT_REPORT_ID_WRITE_DATA: {
 		struct wiimote_output_report_write_data_t *write =  (void *)&data[1];
+		UNUSED(write);
 		DEBUG("  Write data to slave 0x%02x, address: 0x%x, size: 0x%x 0x%x\n",
 			write->slave_address, write->address, write->size, write->data[0]);
+		/* TODO */
 		/* Write data is, among other things, used to decrypt the extension bytes */
 		wiimote_send_ack(wiimote, OUTPUT_REPORT_ID_WRITE_DATA, ERROR_CODE_SUCCESS);
 		break;

@@ -16,6 +16,8 @@
 #define ROUNDUP32(x)	(((u32)(x) + 0x1f) & ~0x1f)
 #define ROUNDDOWN32(x)	(((u32)(x) - 0x1f) & ~0x1f)
 
+#define UNUSED(x) (void)(x)
+
 #ifdef assert
 #undef assert
 #endif

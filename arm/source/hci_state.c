@@ -63,18 +63,6 @@ static bool hci_virt_con_handle_map(u16 phys, u16 virt)
 	return false;
 }
 
-static bool hci_virt_con_handle_unmap_phys(u16 phys)
-{
-	for (int i = 0; i < ARRAY_SIZE(hci_virt_con_handle_map_table); i++) {
-		if (hci_virt_con_handle_map_table[i].valid &&
-		    hci_virt_con_handle_map_table[i].phys == phys) {
-			hci_virt_con_handle_map_table[i].valid = 0;
-			return true;
-		}
-	}
-	return false;
-}
-
 static bool hci_virt_con_handle_unmap_virt(u16 virt)
 {
 	for (int i = 0; i < ARRAY_SIZE(hci_virt_con_handle_map_table); i++) {
@@ -152,6 +140,7 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 			"Master (0x00)",
 			"Slave (0x01)",
 		};
+		UNUSED(roles);
 
 		bdaddr_to_str(mac, &cp->bdaddr);
 		DEBUG("HCI_CMD_ACCEPT_CON MAC: %s, role: %s\n", mac, roles[cp->role]);
@@ -174,13 +163,15 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 		break;
 	}
 	case HCI_CMD_WRITE_SCAN_ENABLE: {
+		hci_write_scan_enable_cp *cp = payload;
 		static const char *scanning[] = {
 			"HCI_NO_SCAN_ENABLE",
 			"HCI_INQUIRY_SCAN_ENABLE",
 			"HCI_PAGE_SCAN_ENABLE",
 			"HCI_INQUIRY_AND_PAGE_SCAN_ENABLE",
 		};
-		hci_write_scan_enable_cp *cp = payload;
+		UNUSED(scanning);
+
 		DEBUG("  HCI_CMD_WRITE_SCAN_ENABLE: 0x%x (%s)\n",
 			cp->scan_enable, scanning[cp->scan_enable]);
 		hci_page_scan_enable = cp->scan_enable;
@@ -340,6 +331,7 @@ void hci_state_handle_acl_data_in_response_from_controller(void *data, u32 lengt
 	u16 phys = HCI_CON_HANDLE(handle_pb_bc);
 	u16 pb = HCI_PB_FLAG(handle_pb_bc);
 	u16 pc = HCI_BC_FLAG(handle_pb_bc);
+	UNUSED(payload_len);
 
 	DEBUG("H < C ACL  IN: pcon_handle: 0x%x, len: 0x%x\n", phys, payload_len);
 
@@ -363,6 +355,7 @@ void hci_state_handle_acl_data_out_request_from_host(void *data, u32 length, boo
 	u16 virt = HCI_CON_HANDLE(handle_pb_bc);
 	u16 pb = HCI_PB_FLAG(handle_pb_bc);
 	u16 pc = HCI_BC_FLAG(handle_pb_bc);
+	UNUSED(payload_len);
 
 	DEBUG("H > C ACL OUT: vcon_handle: 0x%x, len: 0x%x\n", virt, payload_len);
 
