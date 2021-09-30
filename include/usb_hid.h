@@ -5,6 +5,8 @@
 #include "types.h"
 #include "fake_wiimote_mgr.h"
 
+#define USB_INPUT_DEVICE_PRIVATE_DATA_SIZE 8
+
 typedef struct usb_device_driver_t usb_device_driver_t;
 
 typedef struct {
@@ -20,6 +22,8 @@ typedef struct {
 	areply usb_async_resp_msg;
 	/* Buffer where we store the USB async respones */
 	u8 usb_async_resp[128] ATTRIBUTE_ALIGN(32);
+	/* Bytes for private data (usage up to the device driver) */
+	u8 private_data[USB_INPUT_DEVICE_PRIVATE_DATA_SIZE] ATTRIBUTE_ALIGN(4);
 } usb_input_device_t;
 
 typedef struct usb_device_driver_t {

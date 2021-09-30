@@ -3,6 +3,11 @@
 #include "utils.h"
 #include "wiimote.h"
 
+struct ds3_private_data_t {
+	enum wiimote_mgr_ext_u extension;
+};
+static_assert(sizeof(struct ds3_private_data_t) <= USB_INPUT_DEVICE_PRIVATE_DATA_SIZE);
+
 struct ds3_input_report {
 	u8 report_id;
 	u8 unk0;
@@ -83,9 +88,9 @@ static inline void ds3_map_buttons(const struct ds3_input_report *input, u16 *bu
 		*buttons |= WPAD_BUTTON_A;
 	if (input->circle)
 		*buttons |= WPAD_BUTTON_B;
-	if (input->l3)
+	if (input->triangle)
 		*buttons |= WPAD_BUTTON_1;
-	if (input->r3)
+	if (input->square)
 		*buttons |= WPAD_BUTTON_2;
 	if (input->ps)
 		*buttons |= WPAD_BUTTON_HOME;
@@ -143,10 +148,15 @@ static int ds3_set_leds_rumble(usb_input_device_t *device, u8 led)
 int ds3_driver_ops_init(usb_input_device_t *device)
 {
 	int ret;
+	struct ds3_private_data_t *priv = (void *)device->private_data;
 
 	ret = ds3_set_operational(device);
 	if (ret < 0)
 		return ret;
+
+	/* Set initial extension */
+	priv->extension = WIIMOTE_MGR_EXT_NUNCHUK;
+	fake_wiimote_mgr_set_extension(device->wiimote, priv->extension);
 
 	ret = ds3_request_data(device);
 	if (ret < 0)
@@ -168,11 +178,24 @@ int ds3_driver_ops_slot_changed(usb_input_device_t *device, u8 slot)
 
 int ds3_driver_ops_usb_async_resp(usb_input_device_t *device)
 {
+	struct ds3_private_data_t *priv = (void *)device->private_data;
 	struct ds3_input_report *report = (void *)device->usb_async_resp;
 	u16 buttons = 0;
+	struct wiimote_extension_data_format_nunchuk_t nunchuk;
 
 	ds3_map_buttons(report, &buttons);
-	fake_wiimote_mgr_report_input(device->wiimote, buttons);
+
+	if (priv->extension == WIIMOTE_MGR_EXT_NUNCHUK) {
+		memset(&nunchuk, 0, sizeof(nunchuk));
+		nunchuk.jx = report->left_x;
+		nunchuk.jy = 255 - report->left_y;
+		nunchuk.bt.c = !report->l1;
+		nunchuk.bt.z = !report->l2;
+		fake_wiimote_mgr_report_input_ext(device->wiimote, buttons,
+						  &nunchuk, sizeof(nunchuk));
+	} else {
+		fake_wiimote_mgr_report_input(device->wiimote, buttons);
+	}
 
 	return ds3_request_data(device);
 }

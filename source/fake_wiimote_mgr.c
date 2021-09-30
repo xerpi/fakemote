@@ -46,8 +46,18 @@ typedef struct fake_wiimote_t {
 	/* Associated input device with this fake Wiimote */
 	void *usrdata;
 	const input_device_ops_t *input_device_ops;
-	/* Input state */
+	/* Reporting mode */
+	u8 reporting_mode;
+	bool reporting_continuous;
+	/* Input and extension state */
 	u16 buttons;
+	enum wiimote_mgr_ext_u cur_extension;
+	enum wiimote_mgr_ext_u new_extension;
+	struct wiimote_extension_registers_t extension_regs;
+	/* If true, we have to send an input report (if not in continuous reporting mode) */
+	bool input_dirty;
+	/* EEPROM */
+	union wiimote_usable_eeprom_data_t eeprom;
 	/* Current in-progress "memory read request" */
 	struct {
 		u8 space;
@@ -138,12 +148,23 @@ static inline int send_hid_input_report(u16 hci_con_handle, u16 dcid, u8 report_
 
 static int wiimote_send_ack(const fake_wiimote_t *wiimote, u8 rpt_id, u8 error_code)
 {
-	struct wiimote_input_report_ack_t ack ATTRIBUTE_ALIGN(32);
+	struct wiimote_input_report_ack_t ack;
 	ack.buttons = wiimote->buttons;
 	ack.rpt_id = rpt_id;
 	ack.error_code = error_code;
 	return send_hid_input_report(wiimote->hci_con_handle, wiimote->psm_hid_intr_chn.remote_cid,
 				     INPUT_REPORT_ID_ACK, &ack, sizeof(ack));
+}
+
+static int wiimote_send_input_report_status(const fake_wiimote_t *wiimote)
+{
+	struct wiimote_input_report_status_t status;
+	memset(&status, 0, sizeof(status));
+	status.extension = fake_wiimotes->cur_extension != WIIMOTE_MGR_EXT_NONE;
+	status.buttons = wiimote->buttons;
+	return send_hid_input_report(wiimote->hci_con_handle,
+				     wiimote->psm_hid_intr_chn.remote_cid,
+				     INPUT_REPORT_ID_STATUS, &status, sizeof(status));
 }
 
 /* Disconnection helper functions */
@@ -202,34 +223,36 @@ void fake_wiimote_mgr_init(void)
 {
 	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
 		fake_wiimotes[i].active = false;
+		/* We can set it now, since it's permanent */
 		fake_wiimotes[i].bdaddr = FAKE_WIIMOTE_BDADDR(i);
-		fake_wiimotes[i].baseband_state = BASEBAND_STATE_INACTIVE;
-		fake_wiimotes[i].acl_state = L2CAP_CHANNEL_STATE_INACTIVE_INACTIVE;
-		fake_wiimotes[i].psm_sdp_chn.valid = false;
-		fake_wiimotes[i].psm_hid_cntl_chn.valid = false;
-		fake_wiimotes[i].psm_hid_intr_chn.valid = false;
-		fake_wiimotes[i].usrdata = NULL;
-		fake_wiimotes[i].input_device_ops = NULL;
-		fake_wiimotes[i].buttons = 0;
-		fake_wiimotes[i].read_request.size = 0;
 	}
 }
 
 bool fake_wiimote_mgr_add_input_device(void *usrdata, const input_device_ops_t *ops)
 {
-	if (!ops)
-		return false;
-
 	/* Find an inactive fake Wiimote */
 	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
-		if (!fake_wiimotes[i].active) {
-			fake_wiimotes[i].baseband_state = BASEBAND_STATE_REQUEST_CONNECTION;
-			fake_wiimotes[i].usrdata = usrdata;
-			fake_wiimotes[i].input_device_ops = ops;
-			fake_wiimotes[i].read_request.size = 0;
-			fake_wiimotes[i].active = true;
-			return true;
-		}
+		if (fake_wiimotes[i].active)
+			continue;
+
+		fake_wiimotes[i].baseband_state = BASEBAND_STATE_REQUEST_CONNECTION;
+		fake_wiimotes[i].acl_state = L2CAP_CHANNEL_STATE_INACTIVE_INACTIVE;
+		fake_wiimotes[i].psm_sdp_chn.valid = false;
+		fake_wiimotes[i].psm_hid_cntl_chn.valid = false;
+		fake_wiimotes[i].psm_hid_intr_chn.valid = false;
+		fake_wiimotes[i].usrdata = usrdata;
+		fake_wiimotes[i].input_device_ops = ops;
+		fake_wiimotes[i].buttons = 0;
+		fake_wiimotes[i].cur_extension = WIIMOTE_MGR_EXT_NONE;
+		fake_wiimotes[i].new_extension = WIIMOTE_MGR_EXT_NONE;
+		memset(&fake_wiimotes[i].extension_regs.identifier, 0,
+		       sizeof(fake_wiimotes[i].extension_regs.identifier));
+		fake_wiimotes[i].input_dirty = false;
+		fake_wiimotes[i].read_request.size = 0;
+		fake_wiimotes[i].reporting_mode = INPUT_REPORT_ID_BTN;
+		fake_wiimotes[i].reporting_continuous = false;
+		fake_wiimotes[i].active = true;
+		return true;
 	}
 	return false;
 }
@@ -239,22 +262,34 @@ bool fake_wiimote_mgr_remove_input_device(fake_wiimote_t *wiimote)
 	return fake_wiimote_disconnect(wiimote) == IOS_OK;
 }
 
-int fake_wiimote_mgr_report_input(fake_wiimote_t *wiimote, u16 buttons)
+void fake_wiimote_mgr_set_extension(fake_wiimote_t *wiimote, enum wiimote_mgr_ext_u ext)
 {
-	int ret = IOS_OK;
-	u16 changed = wiimote->buttons ^ buttons;
+	wiimote->new_extension = ext;
+}
 
-	if (changed) {
-		if (l2cap_channel_is_complete(&wiimote->psm_hid_intr_chn)) {
-			ret = send_hid_input_report(wiimote->hci_con_handle,
-						    wiimote->psm_hid_intr_chn.remote_cid,
-						    INPUT_REPORT_ID_REPORT_CORE,
-						    &buttons, sizeof(buttons));
-		}
+void fake_wiimote_mgr_report_input(fake_wiimote_t *wiimote, u16 buttons)
+{
+	bool btn_changed = (wiimote->buttons ^ buttons) != 0;
+
+	if (btn_changed) {
 		wiimote->buttons = buttons;
+		wiimote->input_dirty = true;
 	}
+}
 
-	return ret;
+void fake_wiimote_mgr_report_input_ext(fake_wiimote_t *wiimote, u16 buttons, const void *ext_data, u8 ext_size)
+{
+	u8 *ext_controller_data = wiimote->extension_regs.controller_data;
+	bool btn_changed = (wiimote->buttons ^ buttons) != 0;
+	int ext_cmp = memmismatch(ext_controller_data, ext_data, ext_size);
+
+	if (btn_changed || (ext_cmp != ext_size)) {
+		wiimote->buttons = buttons;
+		/* If there are changes to the extension bytes, copy them */
+		if (ext_cmp != ext_size)
+			memcpy(ext_controller_data + ext_cmp, ext_data + ext_cmp, ext_size - ext_cmp);
+		wiimote->input_dirty = true;
+	}
 }
 
 static void check_send_config_for_new_channel(u16 hci_con_handle, l2cap_channel_info_t *info)
@@ -271,27 +306,24 @@ static void check_send_config_for_new_channel(u16 hci_con_handle, l2cap_channel_
 	}
 }
 
-static void extension_read_data(void *dst, u16 address, u16 size)
+static bool extension_read_data(fake_wiimote_t *wiimote, void *dst, u16 address, u16 size)
 {
-	struct wiimote_extension_registers_t regs;
-	assert(address + size <= sizeof(regs));
-
-	memset(&regs, 0, sizeof(regs));
-	/* Good for now... */
-	memcpy(regs.identifier, EXT_NUNCHUNK_ID, sizeof(regs.identifier));
+	if (address + size > sizeof(wiimote->extension_regs))
+		return false;
 
 	/* Copy the requested data from the extension registers */
-	memcpy(dst, ((u8 *)&regs) + address, size);
+	memcpy(dst, (u8 *)&wiimote->extension_regs + address, size);
+	return true;
 }
 
-static void fake_wiimote_process_read_request(fake_wiimote_t *wiimote)
+static bool fake_wiimote_process_read_request(fake_wiimote_t *wiimote)
 {
 	struct wiimote_input_report_read_data_t reply;
 	u8 error = ERROR_CODE_SUCCESS;
 	u16 address, read_size = MIN2(16, wiimote->read_request.size);
 
 	if (read_size == 0)
-		return;
+		return false;
 
 	address = wiimote->read_request.address;
 	memset(&reply.data, 0, sizeof(reply.data));
@@ -301,15 +333,18 @@ static void fake_wiimote_process_read_request(fake_wiimote_t *wiimote)
 		if (address + wiimote->read_request.size > EEPROM_FREE_SIZE) {
 			 error = ERROR_CODE_INVALID_ADDRESS;
 		} else {
-			/* TODO */
+			memcpy(reply.data, &wiimote->eeprom.data[address], read_size);
 		}
 		break;
 	case ADDRESS_SPACE_I2C_BUS:
 	case ADDRESS_SPACE_I2C_BUS_ALT:
-		if (wiimote->read_request.slave_address == EXTENSION_I2C_ADDR)
-			extension_read_data(reply.data, address, read_size);
-		else if (wiimote->read_request.slave_address == EEPROM_I2C_ADDR)
+		/* Attempting to access the EEPROM directly over i2c results in error 8 */
+		if (wiimote->read_request.slave_address == EEPROM_I2C_ADDR) {
 			error = ERROR_CODE_INVALID_ADDRESS;
+		} else if (wiimote->read_request.slave_address == EXTENSION_I2C_ADDR) {
+			if (!extension_read_data(wiimote, reply.data, address, read_size))
+				error = ERROR_CODE_NACK;
+		}
 		break;
 	default:
 		error = ERROR_CODE_INVALID_SPACE;
@@ -334,6 +369,80 @@ static void fake_wiimote_process_read_request(fake_wiimote_t *wiimote)
 			      wiimote->psm_hid_intr_chn.remote_cid,
 			      INPUT_REPORT_ID_READ_DATA_REPLY,
 			      &reply, sizeof(reply));
+
+	return true;
+}
+
+static inline bool fake_wiimote_process_extension_change(fake_wiimote_t *wiimote)
+{
+	const u8 *id_code = NULL;
+
+	if (wiimote->new_extension == wiimote->cur_extension)
+		return false;
+
+	switch (wiimote->new_extension) {
+	case WIIMOTE_MGR_EXT_NUNCHUK:
+		id_code = EXT_ID_CODE_NUNCHUNK;
+		break;
+	case WIIMOTE_MGR_EXT_CLASSIC:
+		id_code = EXP_ID_CODE_CLASSIC_CONTROLLER;
+		break;
+	case WIIMOTE_MGR_EXT_CLASSIC_WIIU_PRO:
+		id_code = EXP_ID_CODE_CLASSIC_WIIU_PRO;
+		break;
+	case WIIMOTE_MGR_EXT_GUITAR:
+		id_code = EXP_ID_CODE_GUITAR;
+		break;
+	case WIIMOTE_MGR_EXT_MOTION_PLUS:
+		id_code = EXP_ID_CODE_MOTION_PLUS;
+		break;
+	default:
+		break;
+	}
+
+	if (id_code)
+		memcpy(wiimote->extension_regs.identifier, id_code, 6);
+	wiimote->cur_extension = wiimote->new_extension;
+
+	/* Following a connection or disconnection event on the Extension Port, data reporting
+	 * is disabled and the Data Reporting Mode must be reset before new data can arrive */
+	wiimote->reporting_mode = INPUT_REPORT_ID_REPORT_DISABLED;
+	wiimote_send_input_report_status(wiimote);
+
+	return true;
+}
+
+static void fake_wiimote_send_data_report(fake_wiimote_t *wiimote)
+{
+	u8 report_data[CONTROLLER_DATA_BYTES] ATTRIBUTE_ALIGN(4);
+	bool has_btn;
+	u8 ext_size, ext_offset;
+	u8 report_size;
+	u8 *ext_controller_data = wiimote->extension_regs.controller_data;
+
+	if (wiimote->reporting_mode == INPUT_REPORT_ID_REPORT_DISABLED) {
+		/* The wiimote is in this disabled state after an extension change.
+		   Input reports are not sent, even on button change. */
+		return;
+	}
+
+	if (wiimote->reporting_continuous || wiimote->input_dirty) {
+		has_btn = input_report_has_btn(wiimote->reporting_mode);
+		ext_size = input_report_ext_size(wiimote->reporting_mode);
+		ext_offset = input_report_ext_offset(wiimote->reporting_mode);
+		report_size = (has_btn ? 2 : 0) + ext_size;
+
+		if (has_btn)
+			memcpy(report_data, &wiimote->buttons, sizeof(wiimote->buttons));
+
+		if (ext_size)
+			memcpy(report_data + ext_offset, ext_controller_data, ext_size);
+
+		send_hid_input_report(wiimote->hci_con_handle, wiimote->psm_hid_intr_chn.remote_cid,
+				      wiimote->reporting_mode, report_data, report_size);
+
+		wiimote->input_dirty = false;
+	}
 }
 
 static void fake_wiimote_tick(fake_wiimote_t *wiimote)
@@ -378,7 +487,18 @@ static void fake_wiimote_tick(fake_wiimote_t *wiimote)
 			check_send_config_for_new_channel(wiimote->hci_con_handle, &wiimote->psm_hid_intr_chn);
 		} else {
 			/* Both HID ctrl and intr channels are connected (we only need intr though) */
-			fake_wiimote_process_read_request(wiimote);
+			if (fake_wiimote_process_read_request(wiimote)) {
+				/* Read requests suppress normal input reports.
+				 * Don't send any other reports */
+				return;
+			}
+
+			if (fake_wiimote_process_extension_change(wiimote)) {
+				/* Extension port event occurred. Don't send any other reports. */
+				return;
+			}
+
+			fake_wiimote_send_data_report(wiimote);
 		}
 	}
 }
@@ -675,19 +795,15 @@ static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data,
 		break;
 	}
 	case OUTPUT_REPORT_ID_STATUS: {
-		struct wiimote_input_report_status_t status;
-		memset(&status, 0, sizeof(status));
-		status.extension = 0;
-		status.buttons = wiimote->buttons;
-		send_hid_input_report(wiimote->hci_con_handle,
-				     wiimote->psm_hid_intr_chn.remote_cid,
-				     INPUT_REPORT_ID_STATUS, &status, sizeof(status));
+		wiimote_send_input_report_status(wiimote);
 		break;
 	}
 	case OUTPUT_REPORT_ID_REPORT_MODE: {
 		struct wiimote_output_report_mode_t *mode = (void *)&data[1];
 		DEBUG("  Report mode: 0x%02x, cont: %d, rumble: %d, ack: %d\n",
 			mode->mode, mode->continuous, mode->rumble, mode->ack);
+		wiimote->reporting_mode = mode->mode;
+		wiimote->reporting_continuous = mode->continuous;
 		if (mode->ack)
 			wiimote_send_ack(wiimote, OUTPUT_REPORT_ID_REPORT_MODE, ERROR_CODE_SUCCESS);
 		break;

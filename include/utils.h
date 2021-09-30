@@ -3,6 +3,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 #include "hci.h"
 
 #define bswap16 __builtin_bswap16
@@ -33,6 +34,18 @@ static inline void bdaddr_to_str(char str[static MAC_STR_LEN], const bdaddr_t *b
 {
 	snprintf(str, MAC_STR_LEN, "%02x:%02x:%02x:%02x:%02x:%02x", bdaddr->b[5], bdaddr->b[4],
 		bdaddr->b[3], bdaddr->b[2], bdaddr->b[1], bdaddr->b[0]);
+}
+
+static inline int memmismatch(const void *restrict a, const void *restrict b, int size)
+{
+	int i = 0;
+	while (size) {
+		if (((u8 *)a)[i] != ((u8 *)b)[i])
+			return i;
+		i++;
+		size--;
+	}
+	return i;
 }
 
 /* HCI event enqueue helpers */

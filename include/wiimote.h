@@ -23,7 +23,17 @@
 #define INPUT_REPORT_ID_STATUS		0x20
 #define INPUT_REPORT_ID_READ_DATA_REPLY	0x21
 #define INPUT_REPORT_ID_ACK		0x22
-#define INPUT_REPORT_ID_REPORT_CORE	0x30
+/* Not a real value on the wiimote, just a state to disable reports */
+#define INPUT_REPORT_ID_REPORT_DISABLED	0x00
+#define INPUT_REPORT_ID_BTN		0x30
+#define INPUT_REPORT_ID_BTN_ACC		0x31
+#define INPUT_REPORT_ID_BTN_EXP8	0x32
+#define INPUT_REPORT_ID_BTN_ACC_IR	0x33
+#define INPUT_REPORT_ID_BTN_EXP19	0x34
+#define INPUT_REPORT_ID_BTN_ACC_EXP	0x35
+#define INPUT_REPORT_ID_BTN_IR_EXP	0x36
+#define INPUT_REPORT_ID_BTN_ACC_IR_EXP	0x37
+#define INPUT_REPORT_ID_EXP21		0x3d
 
 /* Host -> Wiimote */
 #define OUTPUT_REPORT_ID_LED		0x11
@@ -146,6 +156,28 @@ struct wiimote_output_report_read_data_t {
 
 #define CONTROLLER_DATA_BYTES	21
 
+struct wiimote_extension_data_format_nunchuk_t {
+	// joystick x, y
+	u8 jx;
+	u8 jy;
+	// accelerometer
+	u8 ax;
+	u8 ay;
+	u8 az;
+	union {
+		u8 hex;
+		struct {
+			// LSBs of accelerometer
+			u8 acc_z_lsb : 2;
+			u8 acc_y_lsb : 2;
+			u8 acc_x_lsb : 2;
+			u8 c : 1;
+			u8 z : 1;
+		};
+	} bt;
+};
+static_assert(sizeof(struct wiimote_extension_data_format_nunchuk_t) <= CONTROLLER_DATA_BYTES);
+
 struct wiimote_extension_registers_t {
 	// 21 bytes of possible extension data
 	u8 controller_data[CONTROLLER_DATA_BYTES];
@@ -165,6 +197,109 @@ struct wiimote_extension_registers_t {
 
 /* Extension IDs */
 
-#define EXT_NUNCHUNK_ID ((u8[6]){0x00, 0x00, 0xa4, 0x20, 0x00, 0x00})
+static const u8 EXT_ID_CODE_NUNCHUNK[6] 		= {0x00, 0x00, 0xa4, 0x20, 0x00, 0x00};
+static const u8 EXP_ID_CODE_CLASSIC_CONTROLLER[6]	= {0x00, 0x00, 0xa4, 0x20, 0x01, 0x01};
+static const u8 EXP_ID_CODE_CLASSIC_WIIU_PRO[6]		= {0x00, 0x00, 0xa4, 0x20, 0x01, 0x20};
+static const u8 EXP_ID_CODE_GUITAR[6]			= {0x00, 0x00, 0xa4, 0x20, 0x01, 0x03};
+static const u8 EXP_ID_CODE_MOTION_PLUS[6]		= {0x00, 0x00, 0xA6, 0x20, 0x00, 0x05};
+
+/* EEPROM */
+union wiimote_usable_eeprom_data_t {
+	struct {
+		// addr: 0x0000
+		u8 ir_calibration_1[11];
+		u8 ir_calibration_2[11];
+		u8 accel_calibration_1[10];
+		u8 accel_calibration_2[10];
+		// addr: 0x002A
+		u8 user_data[0x0FA0];
+		// addr: 0x0FCA
+		u8 mii_data_1[0x02f0];
+		u8 mii_data_2[0x02f0];
+		// addr: 0x15AA
+		u8 unk_1[0x0126];
+		// addr: 0x16D0
+		u8 unk_2[24];
+		u8 unk_3[24];
+	};
+	u8 data[EEPROM_FREE_SIZE];
+};
+static_assert(sizeof(union wiimote_usable_eeprom_data_t) == EEPROM_FREE_SIZE);
+
+/* Helper inline functions */
+
+static inline bool input_report_has_btn(u8 rpt_id)
+{
+	switch (rpt_id) {
+	case INPUT_REPORT_ID_EXP21:
+		return false;
+	default:
+		return true;
+	}
+}
+
+static inline u8 input_report_acc_size(u8 rpt_id)
+{
+	switch (rpt_id) {
+	case INPUT_REPORT_ID_BTN_ACC:
+	case INPUT_REPORT_ID_BTN_ACC_IR:
+	case INPUT_REPORT_ID_BTN_ACC_EXP:
+	case INPUT_REPORT_ID_BTN_ACC_IR_EXP:
+		return 3;
+	default:
+		return 0;
+	}
+}
+
+static inline u8 input_report_acc_offset(u8 rpt_id)
+{
+	switch (rpt_id) {
+	case INPUT_REPORT_ID_BTN_ACC:
+	case INPUT_REPORT_ID_BTN_ACC_IR:
+	case INPUT_REPORT_ID_BTN_ACC_EXP:
+	case INPUT_REPORT_ID_BTN_ACC_IR_EXP:
+		return 2;
+	default:
+		return 0;
+	}
+}
+
+static inline u8 input_report_ext_size(u8 rpt_id)
+{
+	switch (rpt_id) {
+	case INPUT_REPORT_ID_BTN_EXP8:
+		return 8;
+	case INPUT_REPORT_ID_BTN_EXP19:
+		return 19;
+	case INPUT_REPORT_ID_BTN_ACC_EXP:
+		return 16;
+	case INPUT_REPORT_ID_BTN_IR_EXP:
+		return 9;
+	case INPUT_REPORT_ID_BTN_ACC_IR_EXP:
+		return 6;
+	case INPUT_REPORT_ID_EXP21:
+		return 21;
+	default:
+		return 0;
+	}
+}
+
+static inline u8 input_report_ext_offset(u8 rpt_id)
+{
+	switch (rpt_id) {
+	case INPUT_REPORT_ID_BTN_EXP8:
+	case INPUT_REPORT_ID_BTN_EXP19:
+		return 2;
+	case INPUT_REPORT_ID_BTN_ACC_EXP:
+		return 5;
+	case INPUT_REPORT_ID_BTN_IR_EXP:
+		return 12;
+	case INPUT_REPORT_ID_BTN_ACC_IR_EXP:
+		return 15;
+	case INPUT_REPORT_ID_EXP21:
+	default:
+		return 0;
+	}
+}
 
 #endif

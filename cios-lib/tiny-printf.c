@@ -331,6 +331,13 @@ abort:
 	return 0;
 }
 
+int putchar(int c)
+{
+	char str[2] = {c, '\0'};
+	svc_write(str);
+	return (unsigned int)c;
+}
+
 int puts(const char *s)
 {
 	return printf("%s\n", s);
