@@ -165,8 +165,7 @@ static int wiimote_send_input_report_status(const fake_wiimote_t *wiimote)
 	memset(&status, 0, sizeof(status));
 	status.extension = fake_wiimotes->cur_extension != WIIMOTE_MGR_EXT_NONE;
 	status.buttons = wiimote->buttons;
-	return send_hid_input_report(wiimote->hci_con_handle,
-				     wiimote->psm_hid_intr_chn.remote_cid,
+	return send_hid_input_report(wiimote->hci_con_handle, wiimote->psm_hid_intr_chn.remote_cid,
 				     INPUT_REPORT_ID_STATUS, &status, sizeof(status));
 }
 
@@ -318,13 +317,14 @@ static bool extension_read_data(fake_wiimote_t *wiimote, void *dst, u16 address,
 	/* Copy the requested data from the extension registers */
 	memcpy(dst, (u8 *)&wiimote->extension_regs + address, size);
 
+	/* Encrypt data read from extension registers (if necessary) */
 	if (wiimote->extension_regs.encryption == ENCRYPTION_ENABLED) {
 		if (wiimote->extension_key_dirty) {
-			wiimote_crypto_generate_key(&wiimote->extension_key,
-						    wiimote->extension_regs.encryption_key_data);
+			wiimote_crypto_generate_key_from_extension_key_data(&wiimote->extension_key,
+						wiimote->extension_regs.encryption_key_data);
 			wiimote->extension_key_dirty = false;
 		}
-		wiimote_crypto_encrypt(dst, &wiimote->extension_key, size);
+		wiimote_crypto_encrypt(dst, &wiimote->extension_key, address, size);
 	}
 
 	return true;
@@ -393,11 +393,8 @@ static bool fake_wiimote_process_read_request(fake_wiimote_t *wiimote)
 	reply.size_minus_one = read_size - 1;
 	reply.error = error;
 	reply.address = address;
-	send_hid_input_report(wiimote->hci_con_handle,
-			      wiimote->psm_hid_intr_chn.remote_cid,
-			      INPUT_REPORT_ID_READ_DATA_REPLY,
-			      &reply, sizeof(reply));
-
+	send_hid_input_report(wiimote->hci_con_handle, wiimote->psm_hid_intr_chn.remote_cid,
+			      INPUT_REPORT_ID_READ_DATA_REPLY, &reply, sizeof(reply));
 	return true;
 }
 
