@@ -19,6 +19,7 @@
 #define ROUNDDOWN32(x)	(((u32)(x) - 0x1f) & ~0x1f)
 
 #define UNUSED(x) (void)(x)
+#define MEMBER_SIZE(type, member) sizeof(((type *)0)->member)
 
 #ifdef assert
 #undef assert

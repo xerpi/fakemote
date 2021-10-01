@@ -178,6 +178,8 @@ struct wiimote_extension_data_format_nunchuk_t {
 };
 static_assert(sizeof(struct wiimote_extension_data_format_nunchuk_t) <= CONTROLLER_DATA_BYTES);
 
+#define ENCRYPTION_ENABLED 0xaa
+
 struct wiimote_extension_registers_t {
 	// 21 bytes of possible extension data
 	u8 controller_data[CONTROLLER_DATA_BYTES];
@@ -194,6 +196,14 @@ struct wiimote_extension_registers_t {
 	// address 0xFA
 	u8 identifier[6];
 } ATTRIBUTE_PACKED;
+static_assert(sizeof(struct wiimote_extension_registers_t) == 0x100);
+
+#define ENCRYPTION_KEY_DATA_BEGIN \
+	offsetof(struct wiimote_extension_registers_t, encryption_key_data)
+
+#define ENCRYPTION_KEY_DATA_END \
+	(ENCRYPTION_KEY_DATA_BEGIN + \
+	 MEMBER_SIZE(struct wiimote_extension_registers_t, encryption_key_data))
 
 /* Extension IDs */
 

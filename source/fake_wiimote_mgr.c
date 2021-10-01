@@ -6,6 +6,7 @@
 #include "syscalls.h"
 #include "utils.h"
 #include "wiimote.h"
+#include "wiimote_crypto.h"
 
 typedef enum {
 	BASEBAND_STATE_INACTIVE,
@@ -54,6 +55,8 @@ typedef struct fake_wiimote_t {
 	enum wiimote_mgr_ext_u cur_extension;
 	enum wiimote_mgr_ext_u new_extension;
 	struct wiimote_extension_registers_t extension_regs;
+	struct wiimote_encryption_key_t extension_key;
+	bool extension_key_dirty;
 	/* If true, we have to send an input report (if not in continuous reporting mode) */
 	bool input_dirty;
 	/* EEPROM */
@@ -245,8 +248,9 @@ bool fake_wiimote_mgr_add_input_device(void *usrdata, const input_device_ops_t *
 		fake_wiimotes[i].buttons = 0;
 		fake_wiimotes[i].cur_extension = WIIMOTE_MGR_EXT_NONE;
 		fake_wiimotes[i].new_extension = WIIMOTE_MGR_EXT_NONE;
-		memset(&fake_wiimotes[i].extension_regs.identifier, 0,
-		       sizeof(fake_wiimotes[i].extension_regs.identifier));
+		memset(&fake_wiimotes[i].extension_regs, 0, sizeof(fake_wiimotes[i].extension_regs));
+		memset(&fake_wiimotes[i].extension_key, 0, sizeof(fake_wiimotes[i].extension_key));
+		fake_wiimotes[i].extension_key_dirty = true;
 		fake_wiimotes[i].input_dirty = false;
 		fake_wiimotes[i].read_request.size = 0;
 		fake_wiimotes[i].reporting_mode = INPUT_REPORT_ID_BTN;
@@ -313,6 +317,31 @@ static bool extension_read_data(fake_wiimote_t *wiimote, void *dst, u16 address,
 
 	/* Copy the requested data from the extension registers */
 	memcpy(dst, (u8 *)&wiimote->extension_regs + address, size);
+
+	if (wiimote->extension_regs.encryption == ENCRYPTION_ENABLED) {
+		if (wiimote->extension_key_dirty) {
+			wiimote_crypto_generate_key(&wiimote->extension_key,
+						    wiimote->extension_regs.encryption_key_data);
+			wiimote->extension_key_dirty = false;
+		}
+		wiimote_crypto_encrypt(dst, &wiimote->extension_key, size);
+	}
+
+	return true;
+}
+
+static bool extension_write_data(fake_wiimote_t *wiimote, const void *src, u16 address, u16 size)
+{
+	if (address + size > sizeof(wiimote->extension_regs))
+		return false;
+
+	if ((address + size > ENCRYPTION_KEY_DATA_BEGIN) && (address < ENCRYPTION_KEY_DATA_END)) {
+		/* We just run the key generation on all writes to the key area */
+		wiimote->extension_key_dirty = true;
+	}
+
+	/* Copy the requested data to the extension registers */
+	memcpy((u8 *)&wiimote->extension_regs + address, src, size);
 	return true;
 }
 
@@ -330,11 +359,10 @@ static bool fake_wiimote_process_read_request(fake_wiimote_t *wiimote)
 
 	switch (wiimote->read_request.space) {
 	case ADDRESS_SPACE_EEPROM:
-		if (address + wiimote->read_request.size > EEPROM_FREE_SIZE) {
-			 error = ERROR_CODE_INVALID_ADDRESS;
-		} else {
+		if (address + wiimote->read_request.size > EEPROM_FREE_SIZE)
+			error = ERROR_CODE_INVALID_ADDRESS;
+		else
 			memcpy(reply.data, &wiimote->eeprom.data[address], read_size);
-		}
 		break;
 	case ADDRESS_SPACE_I2C_BUS:
 	case ADDRESS_SPACE_I2C_BUS_ALT:
@@ -371,6 +399,42 @@ static bool fake_wiimote_process_read_request(fake_wiimote_t *wiimote)
 			      &reply, sizeof(reply));
 
 	return true;
+}
+
+static void fake_wiimote_process_write_request(fake_wiimote_t *wiimote,
+					       struct wiimote_output_report_write_data_t *write)
+{
+	u8 error = ERROR_CODE_SUCCESS;
+
+	if (write->size == 0 || write->size > 16) {
+		/* A real wiimote silently ignores such a request */
+		return;
+	}
+
+	switch (write->space) {
+	case ADDRESS_SPACE_EEPROM:
+		if (write->address + write->size > EEPROM_FREE_SIZE)
+			error = ERROR_CODE_INVALID_ADDRESS;
+		else
+			memcpy(&wiimote->eeprom.data[write->address], write->data, write->size);
+		break;
+	case ADDRESS_SPACE_I2C_BUS:
+	case ADDRESS_SPACE_I2C_BUS_ALT:
+		/* Attempting to access the EEPROM directly over i2c results in error 8 */
+		if (write->slave_address == EEPROM_I2C_ADDR) {
+			error = ERROR_CODE_INVALID_ADDRESS;
+		} else if (write->slave_address == EXTENSION_I2C_ADDR) {
+			if (!extension_write_data(wiimote, write->data, write->address, write->size))
+				error = ERROR_CODE_NACK;
+		}
+		break;
+	default:
+		error = ERROR_CODE_INVALID_SPACE;
+		break;
+	}
+
+	/* Real wiimotes seem to always ACK data writes */
+	wiimote_send_ack(wiimote, OUTPUT_REPORT_ID_WRITE_DATA, error);
 }
 
 static inline bool fake_wiimote_process_extension_change(fake_wiimote_t *wiimote)
@@ -418,7 +482,6 @@ static void fake_wiimote_send_data_report(fake_wiimote_t *wiimote)
 	bool has_btn;
 	u8 ext_size, ext_offset;
 	u8 report_size;
-	u8 *ext_controller_data = wiimote->extension_regs.controller_data;
 
 	if (wiimote->reporting_mode == INPUT_REPORT_ID_REPORT_DISABLED) {
 		/* The wiimote is in this disabled state after an extension change.
@@ -435,8 +498,10 @@ static void fake_wiimote_send_data_report(fake_wiimote_t *wiimote)
 		if (has_btn)
 			memcpy(report_data, &wiimote->buttons, sizeof(wiimote->buttons));
 
-		if (ext_size)
-			memcpy(report_data + ext_offset, ext_controller_data, ext_size);
+		if (ext_size) {
+			/* Takes care of encrypting the extension data if necessary */
+			extension_read_data(wiimote, report_data + ext_offset, 0, ext_size);
+		}
 
 		send_hid_input_report(wiimote->hci_con_handle, wiimote->psm_hid_intr_chn.remote_cid,
 				      wiimote->reporting_mode, report_data, report_size);
@@ -809,13 +874,11 @@ static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data,
 		break;
 	}
 	case OUTPUT_REPORT_ID_WRITE_DATA: {
-		struct wiimote_output_report_write_data_t *write =  (void *)&data[1];
-		UNUSED(write);
+		struct wiimote_output_report_write_data_t *write = (void *)&data[1];
 		DEBUG("  Write data to slave 0x%02x, address: 0x%x, size: 0x%x 0x%x\n",
 			write->slave_address, write->address, write->size, write->data[0]);
-		/* TODO */
-		/* Write data is, among other things, used to decrypt the extension bytes */
-		wiimote_send_ack(wiimote, OUTPUT_REPORT_ID_WRITE_DATA, ERROR_CODE_SUCCESS);
+
+		fake_wiimote_process_write_request(wiimote, write);
 		break;
 	}
 	case OUTPUT_REPORT_ID_READ_DATA: {

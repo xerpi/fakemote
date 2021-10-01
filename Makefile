@@ -31,7 +31,9 @@ TARGET	=	FAKEMOTE
 
 # Objects
 OBJS	= source/start.o source/main.o source/hci_state.o source/fake_wiimote_mgr.o source/libc.o \
-	  source/conf.o source/usb_hid.o source/usb_driver_ds3.o source/usb_driver_ds4.o
+	  source/wiimote_crypto.o source/conf.o source/usb_hid.o source/usb_driver_ds3.o \
+	  source/usb_driver_ds4.o
+
 
 # Dependency files
 DEPS	= $(OBJS:.o=.d)
