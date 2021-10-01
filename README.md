@@ -14,6 +14,20 @@ _An IOS module that fakes Wiimotes from the input of USB game controllers._
 3) Copy the IOS module (`.app`) to `sd:/apps/d2x-cIOS-Installer-Wii/v10/beta52/d2x-v10-beta52-fake-wiimote/`
 4) Run _d2x cIOS installer_ and install `d2x-v10-beta52-fake-wiimote` (tested on base IOS57)
 
+## Compilation
+1) Download and install [devkitARM](https://devkitpro.org/wiki/Getting_Started)
+2) Install `stripios`:
+   1) Download `stripios`'s source code from [Leseratte's d2xl cIOS](https://github.com/Leseratte10/d2xl-cios/tree/master/stripios)
+   2) Compile it:
+   ```bash
+   g++ main.cpp -o stripios
+   ```
+   4) Install it:
+   ```bash
+   cp stripios $DEVKITPRO/tools/bin
+   ```
+3) Run `make` to compile _fakemote_ and generate `FAKEMOTE.app`
+
 ## Notes
 **This is still in beta-stage, therefore it might not work as expected.**
 
