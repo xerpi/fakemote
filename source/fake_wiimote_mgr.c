@@ -50,6 +50,12 @@ typedef struct fake_wiimote_t {
 	/* Reporting mode */
 	u8 reporting_mode;
 	bool reporting_continuous;
+	/* Status */
+	struct {
+		u8 leds : 4;
+		u8 ir : 1;
+		u8 speaker : 1;
+	} status;
 	/* Input and extension state */
 	u16 buttons;
 	enum wiimote_mgr_ext_u cur_extension;
@@ -162,9 +168,12 @@ static int wiimote_send_ack(const fake_wiimote_t *wiimote, u8 rpt_id, u8 error_c
 static int wiimote_send_input_report_status(const fake_wiimote_t *wiimote)
 {
 	struct wiimote_input_report_status_t status;
-	memset(&status, 0, sizeof(status));
 	status.buttons = wiimote->buttons;
+	status.leds = wiimote->status.leds;
+	status.ir = wiimote->status.ir;
+	status.speaker = 0;
 	status.extension = fake_wiimotes->cur_extension != WIIMOTE_MGR_EXT_NONE;
+	status.battery_low = 0;
 	status.battery = 0xFF;
 	return send_hid_input_report(wiimote->hci_con_handle, wiimote->psm_hid_intr_chn.remote_cid,
 				     INPUT_REPORT_ID_STATUS, &status, sizeof(status));
@@ -245,6 +254,9 @@ bool fake_wiimote_mgr_add_input_device(void *usrdata, const input_device_ops_t *
 		fake_wiimotes[i].psm_hid_intr_chn.valid = false;
 		fake_wiimotes[i].usrdata = usrdata;
 		fake_wiimotes[i].input_device_ops = ops;
+		fake_wiimotes[i].status.leds = 0;
+		fake_wiimotes[i].status.ir = 0;
+		fake_wiimotes[i].status.speaker = 0;
 		fake_wiimotes[i].buttons = 0;
 		fake_wiimotes[i].cur_extension = WIIMOTE_MGR_EXT_NONE;
 		fake_wiimotes[i].new_extension = WIIMOTE_MGR_EXT_NONE;
@@ -462,8 +474,10 @@ static inline bool fake_wiimote_process_extension_change(fake_wiimote_t *wiimote
 		break;
 	}
 
-	if (id_code)
-		memcpy(wiimote->extension_regs.identifier, id_code, 6);
+	if (id_code) {
+		memcpy(wiimote->extension_regs.identifier, id_code,
+		       sizeof(wiimote->extension_regs.identifier));
+	}
 	wiimote->cur_extension = wiimote->new_extension;
 
 	/* Following a connection or disconnection event on the Extension Port, data reporting
@@ -478,7 +492,9 @@ static void fake_wiimote_send_data_report(fake_wiimote_t *wiimote)
 {
 	u8 report_data[CONTROLLER_DATA_BYTES] ATTRIBUTE_ALIGN(4);
 	bool has_btn;
+	u8 acc_size, acc_offset;
 	u8 ext_size, ext_offset;
+	u8 ir_size, ir_offset;
 	u8 report_size;
 
 	if (wiimote->reporting_mode == INPUT_REPORT_ID_REPORT_DISABLED) {
@@ -489,16 +505,30 @@ static void fake_wiimote_send_data_report(fake_wiimote_t *wiimote)
 
 	if (wiimote->reporting_continuous || wiimote->input_dirty) {
 		has_btn = input_report_has_btn(wiimote->reporting_mode);
+		acc_size = input_report_acc_size(wiimote->reporting_mode);
+		acc_offset = input_report_acc_offset(wiimote->reporting_mode);
 		ext_size = input_report_ext_size(wiimote->reporting_mode);
 		ext_offset = input_report_ext_offset(wiimote->reporting_mode);
-		report_size = (has_btn ? 2 : 0) + ext_size;
+		ir_size = input_report_ir_size(wiimote->reporting_mode);
+		ir_offset = input_report_ir_offset(wiimote->reporting_mode);
+		report_size = (has_btn ? 2 : 0) + acc_size + ext_size + ir_size;
 
 		if (has_btn)
 			memcpy(report_data, &wiimote->buttons, sizeof(wiimote->buttons));
 
+		if (acc_size) {
+			/* TODO: Copy accelerometer data */
+			UNUSED(acc_offset);
+		}
+
 		if (ext_size) {
 			/* Takes care of encrypting the extension data if necessary */
 			extension_read_data(wiimote, report_data + ext_offset, 0, ext_size);
+		}
+
+		if (ir_size) {
+			/* TODO: Copy IR data */
+			UNUSED(ir_offset);
 		}
 
 		send_hid_input_report(wiimote->hci_con_handle, wiimote->psm_hid_intr_chn.remote_cid,
@@ -850,15 +880,12 @@ static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data,
 	switch (data[0]) {
 	case OUTPUT_REPORT_ID_LED: {
 		struct wiimote_output_report_led_t *led = (void *)&data[1];
+		wiimote->status.leds = led->leds;
 		/* Call set_leds() input_device callback */
 		if (wiimote->input_device_ops->set_leds)
 			wiimote->input_device_ops->set_leds(wiimote->usrdata, led->leds);
 		if (led->ack)
 			wiimote_send_ack(wiimote, OUTPUT_REPORT_ID_LED, ERROR_CODE_SUCCESS);
-		break;
-	}
-	case OUTPUT_REPORT_ID_STATUS: {
-		wiimote_send_input_report_status(wiimote);
 		break;
 	}
 	case OUTPUT_REPORT_ID_REPORT_MODE: {
@@ -869,6 +896,18 @@ static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data,
 		wiimote->reporting_continuous = mode->continuous;
 		if (mode->ack)
 			wiimote_send_ack(wiimote, OUTPUT_REPORT_ID_REPORT_MODE, ERROR_CODE_SUCCESS);
+		break;
+	}
+	case OUTPUT_REPORT_ID_IR_ENABLE: {
+		struct wiimote_output_report_enable_feature_t *feature = (void *)&data[1];
+		wiimote->status.ir = feature->enable;
+		/* TODO: Enable/disable "camera" logic */
+		if (feature->ack)
+			wiimote_send_ack(wiimote, OUTPUT_REPORT_ID_IR_ENABLE, ERROR_CODE_SUCCESS);
+		break;
+	}
+	case OUTPUT_REPORT_ID_STATUS: {
+		wiimote_send_input_report_status(wiimote);
 		break;
 	}
 	case OUTPUT_REPORT_ID_WRITE_DATA: {
@@ -900,6 +939,12 @@ static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data,
 		/* Send first "read-data reply". If more data needs to be sent,
 		 * it will happen on the next "tick()" */
 		fake_wiimote_process_read_request(wiimote);
+	}
+	case OUTPUT_REPORT_ID_IR_ENABLE2: {
+		struct wiimote_output_report_enable_feature_t *feature = (void *)&data[1];
+		if (feature->ack)
+			wiimote_send_ack(wiimote, OUTPUT_REPORT_ID_IR_ENABLE2, ERROR_CODE_SUCCESS);
+		break;
 	}
 	default:
 		DEBUG("Unhandled output report: 0x%x\n", data[0]);

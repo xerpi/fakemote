@@ -38,9 +38,11 @@
 /* Host -> Wiimote */
 #define OUTPUT_REPORT_ID_LED		0x11
 #define OUTPUT_REPORT_ID_REPORT_MODE	0x12
+#define OUTPUT_REPORT_ID_IR_ENABLE	0x13
 #define OUTPUT_REPORT_ID_STATUS 	0x15
 #define OUTPUT_REPORT_ID_WRITE_DATA 	0x16
 #define OUTPUT_REPORT_ID_READ_DATA	0x17
+#define OUTPUT_REPORT_ID_IR_ENABLE2	0x1a
 
 /* Error codes */
 #define ERROR_CODE_SUCCESS		0
@@ -111,6 +113,15 @@ struct wiimote_input_report_read_data_t {
 struct wiimote_output_report_led_t {
 	u8 leds : 4;
 	u8 : 2;
+	u8 ack : 1;
+	u8 rumble : 1;
+} ATTRIBUTE_PACKED;
+
+struct wiimote_output_report_enable_feature_t {
+	u8 : 5;
+	// Enable/disable certain feature.
+	u8 enable : 1;
+	// Respond with an ack.
 	u8 ack : 1;
 	u8 rumble : 1;
 } ATTRIBUTE_PACKED;
@@ -307,6 +318,32 @@ static inline u8 input_report_ext_offset(u8 rpt_id)
 	case INPUT_REPORT_ID_BTN_ACC_IR_EXP:
 		return 15;
 	case INPUT_REPORT_ID_EXP21:
+	default:
+		return 0;
+	}
+}
+
+static inline u8 input_report_ir_size(u8 rpt_id)
+{
+	switch (rpt_id) {
+	case INPUT_REPORT_ID_BTN_ACC_IR:
+		return 12;
+	case INPUT_REPORT_ID_BTN_IR_EXP:
+	case INPUT_REPORT_ID_BTN_ACC_IR_EXP:
+		return 10;
+	default:
+		return 0;
+	}
+}
+
+static inline u8 input_report_ir_offset(u8 rpt_id)
+{
+	switch (rpt_id) {
+	case INPUT_REPORT_ID_BTN_ACC_IR:
+	case INPUT_REPORT_ID_BTN_ACC_IR_EXP:
+		return 5;
+	case INPUT_REPORT_ID_BTN_IR_EXP:
+		return 2;
 	default:
 		return 0;
 	}
