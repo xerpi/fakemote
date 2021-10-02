@@ -265,6 +265,6 @@ void wiimote_crypto_generate_key_from_extension_key_data(struct wiimote_encrypti
 
 void wiimote_crypto_encrypt(u8 *data, const struct wiimote_encryption_key_t *key, u32 addr, u32 size)
 {
-	for (u32 i = 0; i < size; ++i, ++data)
+	for (u32 i = 0; i < size; ++i, ++addr)
 		data[i] = (data[i] - key->ft[addr % 8]) ^ key->sb[addr % 8];
 }
