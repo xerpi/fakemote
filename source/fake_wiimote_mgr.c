@@ -163,8 +163,9 @@ static int wiimote_send_input_report_status(const fake_wiimote_t *wiimote)
 {
 	struct wiimote_input_report_status_t status;
 	memset(&status, 0, sizeof(status));
-	status.extension = fake_wiimotes->cur_extension != WIIMOTE_MGR_EXT_NONE;
 	status.buttons = wiimote->buttons;
+	status.extension = fake_wiimotes->cur_extension != WIIMOTE_MGR_EXT_NONE;
+	status.battery = 0xFF;
 	return send_hid_input_report(wiimote->hci_con_handle, wiimote->psm_hid_intr_chn.remote_cid,
 				     INPUT_REPORT_ID_STATUS, &status, sizeof(status));
 }

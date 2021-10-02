@@ -151,13 +151,13 @@ int ds4_driver_ops_slot_changed(usb_input_device_t *device, u8 slot)
 {
 	static u8 colors[5][3] = {
 		{  0,   0,   0},
-		{  0,   0, 255},
-		{255,   0,   0},
-		{0,   255,   0},
-		{255,   0, 255},
+		{  0,   0,  32},
+		{ 32,   0,   0},
+		{  0,  32,   0},
+		{ 32,   0,  32},
 	};
 
-	slot = slot % ARRAY_SIZE(colors[0]);
+	slot = slot % ARRAY_SIZE(colors);
 
 	u8 r = colors[slot][0],
 	   g = colors[slot][1],
