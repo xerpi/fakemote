@@ -2,6 +2,9 @@
 #include "utils.h"
 #include "wiimote.h"
 
+#define DS4_TOUCHPAD_W 1920
+#define DS4_TOUCHPAD_H 940
+
 struct ds4_private_data_t {
 	enum wiimote_mgr_ext_u extension;
 };
@@ -12,7 +15,7 @@ struct ds4_input_report {
 	u8 left_x;
 	u8 left_y;
 	u8 right_x;
-	u8 righty_;
+	u8 right_y;
 
 	u8 triangle : 1;
 	u8 circle   : 1;
@@ -72,15 +75,19 @@ struct ds4_input_report {
 	u8 trackpadpackets;
 	u8 packetcnt;
 
-	u32 finger1_nactive : 1;
-	u32 finger1_id      : 7;
-	u32 finger1_x       : 12;
-	u32 finger1_y       : 12;
+	u8 finger1_nactive : 1;
+	u8 finger1_id      : 7;
+	u8 finger1_x_lo;
+	u8 finger1_y_lo    : 4;
+	u8 finger1_x_hi    : 4;
+	u8 finger1_y_hi;
 
-	u32 finger2_nactive : 1;
-	u32 finger2_id      : 7;
-	u32 finger2_x       : 12;
-	u32 finger2_y       : 12;
+	u8 finger2_nactive : 1;
+	u8 finger2_id      : 7;
+	u8 finger2_x_lo;
+	u8 finger2_y_lo    : 4;
+	u8 finger2_x_hi    : 4;
+	u8 finger2_y_hi;
 } ATTRIBUTE_PACKED;
 
 static inline void ds4_map_buttons(const struct ds4_input_report *input, u16 *buttons)
@@ -93,7 +100,7 @@ static inline void ds4_map_buttons(const struct ds4_input_report *input, u16 *bu
 		*buttons |= WPAD_BUTTON_RIGHT;
 	else if (input->dpad == 5 || input->dpad == 6 || input->dpad == 7)
 		*buttons |= WPAD_BUTTON_LEFT;
-	if (input->cross)
+	if (input->cross || input->tpad)
 		*buttons |= WPAD_BUTTON_A;
 	if (input->circle)
 		*buttons |= WPAD_BUTTON_B;
@@ -172,9 +179,30 @@ int ds4_driver_ops_usb_async_resp(usb_input_device_t *device)
 	struct ds4_input_report *report = (void *)device->usb_async_resp;
 	u16 buttons = 0;
 	struct wiimote_extension_data_format_nunchuk_t nunchuk;
+	u32 f_x, f_y;
+	struct ir_dot_t ir_dots[2];
+	u8 num_ir_dots = 0;
 
 	if (report->report_id == 0x01) {
 		ds4_map_buttons(report, &buttons);
+
+		if (!report->finger1_nactive) {
+			f_x = report->finger1_x_lo | ((u32)report->finger1_x_hi << 8);
+			f_y = report->finger1_y_lo | ((u32)report->finger1_y_hi << 4);
+			ir_dots[0].x = IR_DOT_CENTER_MIN_X + (f_x * (IR_DOT_CENTER_MAX_X - IR_DOT_CENTER_MIN_X)) / (DS4_TOUCHPAD_W - 1);
+			ir_dots[0].y = IR_DOT_CENTER_MIN_Y + (f_y * (IR_DOT_CENTER_MAX_Y - IR_DOT_CENTER_MIN_Y)) / (DS4_TOUCHPAD_H - 1);
+			num_ir_dots++;
+		}
+
+		if (!report->finger2_nactive) {
+			f_x = report->finger2_x_lo | ((u32)report->finger2_x_hi << 8);
+			f_y = report->finger2_y_lo | ((u32)report->finger2_y_hi << 4);
+			ir_dots[1].x = IR_DOT_CENTER_MIN_X + (f_x * (IR_DOT_CENTER_MAX_X - IR_DOT_CENTER_MIN_X)) / (DS4_TOUCHPAD_W - 1);
+			ir_dots[1].y = IR_DOT_CENTER_MIN_Y + (f_y * (IR_DOT_CENTER_MAX_Y - IR_DOT_CENTER_MIN_Y)) / (DS4_TOUCHPAD_H - 1);
+			num_ir_dots++;
+		}
+
+		fake_wiimote_mgr_report_ir_dots(device->wiimote, num_ir_dots, ir_dots);
 
 		if (priv->extension == WIIMOTE_MGR_EXT_NUNCHUK) {
 			memset(&nunchuk, 0, sizeof(nunchuk));

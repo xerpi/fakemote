@@ -3,6 +3,7 @@
 
 #include "hci.h"
 #include "input_device.h"
+#include "wiimote.h"
 
 #define MAX_FAKE_WIIMOTES	2
 
@@ -46,6 +47,7 @@ bool fake_wiimote_mgr_add_input_device(void *usrdata, const input_device_ops_t *
 bool fake_wiimote_mgr_remove_input_device(fake_wiimote_t *wiimote);
 void fake_wiimote_mgr_set_extension(fake_wiimote_t *wiimote, enum wiimote_mgr_ext_u ext);
 void fake_wiimote_mgr_report_input(fake_wiimote_t *wiimote, u16 buttons);
+void fake_wiimote_mgr_report_ir_dots(fake_wiimote_t *wiimote, u8 num_dots, struct ir_dot_t *dots);
 void fake_wiimote_mgr_report_input_ext(fake_wiimote_t *wiimote, u16 buttons,
 				       const void *ext_data, u8 ext_size);
 

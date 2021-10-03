@@ -2,6 +2,7 @@
 #define WIIMOTE_H
 
 #include "types.h"
+#include "utils.h"
 
 /* Source: HID_010_SPC_PFL/1.0 (official HID specification) and Dolphin emulator */
 #define HID_TYPE_HANDSHAKE	0
@@ -79,6 +80,29 @@
 #define WPAD_BUTTON_DOWN	0x0400
 #define WPAD_BUTTON_UP		0x0800
 #define WPAD_BUTTON_PLUS	0x1000
+
+/* Acceleromter configuration */
+#define ACCEL_ZERO_G 0x80
+#define ACCEL_ONE_G 0xB3
+
+/* IR configuration */
+#define IR_LOW_X	0
+#define IR_LOW_Y	0
+#define IR_HIGH_X	(1024 - 1)
+#define IR_HIGH_Y	(768 - 1)
+#define IR_CENTER_X	((IR_HIGH_X + IR_LOW_X) >> 1)
+#define IR_CENTER_Y	((IR_HIGH_Y + IR_LOW_Y) >> 1)
+/* Experimentally found */
+#define IR_HORIZONTAL_OFFSET	64
+#define IR_VERTICAL_OFFSET	128
+#define IR_DOT_CENTER_MIN_X              (4 * 64 - 24 + 2)
+#define IR_DOT_CENTER_MAX_X (IR_HIGH_X - (4 * 64 - 24 - 1))
+#define IR_DOT_CENTER_MIN_Y              (180 - 12 + 2)
+#define IR_DOT_CENTER_MAX_Y (IR_HIGH_Y - (180 + 12 + 2))
+
+struct ir_dot_t {
+	u16 x, y;
+};
 
 /* Input reports (Wiimote -> Host) */
 

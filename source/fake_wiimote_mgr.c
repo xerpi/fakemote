@@ -56,8 +56,10 @@ typedef struct fake_wiimote_t {
 		u8 ir : 1;
 		u8 speaker : 1;
 	} status;
-	/* Input and extension state */
+	/* Input, IR, accelerometer and extension state */
 	u16 buttons;
+	u8 ir_valid_dots;
+	struct ir_dot_t ir_dots[2];
 	enum wiimote_mgr_ext_u cur_extension;
 	enum wiimote_mgr_ext_u new_extension;
 	struct wiimote_extension_registers_t extension_regs;
@@ -240,6 +242,65 @@ void fake_wiimote_mgr_init(void)
 	}
 }
 
+static inline u8 calculate_calibration_data_checksum(const u8 *data, u8 size)
+{
+	u8 sum = 0x55;
+
+	for (u8 i = 0; i < size; i++)
+		sum += data[i];
+
+	return sum;
+}
+
+static void eeprom_init(union wiimote_usable_eeprom_data_t *eeprom)
+{
+	u8 ir_checksum, accel_checksum;
+	memset(eeprom->data, 0, sizeof(eeprom->data));
+
+	static const u8 ir_calibration[10] = {
+		/* Point 1 */
+		IR_LOW_X & 0xFF,
+		IR_LOW_Y & 0xFF,
+		/* Mix */
+		((IR_LOW_Y & 0x300) >> 2) | ((IR_LOW_X & 0x300) >> 4) | ((IR_LOW_Y & 0x300) >> 6) |
+			((IR_HIGH_X & 0x300) >> 8),
+		/* Point 2 */
+		IR_HIGH_X & 0xFF,
+		IR_LOW_Y & 0xFF,
+		/* Point 3 */
+		IR_HIGH_X & 0xFF,
+		IR_HIGH_Y & 0xFF,
+		/* Mix */
+		((IR_HIGH_Y & 0x300) >> 2) | ((IR_HIGH_X & 0x300) >> 4) | ((IR_HIGH_Y & 0x300) >> 6) |
+			((IR_LOW_X & 0x300) >> 8),
+		/* Point 4 */
+		IR_LOW_X & 0xFF,
+		IR_HIGH_Y & 0xFF,
+	};
+
+	ir_checksum = calculate_calibration_data_checksum(ir_calibration, sizeof(ir_calibration));
+	/* Copy to IR calibration data 1 */
+	memcpy(eeprom->ir_calibration_1, ir_calibration, sizeof(ir_calibration));
+	eeprom->ir_calibration_1[sizeof(eeprom->ir_calibration_1) - 1] = ir_checksum;
+	/* Copy to IR calibration data 2 */
+	memcpy(eeprom->ir_calibration_2, ir_calibration, sizeof(ir_calibration));
+	eeprom->ir_calibration_2[sizeof(eeprom->ir_calibration_2) - 1] = ir_checksum;
+
+	static const u8 accel_calibration[9] = {
+		ACCEL_ZERO_G, ACCEL_ZERO_G, ACCEL_ZERO_G, 0,
+		ACCEL_ONE_G,  ACCEL_ONE_G,  ACCEL_ONE_G,  0,
+		0,
+	};
+
+	accel_checksum = calculate_calibration_data_checksum(accel_calibration, sizeof(accel_calibration));
+	/* Copy to accelerometer calibration data 1 */
+	memcpy(eeprom->accel_calibration_1, ir_calibration, sizeof(ir_calibration));
+	eeprom->accel_calibration_1[sizeof(eeprom->accel_calibration_1) - 1] = accel_checksum;
+	/* Copy to accelerometer calibration data 2 */
+	memcpy(eeprom->accel_calibration_2, ir_calibration, sizeof(ir_calibration));
+	eeprom->accel_calibration_2[sizeof(eeprom->accel_calibration_2) - 1] = accel_checksum;
+}
+
 bool fake_wiimote_mgr_add_input_device(void *usrdata, const input_device_ops_t *ops)
 {
 	/* Find an inactive fake Wiimote */
@@ -258,12 +319,14 @@ bool fake_wiimote_mgr_add_input_device(void *usrdata, const input_device_ops_t *
 		fake_wiimotes[i].status.ir = 0;
 		fake_wiimotes[i].status.speaker = 0;
 		fake_wiimotes[i].buttons = 0;
+		fake_wiimotes[i].ir_valid_dots = 0;
 		fake_wiimotes[i].cur_extension = WIIMOTE_MGR_EXT_NONE;
 		fake_wiimotes[i].new_extension = WIIMOTE_MGR_EXT_NONE;
 		memset(&fake_wiimotes[i].extension_regs, 0, sizeof(fake_wiimotes[i].extension_regs));
 		memset(&fake_wiimotes[i].extension_key, 0, sizeof(fake_wiimotes[i].extension_key));
 		fake_wiimotes[i].extension_key_dirty = true;
 		fake_wiimotes[i].input_dirty = false;
+		eeprom_init(&fake_wiimotes[i].eeprom);
 		fake_wiimotes[i].read_request.size = 0;
 		fake_wiimotes[i].reporting_mode = INPUT_REPORT_ID_BTN;
 		fake_wiimotes[i].reporting_continuous = false;
@@ -291,6 +354,13 @@ void fake_wiimote_mgr_report_input(fake_wiimote_t *wiimote, u16 buttons)
 		wiimote->buttons = buttons;
 		wiimote->input_dirty = true;
 	}
+}
+
+void fake_wiimote_mgr_report_ir_dots(fake_wiimote_t *wiimote, u8 num_dots, struct ir_dot_t *dots)
+{
+	wiimote->ir_valid_dots = num_dots;
+	for (u8 i = 0; i < num_dots; i++)
+		wiimote->ir_dots[i] = dots[i];
 }
 
 void fake_wiimote_mgr_report_input_ext(fake_wiimote_t *wiimote, u16 buttons, const void *ext_data, u8 ext_size)
@@ -491,7 +561,10 @@ static inline bool fake_wiimote_process_extension_change(fake_wiimote_t *wiimote
 static void fake_wiimote_send_data_report(fake_wiimote_t *wiimote)
 {
 	u8 report_data[CONTROLLER_DATA_BYTES] ATTRIBUTE_ALIGN(4);
+	u16 buttons;
 	bool has_btn;
+	struct ir_dot_t ir_dots[2];
+	u16 acc_x, acc_y, acc_z;
 	u8 acc_size, acc_offset;
 	u8 ext_size, ext_offset;
 	u8 ir_size, ir_offset;
@@ -504,6 +577,7 @@ static void fake_wiimote_send_data_report(fake_wiimote_t *wiimote)
 	}
 
 	if (wiimote->reporting_continuous || wiimote->input_dirty) {
+		buttons = wiimote->buttons;
 		has_btn = input_report_has_btn(wiimote->reporting_mode);
 		acc_size = input_report_acc_size(wiimote->reporting_mode);
 		acc_offset = input_report_acc_offset(wiimote->reporting_mode);
@@ -513,12 +587,45 @@ static void fake_wiimote_send_data_report(fake_wiimote_t *wiimote)
 		ir_offset = input_report_ir_offset(wiimote->reporting_mode);
 		report_size = (has_btn ? 2 : 0) + acc_size + ext_size + ir_size;
 
-		if (has_btn)
-			memcpy(report_data, &wiimote->buttons, sizeof(wiimote->buttons));
-
 		if (acc_size) {
-			/* TODO: Copy accelerometer data */
-			UNUSED(acc_offset);
+			/* TODO: Use "real" accelerometer data */
+			acc_x = ACCEL_ZERO_G << 2;
+			acc_y = ACCEL_ZERO_G << 2;
+			acc_z = ACCEL_ONE_G << 2;
+
+			report_data[acc_offset + 0] = (acc_x >> 2) & 0xFF;
+			report_data[acc_offset + 1] = (acc_y >> 2) & 0xFF;
+			report_data[acc_offset + 2] = (acc_z >> 2) & 0xFF;
+			buttons |= ((acc_x & 3) << 5) | ((acc_y & 2) << 12) | ((acc_z & 2) << 13);
+		}
+
+		if (ir_size) {
+			if (wiimote->ir_valid_dots == 0) {
+				ir_dots[0].x = 1023;
+				ir_dots[0].y = 1023;
+				ir_dots[1].x = 1023;
+				ir_dots[1].y = 1023;
+			} else {
+				ir_dots[0].x = (IR_HIGH_X - wiimote->ir_dots[0].x) - IR_HORIZONTAL_OFFSET;
+				ir_dots[0].y = wiimote->ir_dots[0].y + IR_VERTICAL_OFFSET;
+				ir_dots[1].x = (IR_HIGH_X - wiimote->ir_dots[0].x) + IR_HORIZONTAL_OFFSET;
+				ir_dots[1].y = wiimote->ir_dots[0].y + IR_VERTICAL_OFFSET;
+			}
+
+			report_data[ir_offset + 0] = ir_dots[0].x & 0xFF;
+			report_data[ir_offset + 1] = ir_dots[0].y & 0xFF;
+			report_data[ir_offset + 2] = (((ir_dots[0].y >> 8) & 3) << 6) |
+						     (((ir_dots[0].x >> 8) & 3) << 4) |
+						     (((ir_dots[1].y >> 8) & 3) << 2) |
+						      ((ir_dots[1].x >> 8) & 3);
+			report_data[ir_offset + 3] = ir_dots[1].x & 0xFF;
+			report_data[ir_offset + 4] = ir_dots[1].y & 0xFF;
+
+			report_data[ir_offset + 5] = 0xFF;
+			report_data[ir_offset + 6] = 0xFF;
+			report_data[ir_offset + 7] = 0xFF;
+			report_data[ir_offset + 8] = 0xFF;
+			report_data[ir_offset + 9] = 0xFF;
 		}
 
 		if (ext_size) {
@@ -526,10 +633,8 @@ static void fake_wiimote_send_data_report(fake_wiimote_t *wiimote)
 			extension_read_data(wiimote, report_data + ext_offset, 0, ext_size);
 		}
 
-		if (ir_size) {
-			/* TODO: Copy IR data */
-			UNUSED(ir_offset);
-		}
+		if (has_btn)
+			memcpy(report_data, &buttons, sizeof(buttons));
 
 		send_hid_input_report(wiimote->hci_con_handle, wiimote->psm_hid_intr_chn.remote_cid,
 				      wiimote->reporting_mode, report_data, report_size);
