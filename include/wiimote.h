@@ -60,6 +60,7 @@
 /* I2C addresses */
 #define EEPROM_I2C_ADDR		0x50
 #define EXTENSION_I2C_ADDR	0x52
+#define CAMERA_I2C_ADDR		0x58
 
 /* Memory sizes */
 #define EEPROM_FREE_SIZE	0x1700
@@ -85,6 +86,11 @@
 #define ACCEL_ZERO_G 0x80
 #define ACCEL_ONE_G 0xB3
 
+/* IR data modes */
+#define IR_MODE_BASIC		1
+#define IR_MODE_EXTENDED	3
+#define IR_MODE_FULL		5
+
 /* IR configuration */
 #define IR_LOW_X	0
 #define IR_LOW_Y	0
@@ -92,6 +98,7 @@
 #define IR_HIGH_Y	(768 - 1)
 #define IR_CENTER_X	((IR_HIGH_X + IR_LOW_X) >> 1)
 #define IR_CENTER_Y	((IR_HIGH_Y + IR_LOW_Y) >> 1)
+#define IR_DOT_SIZE	4
 /* Experimentally found */
 #define IR_HORIZONTAL_OFFSET	64
 #define IR_VERTICAL_OFFSET	128
@@ -99,10 +106,6 @@
 #define IR_DOT_CENTER_MAX_X (IR_HIGH_X - (4 * 64 - 24 - 1))
 #define IR_DOT_CENTER_MIN_Y              (180 - 12 + 2)
 #define IR_DOT_CENTER_MAX_Y (IR_HIGH_Y - (180 + 12 + 2))
-
-struct ir_dot_t {
-	u16 x, y;
-};
 
 /* Input reports (Wiimote -> Host) */
 
@@ -186,6 +189,39 @@ struct wiimote_output_report_read_data_t {
 	u16 address;
 	u16 size;
 } ATTRIBUTE_PACKED;
+
+/* IR camera */
+
+#define CAMERA_DATA_BYTES	36
+
+struct wiimote_ir_camera_registers_t {
+	// Contains sensitivity and other unknown data
+	// TODO: Does disabling the camera peripheral reset the mode or sensitivity?
+	u8 sensitivity_block1[9];
+	u8 unk_0x09[17];
+
+	// addr: 0x1a
+	u8 sensitivity_block2[2];
+	u8 unk_0x1c[20];
+
+	// addr: 0x30
+	u8 enable_object_tracking;
+	u8 unk_0x31[2];
+
+	// addr: 0x33
+	u8 mode;
+	u8 unk_0x34[3];
+
+	// addr: 0x37
+	u8 camera_data[CAMERA_DATA_BYTES];
+	u8 unk_0x5b[165];
+} ATTRIBUTE_PACKED;
+
+static_assert(sizeof(struct wiimote_ir_camera_registers_t) == 0x100);
+
+struct ir_dot_t {
+	u16 x, y;
+};
 
 /* Extensions */
 

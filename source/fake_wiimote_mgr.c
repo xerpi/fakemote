@@ -58,15 +58,17 @@ typedef struct fake_wiimote_t {
 	} status;
 	/* Input, IR, accelerometer and extension state */
 	u16 buttons;
-	u8 ir_valid_dots;
+	bool input_dirty;
+	/* IR camera */
+	struct wiimote_ir_camera_registers_t ir_regs;
 	struct ir_dot_t ir_dots[2];
-	enum wiimote_mgr_ext_u cur_extension;
-	enum wiimote_mgr_ext_u new_extension;
+	u8 ir_valid_dots;
+	/* Extension */
 	struct wiimote_extension_registers_t extension_regs;
 	struct wiimote_encryption_key_t extension_key;
+	enum wiimote_mgr_ext_u cur_extension;
+	enum wiimote_mgr_ext_u new_extension;
 	bool extension_key_dirty;
-	/* If true, we have to send an input report (if not in continuous reporting mode) */
-	bool input_dirty;
 	/* EEPROM */
 	union wiimote_usable_eeprom_data_t eeprom;
 	/* Current in-progress "memory read request" */
@@ -319,13 +321,14 @@ bool fake_wiimote_mgr_add_input_device(void *usrdata, const input_device_ops_t *
 		fake_wiimotes[i].status.ir = 0;
 		fake_wiimotes[i].status.speaker = 0;
 		fake_wiimotes[i].buttons = 0;
+		fake_wiimotes[i].input_dirty = false;
+		memset(&fake_wiimotes[i].ir_regs, 0, sizeof(fake_wiimotes[i].ir_regs));
 		fake_wiimotes[i].ir_valid_dots = 0;
-		fake_wiimotes[i].cur_extension = WIIMOTE_MGR_EXT_NONE;
-		fake_wiimotes[i].new_extension = WIIMOTE_MGR_EXT_NONE;
 		memset(&fake_wiimotes[i].extension_regs, 0, sizeof(fake_wiimotes[i].extension_regs));
 		memset(&fake_wiimotes[i].extension_key, 0, sizeof(fake_wiimotes[i].extension_key));
+		fake_wiimotes[i].cur_extension = WIIMOTE_MGR_EXT_NONE;
+		fake_wiimotes[i].new_extension = WIIMOTE_MGR_EXT_NONE;
 		fake_wiimotes[i].extension_key_dirty = true;
-		fake_wiimotes[i].input_dirty = false;
 		eeprom_init(&fake_wiimotes[i].eeprom);
 		fake_wiimotes[i].read_request.size = 0;
 		fake_wiimotes[i].reporting_mode = INPUT_REPORT_ID_BTN;
@@ -358,9 +361,86 @@ void fake_wiimote_mgr_report_input(fake_wiimote_t *wiimote, u16 buttons)
 
 void fake_wiimote_mgr_report_ir_dots(fake_wiimote_t *wiimote, u8 num_dots, struct ir_dot_t *dots)
 {
-	wiimote->ir_valid_dots = num_dots;
-	for (u8 i = 0; i < num_dots; i++)
-		wiimote->ir_dots[i] = dots[i];
+	u8 *ir_data = wiimote->ir_regs.camera_data;
+	struct ir_dot_t ir_dots[2];
+
+	/* TODO: For now we only care about 1 reported dot... */
+	if (num_dots == 0) {
+		ir_dots[0].x = 1023;
+		ir_dots[0].y = 1023;
+		ir_dots[1].x = 1023;
+		ir_dots[1].y = 1023;
+	} else {
+		ir_dots[0].x = (IR_HIGH_X - dots[0].x) - IR_HORIZONTAL_OFFSET;
+		ir_dots[0].y = dots[0].y + IR_VERTICAL_OFFSET;
+		ir_dots[1].x = (IR_HIGH_X - dots[0].x) + IR_HORIZONTAL_OFFSET;
+		ir_dots[1].y = dots[0].y + IR_VERTICAL_OFFSET;
+	}
+
+	switch (wiimote->ir_regs.mode) {
+	case IR_MODE_BASIC:
+		ir_data[0] = ir_dots[0].x & 0xFF;
+		ir_data[1] = ir_dots[0].y & 0xFF;
+		ir_data[2] = (((ir_dots[0].y >> 8) & 3) << 6) |
+			     (((ir_dots[0].x >> 8) & 3) << 4) |
+			     (((ir_dots[1].y >> 8) & 3) << 2) |
+			      ((ir_dots[1].x >> 8) & 3);
+		ir_data[3] = ir_dots[1].x & 0xFF;
+		ir_data[4] = ir_dots[1].y & 0xFF;
+		ir_data[5] = 0xFF;
+		ir_data[6] = 0xFF;
+		ir_data[7] = 0xFF;
+		ir_data[8] = 0xFF;
+		ir_data[9] = 0xFF;
+		break;
+	case IR_MODE_EXTENDED:
+		ir_data[0] = ir_dots[0].x & 0xFF;
+		ir_data[1] = ir_dots[0].y & 0xFF;
+		ir_data[2] = ((ir_dots[0].y & 0x300) >> 2) |
+			     ((ir_dots[0].x & 0x300) >> 4) |
+			     IR_DOT_SIZE;
+		ir_data[3] = ir_dots[1].x & 0xFF;
+		ir_data[4] = ir_dots[1].y & 0xFF;
+		ir_data[5] = ((ir_dots[1].y & 0x300) >> 2) |
+			     ((ir_dots[1].x & 0x300) >> 4) |
+			     IR_DOT_SIZE;
+		ir_data[6] = 0xFF;
+		ir_data[7] = 0xFF;
+		ir_data[8] = 0xF0;
+		ir_data[9] = 0xFF;
+		ir_data[10] = 0xFF;
+		ir_data[11] = 0xF0;
+		break;
+	case IR_MODE_FULL:
+		ir_data[0] = ir_dots[0].x & 0xFF;
+		ir_data[1] = ir_dots[0].y & 0xFF;
+		ir_data[2] = ((ir_dots[0].y & 0x300) >> 2) |
+			     ((ir_dots[0].x & 0x300) >> 4) |
+			     IR_DOT_SIZE;
+		ir_data[3] = 0;
+		ir_data[4] = 0x7F;
+		ir_data[5] = 0;
+		ir_data[6] = 0x7F;
+		ir_data[7] = 0;
+		ir_data[8] = 0xFF;
+		ir_data[9] = ir_dots[1].x & 0xFF;
+		ir_data[10] = ir_dots[1].y & 0xFF;
+		ir_data[11] = ((ir_dots[1].y & 0x300) >> 2) |
+			      ((ir_dots[1].x & 0x300) >> 4) |
+			      IR_DOT_SIZE;
+		ir_data[12] = 0;
+		ir_data[13] = 0x7F;
+		ir_data[14] = 0;
+		ir_data[15] = 0x7F;
+		ir_data[16] = 0;
+		ir_data[17] = 0xFF;
+		memset(&ir_data[18], 0xFF, 2 * 9);
+		break;
+	default:
+		/* This seems to be fairly common, 0xff data is sent in this case */
+		memset(ir_data, 0xFF, sizeof(wiimote->ir_regs.camera_data));
+		break;
+	}
 }
 
 void fake_wiimote_mgr_report_input_ext(fake_wiimote_t *wiimote, u16 buttons, const void *ext_data, u8 ext_size)
@@ -390,6 +470,28 @@ static void check_send_config_for_new_channel(u16 hci_con_handle, l2cap_channel_
 			info->state = L2CAP_CHANNEL_STATE_INACTIVE_CONFIG_PEND;
 		}
 	}
+}
+
+static inline bool ir_camera_read_data(fake_wiimote_t *wiimote, void *dst, u16 address, u16 size)
+{
+	if (address + size > sizeof(wiimote->ir_regs))
+		return false;
+
+	/* Copy the requested data from the IR camera registers */
+	memcpy(dst, (u8 *)&wiimote->ir_regs + address, size);
+
+	return true;
+}
+
+static inline bool ir_camera_write_data(fake_wiimote_t *wiimote, const void *src, u16 address, u16 size)
+{
+	if (address + size > sizeof(wiimote->ir_regs))
+		return false;
+
+	/* Copy the requested data to the IR camera registers */
+	memcpy((u8 *)&wiimote->ir_regs + address, src, size);
+
+	return true;
 }
 
 static bool extension_read_data(fake_wiimote_t *wiimote, void *dst, u16 address, u16 size)
@@ -455,6 +557,9 @@ static bool fake_wiimote_process_read_request(fake_wiimote_t *wiimote)
 		} else if (wiimote->read_request.slave_address == EXTENSION_I2C_ADDR) {
 			if (!extension_read_data(wiimote, reply.data, address, read_size))
 				error = ERROR_CODE_NACK;
+		} else if (wiimote->read_request.slave_address == CAMERA_I2C_ADDR) {
+			if (!ir_camera_read_data(wiimote, reply.data, address, read_size))
+				error = ERROR_CODE_NACK;
 		}
 		break;
 	default:
@@ -505,6 +610,9 @@ static void fake_wiimote_process_write_request(fake_wiimote_t *wiimote,
 			error = ERROR_CODE_INVALID_ADDRESS;
 		} else if (write->slave_address == EXTENSION_I2C_ADDR) {
 			if (!extension_write_data(wiimote, write->data, write->address, write->size))
+				error = ERROR_CODE_NACK;
+		} else if (write->slave_address == CAMERA_I2C_ADDR) {
+			if (!ir_camera_write_data(wiimote, write->data, write->address, write->size))
 				error = ERROR_CODE_NACK;
 		}
 		break;
@@ -563,7 +671,6 @@ static void fake_wiimote_send_data_report(fake_wiimote_t *wiimote)
 	u8 report_data[CONTROLLER_DATA_BYTES] ATTRIBUTE_ALIGN(4);
 	u16 buttons;
 	bool has_btn;
-	struct ir_dot_t ir_dots[2];
 	u16 acc_x, acc_y, acc_z;
 	u8 acc_size, acc_offset;
 	u8 ext_size, ext_offset;
@@ -599,34 +706,8 @@ static void fake_wiimote_send_data_report(fake_wiimote_t *wiimote)
 			buttons |= ((acc_x & 3) << 5) | ((acc_y & 2) << 12) | ((acc_z & 2) << 13);
 		}
 
-		if (ir_size) {
-			if (wiimote->ir_valid_dots == 0) {
-				ir_dots[0].x = 1023;
-				ir_dots[0].y = 1023;
-				ir_dots[1].x = 1023;
-				ir_dots[1].y = 1023;
-			} else {
-				ir_dots[0].x = (IR_HIGH_X - wiimote->ir_dots[0].x) - IR_HORIZONTAL_OFFSET;
-				ir_dots[0].y = wiimote->ir_dots[0].y + IR_VERTICAL_OFFSET;
-				ir_dots[1].x = (IR_HIGH_X - wiimote->ir_dots[0].x) + IR_HORIZONTAL_OFFSET;
-				ir_dots[1].y = wiimote->ir_dots[0].y + IR_VERTICAL_OFFSET;
-			}
-
-			report_data[ir_offset + 0] = ir_dots[0].x & 0xFF;
-			report_data[ir_offset + 1] = ir_dots[0].y & 0xFF;
-			report_data[ir_offset + 2] = (((ir_dots[0].y >> 8) & 3) << 6) |
-						     (((ir_dots[0].x >> 8) & 3) << 4) |
-						     (((ir_dots[1].y >> 8) & 3) << 2) |
-						      ((ir_dots[1].x >> 8) & 3);
-			report_data[ir_offset + 3] = ir_dots[1].x & 0xFF;
-			report_data[ir_offset + 4] = ir_dots[1].y & 0xFF;
-
-			report_data[ir_offset + 5] = 0xFF;
-			report_data[ir_offset + 6] = 0xFF;
-			report_data[ir_offset + 7] = 0xFF;
-			report_data[ir_offset + 8] = 0xFF;
-			report_data[ir_offset + 9] = 0xFF;
-		}
+		if (ir_size)
+			memcpy(&report_data[ir_offset], wiimote->ir_regs.camera_data, ir_size);
 
 		if (ext_size) {
 			/* Takes care of encrypting the extension data if necessary */
