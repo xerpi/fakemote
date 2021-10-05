@@ -59,6 +59,8 @@ typedef struct fake_wiimote_t {
 	/* Input, IR, accelerometer and extension state */
 	u16 buttons;
 	bool input_dirty;
+	/* Rumble */
+	bool rumble_on;
 	/* IR camera */
 	struct wiimote_ir_camera_registers_t ir_regs;
 	struct ir_dot_t ir_dots[2];
@@ -322,6 +324,7 @@ bool fake_wiimote_mgr_add_input_device(void *usrdata, const input_device_ops_t *
 		fake_wiimotes[i].status.speaker = 0;
 		fake_wiimotes[i].buttons = 0;
 		fake_wiimotes[i].input_dirty = false;
+		fake_wiimotes[i].rumble_on = false;
 		memset(&fake_wiimotes[i].ir_regs, 0, sizeof(fake_wiimotes[i].ir_regs));
 		fake_wiimotes[i].ir_valid_dots = 0;
 		memset(&fake_wiimotes[i].extension_regs, 0, sizeof(fake_wiimotes[i].extension_regs));
@@ -724,6 +727,15 @@ static void fake_wiimote_send_data_report(fake_wiimote_t *wiimote)
 	}
 }
 
+static inline void fake_wiimote_update_rumble(fake_wiimote_t *wiimote, bool rumble_on)
+{
+	if (rumble_on != wiimote->rumble_on) {
+		wiimote->rumble_on = rumble_on;
+		if (wiimote->input_device_ops->set_rumble)
+			wiimote->input_device_ops->set_rumble(wiimote->usrdata, rumble_on);
+	}
+}
+
 static void fake_wiimote_tick(fake_wiimote_t *wiimote)
 {
 	int ret;
@@ -1062,6 +1074,10 @@ static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data,
 
 	if (size == 0)
 		return;
+
+	/* Setting the LSB (bit 0) of the first byte of any output report
+	 * will activate the rumble motor, and unsetting it will deactivate it */
+	fake_wiimote_update_rumble(wiimote, data[1] & 1);
 
 	switch (data[0]) {
 	case OUTPUT_REPORT_ID_LED: {

@@ -7,6 +7,7 @@ typedef struct input_device_ops_t {
 	int (*assigned)(void *usrdata, fake_wiimote_t *wiimote);
 	int (*disconnect)(void *usrdata);
 	int (*set_leds)(void *usrdata, int leds);
+	int (*set_rumble)(void *usrdata, bool rumble_on);
 } input_device_ops_t;
 
 #endif

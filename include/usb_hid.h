@@ -32,6 +32,7 @@ typedef struct usb_device_driver_t {
 	int (*init)(usb_input_device_t *device);
 	int (*disconnect)(usb_input_device_t *device);
 	int (*slot_changed)(usb_input_device_t *device, u8 slot);
+	int (*set_rumble)(usb_input_device_t *device, bool rumble_on);
 	int (*usb_async_resp)(usb_input_device_t *device);
 } usb_device_driver_t;
 

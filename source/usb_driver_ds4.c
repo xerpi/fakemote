@@ -7,6 +7,8 @@
 
 struct ds4_private_data_t {
 	enum wiimote_mgr_ext_u extension;
+	u8 leds;
+	bool rumble_on;
 };
 static_assert(sizeof(struct ds4_private_data_t) <= USB_INPUT_DEVICE_PRIVATE_DATA_SIZE);
 
@@ -116,13 +118,14 @@ static inline void ds4_map_buttons(const struct ds4_input_report *input, u16 *bu
 		*buttons |= WPAD_BUTTON_PLUS;
 }
 
-static int ds4_set_leds_rumble(usb_input_device_t *device, u8 r, u8 g, u8 b)
+static inline int ds4_set_leds_rumble(usb_input_device_t *device, u8 r, u8 g, u8 b,
+				      u8 rumble_small, u8 rumble_large)
 {
 	u8 buf[] ATTRIBUTE_ALIGN(32) = {
 		0x05, // Report ID
 		0x03, 0x00, 0x00,
-		0x00, // Fast motor
-		0x00, // Slow motor
+		rumble_small, // Fast motor
+		rumble_large, // Slow motor
 		r, g, b, // RGB
 		0x00, // LED on duration
 		0x00  // LED off duration
@@ -137,26 +140,12 @@ static inline int ds4_request_data(usb_input_device_t *device)
 							   sizeof(device->usb_async_resp));
 }
 
-int ds4_driver_ops_init(usb_input_device_t *device)
+static int ds4_driver_update_leds_rumble(usb_input_device_t *device)
 {
 	struct ds4_private_data_t *priv = (void *)device->private_data;
+	u8 index;
 
-	/* Set initial extension */
-	priv->extension = WIIMOTE_MGR_EXT_NUNCHUK;
-	fake_wiimote_mgr_set_extension(device->wiimote, priv->extension);
-
-	return ds4_request_data(device);
-}
-
-int ds4_driver_ops_disconnect(usb_input_device_t *device)
-{
-	ds4_set_leds_rumble(device, 0, 0, 0);
-	return 0;
-}
-
-int ds4_driver_ops_slot_changed(usb_input_device_t *device, u8 slot)
-{
-	static u8 colors[5][3] = {
+	static const u8 colors[5][3] = {
 		{  0,   0,   0},
 		{  0,   0,  32},
 		{ 32,   0,   0},
@@ -164,13 +153,56 @@ int ds4_driver_ops_slot_changed(usb_input_device_t *device, u8 slot)
 		{ 32,   0,  32},
 	};
 
-	slot = slot % ARRAY_SIZE(colors);
+	index = priv->leds % ARRAY_SIZE(colors);
 
-	u8 r = colors[slot][0],
-	   g = colors[slot][1],
-	   b = colors[slot][2];
+	u8 r = colors[index][0],
+	   g = colors[index][1],
+	   b = colors[index][2];
 
-	return ds4_set_leds_rumble(device, r, g, b);
+	return ds4_set_leds_rumble(device, r, g, b, priv->rumble_on * 192, 0);
+}
+
+int ds4_driver_ops_init(usb_input_device_t *device)
+{
+	struct ds4_private_data_t *priv = (void *)device->private_data;
+
+	/* Init private state */
+	priv->leds = 0;
+	priv->rumble_on = false;
+	priv->extension = WIIMOTE_MGR_EXT_NUNCHUK;
+
+	/* Set initial extension */
+	fake_wiimote_mgr_set_extension(device->wiimote, priv->extension);
+
+	return ds4_request_data(device);
+}
+
+int ds4_driver_ops_disconnect(usb_input_device_t *device)
+{
+	struct ds4_private_data_t *priv = (void *)device->private_data;
+
+	priv->leds = 0;
+	priv->rumble_on = false;
+
+	return ds4_driver_update_leds_rumble(device);
+}
+
+int ds4_driver_ops_slot_changed(usb_input_device_t *device, u8 slot)
+{
+	struct ds4_private_data_t *priv = (void *)device->private_data;
+
+	priv->leds = slot;
+
+	return ds4_driver_update_leds_rumble(device);
+}
+
+int ds4_driver_ops_set_rumble(usb_input_device_t *device, bool rumble_on)
+{
+	struct ds4_private_data_t *priv = (void *)device->private_data;
+
+	priv->rumble_on = rumble_on;
+
+	return ds4_driver_update_leds_rumble(device);
 }
 
 int ds4_driver_ops_usb_async_resp(usb_input_device_t *device)

@@ -56,11 +56,14 @@ static usb_input_device_t usb_devices[MAX_FAKE_WIIMOTES];
 
 static const usb_device_driver_t usb_device_drivers[] = {
 	{SONY_VID, DS3_PID,   ds3_driver_ops_init, ds3_driver_ops_disconnect,
-			      ds3_driver_ops_slot_changed, ds3_driver_ops_usb_async_resp},
+			      ds3_driver_ops_slot_changed, NULL,
+			      ds3_driver_ops_usb_async_resp},
 	{SONY_VID, DS4_PID,   ds4_driver_ops_init, ds4_driver_ops_disconnect,
-			      ds4_driver_ops_slot_changed, ds4_driver_ops_usb_async_resp},
+			      ds4_driver_ops_slot_changed, ds4_driver_ops_set_rumble,
+			      ds4_driver_ops_usb_async_resp},
 	{SONY_VID, DS4_2_PID, ds4_driver_ops_init, ds4_driver_ops_disconnect,
-			      ds4_driver_ops_slot_changed, ds4_driver_ops_usb_async_resp},
+			      ds4_driver_ops_slot_changed, ds4_driver_ops_set_rumble,
+			      ds4_driver_ops_usb_async_resp},
 };
 
 static usb_device_entry device_change_devices[USB_MAX_DEVICES] ATTRIBUTE_ALIGN(32);
@@ -319,10 +322,23 @@ static int usb_device_ops_set_leds(void *usrdata, int leds)
 	return 0;
 }
 
+static int usb_device_ops_set_rumble(void *usrdata, bool rumble_on)
+{
+	usb_input_device_t *device = usrdata;
+
+	DEBUG("usb_device_ops_set_rumble\n");
+
+	if (device->driver->set_rumble)
+		return device->driver->set_rumble(device, rumble_on);
+
+	return 0;
+}
+
 static const input_device_ops_t input_device_usb_ops = {
 	.assigned   = usb_device_ops_assigned,
 	.disconnect = usb_device_ops_disconnect,
-	.set_leds   = usb_device_ops_set_leds
+	.set_leds   = usb_device_ops_set_leds,
+	.set_rumble = usb_device_ops_set_rumble
 };
 
 static void handle_device_change_reply(int host_fd, areply *reply)
