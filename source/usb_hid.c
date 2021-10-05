@@ -56,7 +56,7 @@ static usb_input_device_t usb_devices[MAX_FAKE_WIIMOTES];
 
 static const usb_device_driver_t usb_device_drivers[] = {
 	{SONY_VID, DS3_PID,   ds3_driver_ops_init, ds3_driver_ops_disconnect,
-			      ds3_driver_ops_slot_changed, NULL,
+			      ds3_driver_ops_slot_changed, ds3_driver_ops_set_rumble,
 			      ds3_driver_ops_usb_async_resp},
 	{SONY_VID, DS4_PID,   ds4_driver_ops_init, ds4_driver_ops_disconnect,
 			      ds4_driver_ops_slot_changed, ds4_driver_ops_set_rumble,

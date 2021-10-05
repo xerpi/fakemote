@@ -5,6 +5,8 @@
 
 struct ds3_private_data_t {
 	enum wiimote_mgr_ext_u extension;
+	u8 leds;
+	bool rumble_on;
 };
 static_assert(sizeof(struct ds3_private_data_t) <= USB_INPUT_DEVICE_PRIVATE_DATA_SIZE);
 
@@ -74,6 +76,13 @@ struct ds3_input_report {
 	u16 z_gyro;
 } ATTRIBUTE_PACKED;
 
+struct ds3_rumble {
+	u8 duration_right;
+	u8 power_right;
+	u8 duration_left;
+	u8 power_left;
+};
+
 static inline void ds3_map_buttons(const struct ds3_input_report *input, u16 *buttons)
 {
 	if (input->left)
@@ -120,10 +129,8 @@ static inline int ds3_request_data(usb_input_device_t *device)
 							   sizeof(device->usb_async_resp));
 }
 
-static int ds3_set_leds_rumble(usb_input_device_t *device, u8 led)
+static int ds3_set_leds_rumble(usb_input_device_t *device, u8 leds, const struct ds3_rumble *rumble)
 {
-	static const u8 led_pattern[] = {0x0, 0x02, 0x04, 0x08, 0x10, 0x12, 0x14, 0x18};
-
 	u8 buf[] ATTRIBUTE_ALIGN(32) = {
 		0x00,                         /* Padding */
 		0x00, 0x00, 0x00, 0x00,       /* Rumble (r, r, l, l) */
@@ -136,13 +143,35 @@ static int ds3_set_leds_rumble(usb_input_device_t *device, u8 led)
 		0x00, 0x00, 0x00, 0x00, 0x00  /* LED_5 (not soldered) */
 	};
 
-	buf[9] = led_pattern[led % ARRAY_SIZE(led_pattern)];
+	buf[1] = rumble->duration_right;
+	buf[2] = rumble->power_right;
+	buf[3] = rumble->duration_left;
+	buf[4] = rumble->power_left;
+	buf[9] = leds;
 
 	return usb_device_driver_issue_ctrl_transfer(device,
 						     USB_REQTYPE_INTERFACE_SET,
 						     USB_REQ_SETREPORT,
 						     (USB_REPTYPE_OUTPUT << 8) | 0x01, 0,
 						     buf, sizeof(buf));
+}
+
+static int ds3_driver_update_leds_rumble(usb_input_device_t *device)
+{
+	struct ds3_private_data_t *priv = (void *)device->private_data;
+	struct ds3_rumble rumble;
+	u8 leds;
+
+	static const u8 led_pattern[] = {0x0, 0x02, 0x04, 0x08, 0x10, 0x12, 0x14, 0x18};
+
+	leds = led_pattern[priv->leds % ARRAY_SIZE(led_pattern)];
+
+	rumble.duration_right = priv->rumble_on * 255;
+	rumble.power_right = 255;
+	rumble.duration_left = 0;
+	rumble.power_left = 0;
+
+	return ds3_set_leds_rumble(device, leds, &rumble);
 }
 
 int ds3_driver_ops_init(usb_input_device_t *device)
@@ -154,8 +183,12 @@ int ds3_driver_ops_init(usb_input_device_t *device)
 	if (ret < 0)
 		return ret;
 
-	/* Set initial extension */
+	/* Init private state */
+	priv->leds = 0;
+	priv->rumble_on = false;
 	priv->extension = WIIMOTE_MGR_EXT_NUNCHUK;
+
+	/* Set initial extension */
 	fake_wiimote_mgr_set_extension(device->wiimote, priv->extension);
 
 	ret = ds3_request_data(device);
@@ -167,13 +200,30 @@ int ds3_driver_ops_init(usb_input_device_t *device)
 
 int ds3_driver_ops_disconnect(usb_input_device_t *device)
 {
-	ds3_set_leds_rumble(device, 0);
-	return 0;
+	struct ds3_private_data_t *priv = (void *)device->private_data;
+
+	priv->leds = 0;
+	priv->rumble_on = false;
+
+	return ds3_driver_update_leds_rumble(device);
 }
 
 int ds3_driver_ops_slot_changed(usb_input_device_t *device, u8 slot)
 {
-	return ds3_set_leds_rumble(device, slot);
+	struct ds3_private_data_t *priv = (void *)device->private_data;
+
+	priv->leds = slot;
+
+	return ds3_driver_update_leds_rumble(device);
+}
+
+int ds3_driver_ops_set_rumble(usb_input_device_t *device, bool rumble_on)
+{
+	struct ds3_private_data_t *priv = (void *)device->private_data;
+
+	priv->rumble_on = rumble_on;
+
+	return ds3_driver_update_leds_rumble(device);
 }
 
 int ds3_driver_ops_usb_async_resp(usb_input_device_t *device)
