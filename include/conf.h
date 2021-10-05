@@ -39,6 +39,17 @@ struct conf_pads_setting {
 	struct conf_pad_device unknown;
 } ATTRIBUTE_PACKED;
 
+struct conf_pads_cmp_entry {
+	u8 bdaddr[6];
+	char name[64];
+	u8 unk[16];
+} ATTRIBUTE_PACKED;
+
+struct conf_pads_cmp_setting {
+	u8 num;
+	struct conf_pads_cmp_entry entries[6];
+} ATTRIBUTE_PACKED;
+
 int conf_get(u8 *conf, const char *name, void *buffer, u32 length);
 int conf_set(u8 *conf, const char *name,  const void *buffer, u32 length);
 

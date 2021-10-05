@@ -20,6 +20,7 @@ static u8 *conf_find(u8 *conf, const char *name)
 static s32 conf_get_length(u8 *conf, const char *name)
 {
 	u8 *entry;
+	int len;
 
 	entry = conf_find(conf, name);
 	if(!entry)
@@ -27,7 +28,8 @@ static s32 conf_get_length(u8 *conf, const char *name)
 
 	switch (*entry>>5) {
 	case 1:
-		return *((u16*)&entry[strlen(name)+1]) + 1;
+		len = strlen(name);
+		return ((u16)entry[len+1] << 8) + entry[len+2] + 1;
 	case 2:
 		return entry[strlen(name)+1] + 1;
 	case 3:
