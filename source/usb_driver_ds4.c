@@ -2,8 +2,9 @@
 #include "utils.h"
 #include "wiimote.h"
 
-#define DS4_TOUCHPAD_W 1920
-#define DS4_TOUCHPAD_H 940
+#define DS4_TOUCHPAD_W		1920
+#define DS4_TOUCHPAD_H		940
+#define DS4_ACC_RES_PER_G	8192
 
 struct ds4_private_data_t {
 	enum wiimote_mgr_ext_u extension;
@@ -46,10 +47,6 @@ struct ds4_input_report {
 
 	u8 battery;
 
-	s16 accel_x;
-	s16 accel_y;
-	s16 accel_z;
-
 	union {
 		s16 roll;
 		s16 gyro_z;
@@ -64,6 +61,10 @@ struct ds4_input_report {
 		s16 pitch;
 		s16 gyro_x;
 	};
+
+	s16 accel_x;
+	s16 accel_y;
+	s16 accel_z;
 
 	u8 unk1[5];
 
@@ -210,6 +211,8 @@ int ds4_driver_ops_usb_async_resp(usb_input_device_t *device)
 	struct ds4_private_data_t *priv = (void *)device->private_data;
 	struct ds4_input_report *report = (void *)device->usb_async_resp;
 	u16 buttons = 0;
+	s32 ds4_acc_x, ds4_acc_y, ds4_acc_z;
+	u16 acc_x, acc_y, acc_z;
 	struct wiimote_extension_data_format_nunchuk_t nunchuk;
 	u32 f_x, f_y;
 	struct ir_dot_t ir_dots[2];
@@ -217,6 +220,17 @@ int ds4_driver_ops_usb_async_resp(usb_input_device_t *device)
 
 	if (report->report_id == 0x01) {
 		ds4_map_buttons(report, &buttons);
+
+		ds4_acc_x = (s32)(s16)le16toh(report->accel_x);
+		ds4_acc_y = (s32)(s16)le16toh(report->accel_y);
+		ds4_acc_z = (s32)(s16)le16toh(report->accel_z);
+
+		/* Normalize to accelerometer calibration configuration */
+		acc_x = ACCEL_ZERO_G - (ds4_acc_x * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS4_ACC_RES_PER_G;
+		acc_y = ACCEL_ZERO_G + (ds4_acc_z * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS4_ACC_RES_PER_G;
+		acc_z = ACCEL_ZERO_G + (ds4_acc_y * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS4_ACC_RES_PER_G;
+
+		fake_wiimote_mgr_report_accelerometer(device->wiimote, acc_x, acc_y, acc_z);
 
 		if (!report->finger1_nactive) {
 			f_x = report->finger1_x_lo | ((u32)report->finger1_x_hi << 8);
