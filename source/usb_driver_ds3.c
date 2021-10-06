@@ -3,6 +3,8 @@
 #include "utils.h"
 #include "wiimote.h"
 
+#define DS3_ACC_RES_PER_G	113
+
 struct ds3_private_data_t {
 	enum wiimote_mgr_ext_u extension;
 	u8 leds;
@@ -231,9 +233,22 @@ int ds3_driver_ops_usb_async_resp(usb_input_device_t *device)
 	struct ds3_private_data_t *priv = (void *)device->private_data;
 	struct ds3_input_report *report = (void *)device->usb_async_resp;
 	u16 buttons = 0;
+	s32 ds3_acc_x, ds3_acc_y, ds3_acc_z;
+	u16 acc_x, acc_y, acc_z;
 	struct wiimote_extension_data_format_nunchuk_t nunchuk;
 
 	ds3_map_buttons(report, &buttons);
+
+	ds3_acc_x = (s32)report->acc_x - 511;
+	ds3_acc_y = 511 - (s32)report->acc_y;
+	ds3_acc_z = 511 - (s32)report->acc_z;
+
+	/* Normalize to accelerometer calibration configuration */
+	acc_x = ACCEL_ZERO_G - (ds3_acc_x * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS3_ACC_RES_PER_G;
+	acc_y = ACCEL_ZERO_G + (ds3_acc_y * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS3_ACC_RES_PER_G;
+	acc_z = ACCEL_ZERO_G + (ds3_acc_z * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS3_ACC_RES_PER_G;
+
+	fake_wiimote_mgr_report_accelerometer(device->wiimote, acc_x, acc_y, acc_z);
 
 	if (priv->extension == WIIMOTE_MGR_EXT_NUNCHUK) {
 		memset(&nunchuk, 0, sizeof(nunchuk));
