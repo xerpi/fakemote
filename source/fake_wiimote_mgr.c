@@ -291,17 +291,19 @@ static void eeprom_init(union wiimote_usable_eeprom_data_t *eeprom)
 	eeprom->ir_calibration_2[sizeof(eeprom->ir_calibration_2) - 1] = ir_checksum;
 
 	static const u8 accel_calibration[9] = {
-		ACCEL_ZERO_G, ACCEL_ZERO_G, ACCEL_ZERO_G, 0,
-		ACCEL_ONE_G,  ACCEL_ONE_G,  ACCEL_ONE_G,  0,
-		0,
+		ACCEL_ZERO_G >> 2, ACCEL_ZERO_G >> 2, ACCEL_ZERO_G >> 2,
+		((ACCEL_ZERO_G & 3) << 4) | ((ACCEL_ZERO_G & 3) << 2) | (ACCEL_ZERO_G & 3),
+		ACCEL_ONE_G >> 2,  ACCEL_ONE_G >> 2,  ACCEL_ONE_G >> 2,
+		((ACCEL_ONE_G & 3) << 4) | ((ACCEL_ONE_G & 3) << 2) | (ACCEL_ONE_G & 3),
+		0, /* Motor + volume */
 	};
 
 	accel_checksum = calculate_calibration_data_checksum(accel_calibration, sizeof(accel_calibration));
 	/* Copy to accelerometer calibration data 1 */
-	memcpy(eeprom->accel_calibration_1, ir_calibration, sizeof(ir_calibration));
+	memcpy(eeprom->accel_calibration_1, accel_calibration, sizeof(accel_calibration));
 	eeprom->accel_calibration_1[sizeof(eeprom->accel_calibration_1) - 1] = accel_checksum;
 	/* Copy to accelerometer calibration data 2 */
-	memcpy(eeprom->accel_calibration_2, ir_calibration, sizeof(ir_calibration));
+	memcpy(eeprom->accel_calibration_2, accel_calibration, sizeof(accel_calibration));
 	eeprom->accel_calibration_2[sizeof(eeprom->accel_calibration_2) - 1] = accel_checksum;
 }
 
@@ -699,9 +701,9 @@ static void fake_wiimote_send_data_report(fake_wiimote_t *wiimote)
 
 		if (acc_size) {
 			/* TODO: Use "real" accelerometer data */
-			acc_x = ACCEL_ZERO_G << 2;
-			acc_y = ACCEL_ZERO_G << 2;
-			acc_z = ACCEL_ONE_G << 2;
+			acc_x = ACCEL_ZERO_G;
+			acc_y = ACCEL_ZERO_G;
+			acc_z = ACCEL_ONE_G;
 
 			report_data[acc_offset + 0] = (acc_x >> 2) & 0xFF;
 			report_data[acc_offset + 1] = (acc_y >> 2) & 0xFF;

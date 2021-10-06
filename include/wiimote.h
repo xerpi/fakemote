@@ -83,8 +83,8 @@
 #define WPAD_BUTTON_PLUS	0x1000
 
 /* Acceleromter configuration */
-#define ACCEL_ZERO_G 0x80
-#define ACCEL_ONE_G 0xB3
+#define ACCEL_ZERO_G	(0x80 << 2)
+#define ACCEL_ONE_G	(0x9A << 2)
 
 /* IR data modes */
 #define IR_MODE_BASIC		1
