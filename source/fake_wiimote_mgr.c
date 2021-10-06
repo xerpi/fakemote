@@ -56,9 +56,11 @@ typedef struct fake_wiimote_t {
 		u8 ir : 1;
 		u8 speaker : 1;
 	} status;
-	/* Input, IR, accelerometer and extension state */
+	/* Buttons */
 	u16 buttons;
 	bool input_dirty;
+	/* Accelerometer */
+	u16 acc_x, acc_y, acc_z;
 	/* Rumble */
 	bool rumble_on;
 	/* IR camera */
@@ -326,6 +328,9 @@ bool fake_wiimote_mgr_add_input_device(void *usrdata, const input_device_ops_t *
 		fake_wiimotes[i].status.speaker = 0;
 		fake_wiimotes[i].buttons = 0;
 		fake_wiimotes[i].input_dirty = false;
+		fake_wiimotes[i].acc_x = ACCEL_ZERO_G;
+		fake_wiimotes[i].acc_y = ACCEL_ZERO_G;
+		fake_wiimotes[i].acc_z = ACCEL_ONE_G;
 		fake_wiimotes[i].rumble_on = false;
 		memset(&fake_wiimotes[i].ir_regs, 0, sizeof(fake_wiimotes[i].ir_regs));
 		fake_wiimotes[i].ir_valid_dots = 0;
@@ -362,6 +367,13 @@ void fake_wiimote_mgr_report_input(fake_wiimote_t *wiimote, u16 buttons)
 		wiimote->buttons = buttons;
 		wiimote->input_dirty = true;
 	}
+}
+
+void fake_wiimote_mgr_report_accelerometer(fake_wiimote_t *wiimote, u16 acc_x, u16 acc_y, u16 acc_z)
+{
+	wiimote->acc_x = acc_x & 0x3FF;
+	wiimote->acc_y = acc_y & 0x3FF;
+	wiimote->acc_z = acc_z & 0x3FF;
 }
 
 void fake_wiimote_mgr_report_ir_dots(fake_wiimote_t *wiimote, u8 num_dots, struct ir_dot_t *dots)
@@ -676,7 +688,6 @@ static void fake_wiimote_send_data_report(fake_wiimote_t *wiimote)
 	u8 report_data[CONTROLLER_DATA_BYTES] ATTRIBUTE_ALIGN(4);
 	u16 buttons;
 	bool has_btn;
-	u16 acc_x, acc_y, acc_z;
 	u8 acc_size, acc_offset;
 	u8 ext_size, ext_offset;
 	u8 ir_size, ir_offset;
@@ -700,15 +711,12 @@ static void fake_wiimote_send_data_report(fake_wiimote_t *wiimote)
 		report_size = (has_btn ? 2 : 0) + acc_size + ext_size + ir_size;
 
 		if (acc_size) {
-			/* TODO: Use "real" accelerometer data */
-			acc_x = ACCEL_ZERO_G;
-			acc_y = ACCEL_ZERO_G;
-			acc_z = ACCEL_ONE_G;
-
-			report_data[acc_offset + 0] = (acc_x >> 2) & 0xFF;
-			report_data[acc_offset + 1] = (acc_y >> 2) & 0xFF;
-			report_data[acc_offset + 2] = (acc_z >> 2) & 0xFF;
-			buttons |= ((acc_x & 3) << 5) | ((acc_y & 2) << 12) | ((acc_z & 2) << 13);
+			report_data[acc_offset + 0] = (wiimote->acc_x >> 2) & 0xFF;
+			report_data[acc_offset + 1] = (wiimote->acc_y >> 2) & 0xFF;
+			report_data[acc_offset + 2] = (wiimote->acc_z >> 2) & 0xFF;
+			buttons |= ((wiimote->acc_x & 3) << 13) |
+				   ((wiimote->acc_y & 2) << 4)  |
+				   ((wiimote->acc_z & 2) << 5);
 		}
 
 		if (ir_size)
