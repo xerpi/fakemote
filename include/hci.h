@@ -83,24 +83,13 @@
 #pragma once
 
 #include <stdint.h>
+#include "bluetooth.h"
 #include "types.h"
 
 // All structs in this file are packed
 #pragma pack(push, 1)
 
 /* All sizes are in bytes */
-#define BLUETOOTH_BDADDR_SIZE 6
-
-/*
- * Bluetooth device address
- */
-/* BD Address */
-typedef struct {
-  u8 b[6];
-} __attribute__((packed)) bdaddr_t;
-
-#define BDADDR_ANY   (&(bdaddr_t) {{0, 0, 0, 0, 0, 0}})
-#define BDADDR_LOCAL (&(bdaddr_t) {{0, 0, 0, 0xff, 0xff, 0xff}})
 
 /**************************************************************************
  **************************************************************************

@@ -814,7 +814,9 @@ static int patch_conf_bt_dinf(void)
 	static u8 conf_buffer[0x4000];
 	static struct conf_pads_setting conf_pads;
 	bdaddr_t bdaddr;
-	int fd, ret, start, count;
+	int fd, ret;
+	int paired_count;
+	int start, count;
 
 	/* Read SYSCONF */
 	fd = os_open("/shared2/sys/SYSCONF", IOS_OPEN_READ);
@@ -828,26 +830,37 @@ static int patch_conf_bt_dinf(void)
 	/* Get paired Wiimote configuration */
 	ret = conf_get(conf_buffer, "BT.DINF", &conf_pads, sizeof(conf_pads));
 	DEBUG("conf_get(): %d\n", ret);
+	if (ret != sizeof(conf_pads))
+		return IOS_EINVAL;
 	DEBUG("  num_registered: %d\n", conf_pads.num_registered);
-	for (int i = 0; i < conf_pads.num_registered; i++)
+
+	/* Check how many "Fake Wiimotes" are paired */
+	paired_count = 0;
+	for (int i = 0; i < conf_pads.num_registered; i++) {
 		DEBUG("  registered[%d]: \"%s\"\n", i, conf_pads.registered[i].name);
+		/* Check if the bdaddr matches */
+		baswap(&bdaddr, &conf_pads.registered[i].bdaddr);
+		if (bacmp(&bdaddr, &FAKE_WIIMOTE_BDADDR(paired_count)) == 0)
+			paired_count++;
+	}
+	DEBUG("Found %d paired \"Fake Wiimotes\"\n", paired_count);
 
 	/* Give at least the last two entries (out of 10) for fake Wiimotes */
-	count = conf_pads.num_registered > 8 ? 2 : (CONF_PAD_MAX_REGISTERED - conf_pads.num_registered);
-	start = CONF_PAD_MAX_REGISTERED - count;
+	if (paired_count >= 2)
+		return 0;
+	count = 2 - paired_count;
+	start = MIN2(conf_pads.num_registered, CONF_PAD_MAX_REGISTERED - 2);
+
 	for (int i = 0; i < count; i++) {
-		bdaddr = FAKE_WIIMOTE_BDADDR(i);
 		/* Copy MAC address */
-		for (int j = 0; j < BLUETOOTH_BDADDR_SIZE; j++)
-			conf_pads.registered[start + i].bdaddr[j] =
-				bdaddr.b[BLUETOOTH_BDADDR_SIZE - 1 - j];
+		baswap(&conf_pads.registered[start + i].bdaddr, &FAKE_WIIMOTE_BDADDR(i));
 		/* Generate and copy the name:
-		 * Wii memcmps the name with "Nintendo RVL-CNT-01" and size 19 */
+		 *   Wii memcmps the name with "Nintendo RVL-CNT-01" and size 19 */
 		snprintf(conf_pads.registered[start + i].name,
 			 sizeof(conf_pads.registered[start + i].name),
 			 "Nintendo RVL-CNT-01 (Fake Wiimote %d)", i);
 	}
-	conf_pads.num_registered = CONF_PAD_MAX_REGISTERED;
+	conf_pads.num_registered = start + count;
 
 	/* Write new paired Wiimote configuration back to the buffer */
 	conf_set(conf_buffer, "BT.DINF", &conf_pads, sizeof(conf_pads));
@@ -860,7 +873,7 @@ static int patch_conf_bt_dinf(void)
 	ret = os_write(fd, conf_buffer, sizeof(conf_buffer));
 	os_close(fd);
 	if (ret != sizeof(conf_buffer))
-		return ret;
+		return IOS_EINVAL;
 
 	return 0;
 }

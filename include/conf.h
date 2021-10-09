@@ -1,6 +1,7 @@
 #ifndef CONF_H
 #define CONF_H
 
+#include "bluetooth.h"
 #include "types.h"
 
 /* From libogc/gc/ogc/conf.h */
@@ -27,7 +28,7 @@ enum {
 #define CONF_PAD_MAX_ACTIVE 4
 
 struct conf_pad_device {
-	u8 bdaddr[6];
+	bdaddr_t bdaddr;
 	char name[64];
 } ATTRIBUTE_PACKED;
 
@@ -40,7 +41,7 @@ struct conf_pads_setting {
 } ATTRIBUTE_PACKED;
 
 struct conf_pads_cmp_entry {
-	u8 bdaddr[6];
+	bdaddr_t bdaddr;
 	char name[64];
 	u8 unk[16];
 } ATTRIBUTE_PACKED;

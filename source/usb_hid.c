@@ -351,7 +351,7 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 	int ret;
 	bool found;
 
-	DEBUG("Device change, #Attached devices: %ld\n", reply->result);
+	DEBUG("Device change, #Attached devices: %d\n", reply->result);
 
 	if (reply->result < 0)
 		return;

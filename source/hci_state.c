@@ -149,7 +149,7 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 		break;
 	}
 	case HCI_CMD_ACCEPT_CON: {
-		char mac[MAC_STR_LEN];
+		char mac[BDADDR_STR_LEN];
 		hci_accept_con_cp *cp = payload;
 		static const char *roles[] = {
 			"Master (0x00)",
@@ -166,7 +166,7 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 		break;
 	}
 	case HCI_CMD_REJECT_CON: {
-		char mac[MAC_STR_LEN];
+		char mac[BDADDR_STR_LEN];
 		hci_reject_con_cp *cp = payload;
 
 		bdaddr_to_str(mac, &cp->bdaddr);

@@ -10,11 +10,10 @@
 #define le16toh bswap16
 #define htole16 bswap16
 
-#define MAC_STR_LEN 18
-
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
 #define MIN2(x, y)	(((x) < (y)) ? (x) : (y))
+#define MAX2(x, y)	(((x) > (y)) ? (x) : (y))
 #define ROUNDUP32(x)	(((u32)(x) + 0x1f) & ~0x1f)
 #define ROUNDDOWN32(x)	(((u32)(x) - 0x1f) & ~0x1f)
 
@@ -33,12 +32,6 @@
 #define DEBUG(...) (void)0
 
 extern void my_assert_func(const char *file, int line, const char *func, const char *failedexpr);
-
-static inline void bdaddr_to_str(char str[static MAC_STR_LEN], const bdaddr_t *bdaddr)
-{
-	snprintf(str, MAC_STR_LEN, "%02x:%02x:%02x:%02x:%02x:%02x", bdaddr->b[5], bdaddr->b[4],
-		bdaddr->b[3], bdaddr->b[2], bdaddr->b[1], bdaddr->b[0]);
-}
 
 static inline int memmismatch(const void *restrict a, const void *restrict b, int size)
 {
