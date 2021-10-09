@@ -9,6 +9,12 @@ CC	=	$(PREFIX)gcc
 LD	=	$(PREFIX)gcc
 STRIP	=	stripios
 
+# Version
+FAKEMOTE_MAJOR	=	0
+FAKEMOTE_MINOR	=	1
+FAKEMOTE_PATCH	=	0
+FAKEMOTE_HASH	=	"$(shell git describe --dirty --always --tags)"
+
 # Date & Time
 ifdef SOURCE_DATE_EPOCH
     BUILD_DATE ?= $(shell LC_ALL=C date -u -d "@$(SOURCE_DATE_EPOCH)" "+'%b %e %Y'" 2>/dev/null || LC_ALL=C date -u -r "$(SOURCE_DATE_EPOCH)" "+'%b %e %Y'" 2>/dev/null || LC_ALL=C date -u "+'%b %e %Y'")
@@ -20,7 +26,11 @@ endif
 
 # Flags
 ARCH	=	-mcpu=arm926ej-s -mthumb -mthumb-interwork -mbig-endian
-CFLAGS	=	$(ARCH) -Iinclude -Icios-lib -fomit-frame-pointer -O1 -g3 -Wall -Wstrict-prototypes -ffunction-sections -D__TIME__=\"$(BUILD_TIME)\" -D__DATE__=\"$(BUILD_DATE)\" -Wno-builtin-macro-redefined -nostdlib $(EXTRA_CFLAGS)
+CFLAGS	=	$(ARCH) -Iinclude -Icios-lib -fomit-frame-pointer -O1 -g3 \
+		-Wall -Wstrict-prototypes -ffunction-sections -Wno-builtin-macro-redefined \
+		-DFAKEMOTE_MAJOR=$(FAKEMOTE_MAJOR) -DFAKEMOTE_MINOR=$(FAKEMOTE_MINOR) \
+		-DFAKEMOTE_PATCH=$(FAKEMOTE_PATCH) -DFAKEMOTE_HASH=\"$(FAKEMOTE_HASH)\" \
+		-D__TIME__=\"$(BUILD_TIME)\" -D__DATE__=\"$(BUILD_DATE)\" $(EXTRA_CFLAGS)
 LDFLAGS	=	$(ARCH) -nostartfiles -nostdlib -Wl,-T,link.ld,-Map,$(TARGET).map -Wl,--gc-sections -Wl,-static
 
 # Libraries

@@ -21,6 +21,9 @@
 #define UNUSED(x) (void)(x)
 #define MEMBER_SIZE(type, member) sizeof(((type *)0)->member)
 
+#define STRINGIFY(x)	#x
+#define TOSTRING(x)	STRINGIFY(x)
+
 #ifdef assert
 #undef assert
 #endif

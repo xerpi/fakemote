@@ -841,9 +841,11 @@ static int patch_conf_bt_dinf(void)
 		for (int j = 0; j < BLUETOOTH_BDADDR_SIZE; j++)
 			conf_pads.registered[start + i].bdaddr[j] =
 				bdaddr.b[BLUETOOTH_BDADDR_SIZE - 1 - j];
-		/* Generate and copy the name */
+		/* Generate and copy the name:
+		 * Wii memcmps the name with "Nintendo RVL-CNT-01" and size 19 */
 		snprintf(conf_pads.registered[start + i].name,
-			 sizeof(conf_pads.registered[start + i].name), "Fake Wiimote %d", i);
+			 sizeof(conf_pads.registered[start + i].name),
+			 "Nintendo RVL-CNT-01 (Fake Wiimote %d)", i);
 	}
 	conf_pads.num_registered = CONF_PAD_MAX_REGISTERED;
 
@@ -868,7 +870,11 @@ int main(void)
 	int ret;
 
 	/* Print info */
-	printf("Hello world from Starlet!\n");
+	svc_write("$IOSVersion: FAKEMOTE:  " __DATE__ " " __TIME__ " 64M "
+		  TOSTRING(FAKEMOTE_MAJOR) "."
+		  TOSTRING(FAKEMOTE_MINOR) "."
+		  TOSTRING(FAKEMOTE_PATCH) "-"
+		  FAKEMOTE_HASH " $\n");
 
 	patch_conf_bt_dinf();
 

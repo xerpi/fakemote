@@ -80,7 +80,7 @@ int conf_get(u8 *conf, const char *name, void *buffer, u32 length)
 	return len;
 }
 
-int conf_set(u8 *conf, const char *name,  const void *buffer, u32 length)
+int conf_set(u8 *conf, const char *name, const void *buffer, u32 length)
 {
 	u8 *entry;
 	s32 len;
