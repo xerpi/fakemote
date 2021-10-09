@@ -6,9 +6,8 @@
 #include <string.h>
 #include "hci.h"
 
-#define bswap16 __builtin_bswap16
-#define le16toh bswap16
-#define htole16 bswap16
+#define le16toh(x) __builtin_bswap16(x)
+#define htole16(x) __builtin_bswap16(x)
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 

@@ -464,8 +464,8 @@ static int usb_hid_worker(void *)
 		return ret;
 
 	/* We only support USBv5 for now */
-	//if (ver != 0x50001)
-	//	return IOS_EINVAL;
+	if (ver[0] != 0x50001)
+		return IOS_EINVAL;
 
 	ret = os_ioctl_async(host_fd, USBV5_IOCTL_GETDEVICECHANGE, NULL, 0, device_change_devices,
 			     sizeof(device_change_devices), queue_id, MESSAGE_DEVCHANGE);
