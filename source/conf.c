@@ -27,18 +27,18 @@ static s32 conf_get_length(u8 *conf, const char *name)
 		return CONF_ENOENT;
 
 	switch (*entry>>5) {
-	case 1:
+	case CONF_BIGARRAY:
 		len = strlen(name);
-		return ((u16)entry[len+1] << 8) + entry[len+2] + 1;
-	case 2:
-		return entry[strlen(name)+1] + 1;
-	case 3:
+		return (((s32)entry[len+1] << 8) | entry[len+2]) + 1;
+	case CONF_SMALLARRAY:
+		return (s32)entry[strlen(name)+1] + 1;
+	case CONF_BYTE:
 		return 1;
-	case 4:
+	case CONF_SHORT:
 		return 2;
-	case 5:
+	case CONF_LONG:
 		return 4;
-	case 7:
+	case CONF_BOOL:
 		return 1;
 	default:
 		return CONF_ENOTIMPL;
@@ -92,7 +92,7 @@ int conf_set(u8 *conf, const char *name, const void *buffer, u32 length)
 	len = conf_get_length(conf, name);
 	if (len < 0)
 		return len;
-	else if (len > length)
+	else if (len < length)
 		return CONF_ETOOBIG;
 
 	switch (*entry >> 5) {
