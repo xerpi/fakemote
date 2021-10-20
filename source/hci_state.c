@@ -108,7 +108,7 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 	void *payload = (void *)((u8 *)hdr + sizeof(hci_cmd_hdr_t));
 	u16 opcode = le16toh(hdr->opcode);
 
-	DEBUG("H > C HCI CMD: opcode: 0x%x\n", opcode);
+	DEBUG("H > C HCI CMD: opcode: 0x%04x\n", opcode);
 
 	/* If the request targets a "fake wiimote", we don't have to hand it down to OH1.
 	 * Otherwise, we just have to patch the HCI connection handle from virtual to physical.
@@ -245,9 +245,6 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 	TRANSLATE_CON_HANDLE(HCI_CMD_READ_RSSI, hci_read_rssi_cp)
 	TRANSLATE_CON_HANDLE(HCI_CMD_READ_AFH_CHANNEL_MAP, hci_read_afh_channel_map_cp)
 	TRANSLATE_CON_HANDLE(HCI_CMD_READ_CLOCK, hci_read_clock_cp)
-	default:
-		DEBUG("HCI CTRL: opcode: 0x%x\n", opcode);
-		break;
 	}
 #undef TRANSLATE_CON_HANDLE
 }
@@ -262,7 +259,7 @@ void hci_state_handle_hci_event_from_controller(void *data, u32 length)
 	/* Here we just have to patch the HCI connection handles from physical to virtual,
 	 * and check for connection/disconnection events to create/remove the mappings.  */
 
-	DEBUG("C > H HCI EVT: event: 0x%x, len: 0x%x\n", hdr->event, hdr->length);
+	DEBUG("C > H HCI EVT: event: 0x%02x, len: 0x%x\n", hdr->event, hdr->length);
 
 #define TRANSLATE_CON_HANDLE(event, type) \
 	case event: { \

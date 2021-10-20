@@ -1132,7 +1132,7 @@ static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data,
 	}
 	case OUTPUT_REPORT_ID_READ_DATA: {
 		struct wiimote_output_report_read_data_t *read = (void *)&data[1];
-		DEBUG("  Read data from slave 0x%02x, addrspace: %d, address: 0x%x, size: 0x%x\n\n",
+		DEBUG("  Read data from slave 0x%02x, addrspace: %d, address: 0x%x, size: 0x%x\n",
 			read->slave_address, read->space, read->address, read->size);
 
 		/* There is already an active read being processed */

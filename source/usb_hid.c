@@ -439,7 +439,7 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 
 	ret = os_ioctl_async(host_fd, USBV5_IOCTL_ATTACHFINISH, NULL, 0, NULL, 0,
 			     queue_id, MESSAGE_ATTACHFINISH);
-	DEBUG("ioctl(ATTACHFINISH): %d\n\n", ret);
+	DEBUG("ioctl(ATTACHFINISH): %d\n", ret);
 }
 
 static int usb_hid_worker(void *)
