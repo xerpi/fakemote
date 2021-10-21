@@ -26,17 +26,8 @@ void fake_wiimote_mgr_tick_devices(void);
 
 /** Used by the HCI state tracker **/
 
-/* Proceesses and returns true if the bdaddr belongs to a fake wiimote */
-bool fake_wiimote_mgr_handle_hci_cmd_accept_con(const bdaddr_t *bdaddr, u8 role);
-
-/* Processes and returns true if the HCI connection handle belongs to a fake wiimote */
-bool fake_wiimote_mgr_handle_hci_cmd_disconnect(u16 hci_con_handle, u8 reason);
-
-/* Proceesses and returns true if the bdaddr belongs to a fake wiimote */
-bool fake_wiimote_mgr_handle_hci_cmd_reject_con(const bdaddr_t *bdaddr, u8 reason);
-
-/* Returns true if the HCI connection handle belongs to a fake wiimote */
-bool fake_wiimote_mgr_hci_handle_belongs_to_fake_wiimote(u16 hci_con_handle);
+/* Proceesses and returns true if the HCI command targeted a fake wiimote */
+bool fake_wiimote_mgr_handle_hci_cmd_from_host(const hci_cmd_hdr_t *hdr);
 
 /* Processes and returns true if the HCI connection handle belongs to a fake wiimote */
 bool fake_wiimote_mgr_handle_acl_data_out_request_from_host(u16 hci_con_handle, const hci_acldata_hdr_t *hdr);

@@ -51,6 +51,16 @@ int enqueue_hci_event_con_req(const bdaddr_t *bdaddr, u8 uclass0, u8 uclass1, u8
 int enqueue_hci_event_discon_compl(u16 con_handle, u8 status, u8 reason);
 int enqueue_hci_event_con_compl(const bdaddr_t *bdaddr, u16 con_handle, u8 status);
 int enqueue_hci_event_role_change(const bdaddr_t *bdaddr, u8 role);
+int enqueue_hci_event_mode_change(u16 con_handle, u8 unit_mode, u16 interval);
+int enqueue_hci_event_num_compl_pkts(u8 num_con_handles, const u16 *con_handles, const u16 *compl_pkts);
+int enqueue_hci_event_return_link_keys(u8 num_keys, const bdaddr_t *bdaddr, const u8 key[][HCI_KEY_SIZE]);
+int enqueue_hci_event_con_pkt_type_changed(u16 con_handle, u16 pkt_type);
+int enqueue_hci_event_auth_compl(u8 status, u16 con_handle);
+int enqueue_hci_event_remote_name_req_compl(u8 status, const bdaddr_t *bdaddr, const char *name);
+int enqueue_hci_event_read_remote_features_compl(u16 con_handle, const u8 features[static HCI_FEATURES_SIZE]);
+int enqueue_hci_event_read_remote_ver_info_compl(u16 con_handle, u8 lmp_version, u16 manufacturer,
+						 u16 lmp_subversion);
+int enqueue_hci_event_read_clock_offset_compl(u16 con_handle, u16 clock_offset);
 
 /* L2CAP event enqueue helpers */
 int l2cap_send_msg(u16 hci_con_handle, u16 dcid, const void *data, u16 size);

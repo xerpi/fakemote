@@ -49,7 +49,6 @@ size_t strlen(const char *str)
 	return s - str;
 }
 
-
 size_t strnlen(const char *s, size_t maxlen)
 {
 	size_t len = 0;
@@ -62,4 +61,12 @@ size_t strnlen(const char *s, size_t maxlen)
 	}
 
 	return len;
+}
+
+char *strcpy(char *s1, const char *s2)
+{
+	char *s = s1;
+	while ((*s++ = *s2++) != 0)
+		;
+	return s1;
 }

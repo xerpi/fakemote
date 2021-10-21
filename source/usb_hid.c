@@ -270,11 +270,11 @@ int usb_device_driver_issue_intr_transfer_async(usb_input_device_t *device, int 
 					      queue_id, &device->usb_async_resp_msg);
 }
 
-static int usb_device_ops_assigned(void *usrdata, fake_wiimote_t *wiimote)
+static int usb_device_ops_init(void *usrdata, fake_wiimote_t *wiimote)
 {
 	usb_input_device_t *device = usrdata;
 
-	DEBUG("usb_device_ops_assigned\n");
+	DEBUG("usb_device_ops_init\n");
 
 	/* Store assigned fake Wiimote */
 	device->wiimote = wiimote;
@@ -335,7 +335,7 @@ static int usb_device_ops_set_rumble(void *usrdata, bool rumble_on)
 }
 
 static const input_device_ops_t input_device_usb_ops = {
-	.assigned   = usb_device_ops_assigned,
+	.init       = usb_device_ops_init,
 	.disconnect = usb_device_ops_disconnect,
 	.set_leds   = usb_device_ops_set_leds,
 	.set_rumble = usb_device_ops_set_rumble
@@ -431,7 +431,7 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 		device->host_fd = host_fd;
 		device->dev_id = dev_id;
 		device->driver = driver;
-		/* We will get the assigned a fake Wiimote on the assigned() callback */
+		/* We will get a fake Wiimote assigneed on the init() callback */
 		device->wiimote = NULL;
 		device->valid = true;
 

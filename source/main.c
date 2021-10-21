@@ -299,6 +299,162 @@ int enqueue_hci_event_role_change(const bdaddr_t *bdaddr, u8 role)
 	return inject_msg_to_usb_intr_ready_queue(msg);
 }
 
+int enqueue_hci_event_num_compl_pkts(u8 num_con_handles, const u16 *con_handles, const u16 *compl_pkts)
+{
+	hci_num_compl_pkts_ep *ep;
+	hci_num_compl_pkts_info *info;
+	injmessage *msg = alloc_hci_event_msg((void *)&ep, HCI_EVENT_NUM_COMPL_PKTS, sizeof(*ep) +
+					      num_con_handles * (sizeof(u16) + sizeof(u16)));
+	if (!msg)
+		return IOS_ENOMEM;
+
+	info = (void *)((u8 *)ep + sizeof(*ep));
+
+	/* Fill event data */
+	ep->num_con_handles = num_con_handles;
+	for (int i = 0; i < num_con_handles; i++) {
+		info[i].con_handle = htole16(con_handles[i]);
+		info[i].compl_pkts = htole16(compl_pkts[i]);
+	}
+
+	return inject_msg_to_usb_intr_ready_queue(msg);
+}
+
+int enqueue_hci_event_mode_change(u16 con_handle, u8 unit_mode, u16 interval)
+{
+	hci_mode_change_ep *ep;
+	injmessage *msg = alloc_hci_event_msg((void *)&ep, HCI_EVENT_MODE_CHANGE, sizeof(*ep));
+	if (!msg)
+		return IOS_ENOMEM;
+
+	/* Fill event data */
+	ep->status = 0;
+	ep->con_handle = htole16(con_handle);
+	ep->unit_mode = unit_mode;
+	ep->interval = htole16(interval);
+
+	return inject_msg_to_usb_intr_ready_queue(msg);
+}
+
+int enqueue_hci_event_return_link_keys(u8 num_keys, const bdaddr_t *bdaddr, const u8 key[][HCI_KEY_SIZE])
+{
+	hci_return_link_keys_ep *ep;
+	injmessage *msg = alloc_hci_event_msg((void *)&ep, HCI_EVENT_RETURN_LINK_KEYS, sizeof(*ep) +
+					      num_keys * (sizeof(bdaddr_t) + HCI_KEY_SIZE));
+	if (!msg)
+		return IOS_ENOMEM;
+
+	struct {
+		bdaddr_t bdaddr;
+		u8 key[HCI_KEY_SIZE];
+	} ATTRIBUTE_PACKED *entries = (void *)((u8 *)ep + sizeof(*ep));
+
+	/* Fill event data */
+	ep->num_keys = num_keys;
+	for (int i = 0; i < num_keys; i++) {
+		bacpy(&entries[i].bdaddr, &bdaddr[i]);
+		memcpy(entries[i].key, key[i], sizeof(entries[i].key));
+	}
+
+	return inject_msg_to_usb_intr_ready_queue(msg);
+}
+
+int enqueue_hci_event_con_pkt_type_changed(u16 con_handle, u16 pkt_type)
+{
+	hci_con_pkt_type_changed_ep *ep;
+	injmessage *msg = alloc_hci_event_msg((void *)&ep, HCI_EVENT_CON_PKT_TYPE_CHANGED, sizeof(*ep));
+	if (!msg)
+		return IOS_ENOMEM;
+
+	/* Fill event data */
+	ep->status = 0;
+	ep->con_handle = htole16(con_handle);
+	ep->pkt_type = htole16(pkt_type);
+
+	return inject_msg_to_usb_intr_ready_queue(msg);
+}
+
+int enqueue_hci_event_auth_compl(u8 status, u16 con_handle)
+{
+	hci_auth_compl_ep *ep;
+	injmessage *msg = alloc_hci_event_msg((void *)&ep, HCI_EVENT_AUTH_COMPL, sizeof(*ep));
+	if (!msg)
+		return IOS_ENOMEM;
+
+	/* Fill event data */
+	ep->status = status;
+	ep->con_handle = htole16(con_handle);
+
+	return inject_msg_to_usb_intr_ready_queue(msg);
+}
+
+int enqueue_hci_event_remote_name_req_compl(u8 status, const bdaddr_t *bdaddr, const char *name)
+{
+	hci_remote_name_req_compl_ep *ep;
+	injmessage *msg = alloc_hci_event_msg((void *)&ep, HCI_EVENT_REMOTE_NAME_REQ_COMPL,
+					      sizeof(*ep));
+	if (!msg)
+		return IOS_ENOMEM;
+
+	/* Fill event data */
+	ep->status = status;
+	bacpy(&ep->bdaddr, bdaddr);
+	strcpy(ep->name, name);
+
+	return inject_msg_to_usb_intr_ready_queue(msg);
+}
+
+int enqueue_hci_event_read_remote_features_compl(u16 con_handle, const u8 features[static HCI_FEATURES_SIZE])
+{
+	hci_read_remote_features_compl_ep *ep;
+	injmessage *msg = alloc_hci_event_msg((void *)&ep, HCI_EVENT_READ_REMOTE_FEATURES_COMPL,
+					      sizeof(*ep));
+	if (!msg)
+		return IOS_ENOMEM;
+
+	/* Fill event data */
+	ep->status = 0;
+	ep->con_handle = htole16(con_handle);
+	memcpy(ep->features, features, sizeof(ep->features));
+
+	return inject_msg_to_usb_intr_ready_queue(msg);
+}
+
+int enqueue_hci_event_read_remote_ver_info_compl(u16 con_handle, u8 lmp_version, u16 manufacturer,
+						 u16 lmp_subversion)
+{
+	hci_read_remote_ver_info_compl_ep *ep;
+	injmessage *msg = alloc_hci_event_msg((void *)&ep, HCI_EVENT_READ_REMOTE_VER_INFO_COMPL,
+					      sizeof(*ep));
+	if (!msg)
+		return IOS_ENOMEM;
+
+	/* Fill event data */
+	ep->status = 0;
+	ep->con_handle = htole16(con_handle);
+	ep->lmp_version = lmp_version;
+	ep->manufacturer = htole16(manufacturer);
+	ep->lmp_subversion = htole16(lmp_subversion);
+
+	return inject_msg_to_usb_intr_ready_queue(msg);
+}
+
+int enqueue_hci_event_read_clock_offset_compl(u16 con_handle, u16 clock_offset)
+{
+	hci_read_clock_offset_compl_ep *ep;
+	injmessage *msg = alloc_hci_event_msg((void *)&ep, HCI_EVENT_READ_CLOCK_OFFSET_COMPL,
+					      sizeof(*ep));
+	if (!msg)
+		return IOS_ENOMEM;
+
+	/* Fill event data */
+	ep->status = 0;
+	ep->con_handle = htole16(con_handle);
+	ep->clock_offset = htole16(clock_offset);
+
+	return inject_msg_to_usb_intr_ready_queue(msg);
+}
+
 static injmessage *alloc_l2cap_msg(void **l2cap_payload, u16 hci_con_handle, u16 dcid, u16 size)
 {
 	injmessage *msg;

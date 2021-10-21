@@ -12,6 +12,7 @@
 /* Snooped HCI state (requested by SW BT stack) */
 static u8 hci_unit_class[HCI_CLASS_SIZE];
 static u8 hci_page_scan_enable = 0;
+static u8 hci_read_stored_link_key_read_all = 0;
 
 /* Simulated HCI state */
 static struct {
@@ -103,28 +104,26 @@ static bool hci_virt_con_handle_get_phys(u16 virt, u16 *phys)
 
 void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb)
 {
-	u16 phys = 0, virt;
 	hci_cmd_hdr_t *hdr = data;
 	void *payload = (void *)((u8 *)hdr + sizeof(hci_cmd_hdr_t));
 	u16 opcode = le16toh(hdr->opcode);
+	u16 virt, phys = 0;
+	bool success;
 
 	DEBUG("H > C HCI CMD: opcode: 0x%04x\n", opcode);
 
 	/* If the request targets a "fake wiimote", we don't have to hand it down to OH1.
 	 * Otherwise, we just have to patch the HCI connection handle from virtual to physical.
 	 */
+	if (fake_wiimote_mgr_handle_hci_cmd_from_host(hdr)) {
+		*fwd_to_usb = false;
+		return;
+	}
 
 #define TRANSLATE_CON_HANDLE(event, type) \
 	case event: { \
-		bool success; \
 		type *cp = (type *)payload; \
 		virt = le16toh(cp->con_handle); \
-		/* First check if the virtual connection handle corresponds to a fake wiimote. \
-		 * If so, we don't have to forward the HCI command to the USB BT dongle. */ \
-		if (fake_wiimote_mgr_hci_handle_belongs_to_fake_wiimote(virt)) { \
-			*fwd_to_usb = false; \
-			break; \
-		} \
 		success = hci_virt_con_handle_get_phys(virt, &phys); \
 		assert(success); \
 		cp->con_handle = htole16(phys); \
@@ -134,73 +133,17 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 
 	switch (opcode) {
 	case HCI_CMD_CREATE_CON:
-		DEBUG("HCI_CMD_CREATE_CON\n");
+		/* TODO */
+		assert(0);
 		break;
-	case HCI_CMD_DISCONNECT: {
-		bool success;
-		hci_discon_cp *cp = payload;
-		virt = le16toh(cp->con_handle);
-		/* If the host wants to disconnect a fake Wiimote, don't
-		 * forward this packet to the real USB BT dongle! */
-		if (fake_wiimote_mgr_handle_hci_cmd_disconnect(virt, cp->reason)) {
-			*fwd_to_usb = false;
-			break;
-		}
-		/* Else, do HCI connection handle translation */
-		success = hci_virt_con_handle_get_phys(virt, &phys);
-		assert(success);
-		cp->con_handle = htole16(phys);
-		os_sync_after_write(&cp->con_handle, sizeof(cp->con_handle));
-		break;
-	}
-	case HCI_CMD_ACCEPT_CON: {
-		char mac[BDADDR_STR_LEN];
-		hci_accept_con_cp *cp = payload;
-		static const char *roles[] = {
-			"Master (0x00)",
-			"Slave (0x01)",
-		};
-		UNUSED(roles);
-
-		bdaddr_to_str(mac, &cp->bdaddr);
-		DEBUG("HCI_CMD_ACCEPT_CON MAC: %s, role: %s\n", mac, roles[cp->role]);
-		/* If the connection was accepted on a fake wiimote, don't
-		 * forward this packet to the real USB BT dongle! */
-		if (fake_wiimote_mgr_handle_hci_cmd_accept_con(&cp->bdaddr, cp->role))
-			*fwd_to_usb = false;
-		break;
-	}
-	case HCI_CMD_REJECT_CON: {
-		char mac[BDADDR_STR_LEN];
-		hci_reject_con_cp *cp = payload;
-
-		bdaddr_to_str(mac, &cp->bdaddr);
-		DEBUG("HCI_CMD_REJECT_CON MAC: %s, reason: 0x%x\n", mac, cp->reason);
-		/* If the connection was accepted on a fake wiimote, don't
-		 * forward this packet to the real USB BT dongle! */
-		if (fake_wiimote_mgr_handle_hci_cmd_reject_con(&cp->bdaddr, cp->reason))
-			*fwd_to_usb = false;
-		break;
-	}
+	TRANSLATE_CON_HANDLE(HCI_CMD_DISCONNECT, hci_discon_cp)
 	case HCI_CMD_WRITE_SCAN_ENABLE: {
 		hci_write_scan_enable_cp *cp = payload;
-		static const char *scanning[] = {
-			"HCI_NO_SCAN_ENABLE",
-			"HCI_INQUIRY_SCAN_ENABLE",
-			"HCI_PAGE_SCAN_ENABLE",
-			"HCI_INQUIRY_AND_PAGE_SCAN_ENABLE",
-		};
-		UNUSED(scanning);
-
-		DEBUG("  HCI_CMD_WRITE_SCAN_ENABLE: 0x%x (%s)\n",
-			cp->scan_enable, scanning[cp->scan_enable]);
 		hci_page_scan_enable = cp->scan_enable;
 		break;
 	}
 	case HCI_CMD_WRITE_UNIT_CLASS: {
 		hci_write_unit_class_cp *cp = payload;
-		DEBUG("  HCI_CMD_WRITE_UNIT_CLASS: 0x%x 0x%x 0x%x\n",
-			cp->uclass[0], cp->uclass[1], cp->uclass[2]);
 		hci_unit_class[0] = cp->uclass[0];
 		hci_unit_class[1] = cp->uclass[1];
 		hci_unit_class[2] = cp->uclass[2];
@@ -229,11 +172,18 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 	TRANSLATE_CON_HANDLE(HCI_CMD_FLOW_SPECIFICATION, hci_flow_specification_cp)
 	TRANSLATE_CON_HANDLE(HCI_CMD_SNIFF_SUBRATING, hci_sniff_subrating_cp)
 	TRANSLATE_CON_HANDLE(HCI_CMD_FLUSH, hci_flush_cp)
+	case HCI_CMD_READ_STORED_LINK_KEY: {
+		hci_read_stored_link_key_cp *cp = payload;
+		/* Save requested info to patch the corresponding Command Complete Event */
+		hci_read_stored_link_key_read_all = cp->read_all;
+		break;
+	}
 	TRANSLATE_CON_HANDLE(HCI_CMD_READ_AUTO_FLUSH_TIMEOUT, hci_read_auto_flush_timeout_cp)
 	TRANSLATE_CON_HANDLE(HCI_CMD_WRITE_AUTO_FLUSH_TIMEOUT, hci_write_auto_flush_timeout_cp)
 	TRANSLATE_CON_HANDLE(HCI_CMD_READ_XMIT_LEVEL, hci_read_xmit_level_cp)
 	case HCI_CMD_HOST_NUM_COMPL_PKTS:
-		/* TODO */
+		/* TODO: Is this command ever sent actually? */
+		assert(0);
 		break;
 	TRANSLATE_CON_HANDLE(HCI_CMD_READ_LINK_SUPERVISION_TIMEOUT, hci_read_link_supervision_timeout_cp)
 	TRANSLATE_CON_HANDLE(HCI_CMD_WRITE_LINK_SUPERVISION_TIMEOUT, hci_write_link_supervision_timeout_cp)
@@ -252,6 +202,7 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 void hci_state_handle_hci_event_from_controller(void *data, u32 length)
 {
 	bool ret;
+	bool success;
 	u16 phys, virt = 0;
 	hci_event_hdr_t *hdr = data;
 	void *payload = (void *)((u8 *)hdr + sizeof(hci_event_hdr_t));
@@ -263,7 +214,6 @@ void hci_state_handle_hci_event_from_controller(void *data, u32 length)
 
 #define TRANSLATE_CON_HANDLE(event, type) \
 	case event: { \
-		bool success; \
 		type *ep = (type *)payload; \
 		phys = le16toh(ep->con_handle); \
 		success = hci_virt_con_handle_get_virt(phys, &virt); \
@@ -317,11 +267,36 @@ void hci_state_handle_hci_event_from_controller(void *data, u32 length)
 	TRANSLATE_CON_HANDLE(HCI_EVENT_READ_REMOTE_FEATURES_COMPL, hci_read_remote_features_compl_ep)
 	TRANSLATE_CON_HANDLE(HCI_EVENT_READ_REMOTE_VER_INFO_COMPL, hci_read_remote_ver_info_compl_ep)
 	TRANSLATE_CON_HANDLE(HCI_EVENT_QOS_SETUP_COMPL, hci_qos_setup_compl_ep)
-	TRANSLATE_CON_HANDLE(HCI_EVENT_FLUSH_OCCUR, hci_flush_occur_ep)
-	case HCI_EVENT_NUM_COMPL_PKTS:
-		/* TODO */
-		assert(1);
+	case HCI_EVENT_COMMAND_COMPL: {
+		hci_command_compl_ep *ep = payload;
+		u16 opcode = le16toh(ep->opcode);
+		if (opcode == HCI_CMD_READ_STORED_LINK_KEY) {
+			hci_read_stored_link_key_rp *rp = (void *)((u8 *)ep + sizeof(*ep));
+			u16 max_num_keys = le16toh(rp->max_num_keys);
+			u16 num_keys_read = le16toh(rp->num_keys_read);
+			/* Patch the event to include the link keys for the Fake Wiimotes */
+			if (hci_read_stored_link_key_read_all) {
+				rp->max_num_keys = htole16(max_num_keys + MAX_FAKE_WIIMOTES);
+				rp->num_keys_read = htole16(num_keys_read + MAX_FAKE_WIIMOTES);
+				os_sync_after_write(rp, sizeof(*rp));
+			}
+		}
 		break;
+	}
+	TRANSLATE_CON_HANDLE(HCI_EVENT_FLUSH_OCCUR, hci_flush_occur_ep)
+	case HCI_EVENT_NUM_COMPL_PKTS: {
+		hci_num_compl_pkts_ep *ep = payload;
+		hci_num_compl_pkts_info *info = (void *)((u8 *)ep + sizeof(*ep));
+		/* Translate all HCI Connection Handles */
+		for (int i = 0; i < ep->num_con_handles; i++) {
+			phys = le16toh(info[i].con_handle);
+			success = hci_virt_con_handle_get_virt(phys, &virt);
+			assert(success);
+			info[i].con_handle = htole16(virt);
+		}
+		os_sync_after_write(info, ep->num_con_handles * sizeof(hci_num_compl_pkts_info));
+		break;
+	}
 	TRANSLATE_CON_HANDLE(HCI_EVENT_MODE_CHANGE, hci_mode_change_ep)
 	TRANSLATE_CON_HANDLE(HCI_EVENT_MAX_SLOT_CHANGE, hci_max_slot_change_ep)
 	TRANSLATE_CON_HANDLE(HCI_EVENT_READ_CLOCK_OFFSET_COMPL, hci_read_clock_offset_compl_ep)
@@ -380,7 +355,6 @@ void hci_state_handle_acl_data_out_request_from_host(void *data, u32 length, boo
 	/* First check if the virtual connection handle corresponds to a fake wiimote */
 	if (fake_wiimote_mgr_handle_acl_data_out_request_from_host(virt, hdr)) {
 		*fwd_to_usb = false;
-		DEBUG("  (to fakedev)\n");
 		return;
 	}
 
