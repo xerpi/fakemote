@@ -442,7 +442,7 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 	DEBUG("ioctl(ATTACHFINISH): %d\n", ret);
 }
 
-static int usb_hid_worker(void *)
+static int usb_hid_worker(void *arg)
 {
 	u32 ver[8] ATTRIBUTE_ALIGN(32);
 	usb_input_device_t *device;
