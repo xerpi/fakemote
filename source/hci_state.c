@@ -3,7 +3,6 @@
 #include "fake_wiimote_mgr.h"
 #include "hci.h"
 #include "hci_state.h"
-#include "injmessage.h"
 #include "utils.h"
 #include "syscalls.h"
 
@@ -36,17 +35,13 @@ u16 hci_con_handle_virt_alloc(void)
 	return ret;
 }
 
-bool hci_request_connection(const bdaddr_t *bdaddr, u8 uclass0, u8 uclass1, u8 uclass2,
-			    u8 link_type)
+bool hci_can_request_connection(void)
 {
-	int ret;
-
-	/* If page scan is disabled the controller will not see this connection request. */
+	/* If page scan is disabled the controller will not see connection requests. */
 	if (!(hci_page_scan_enable & HCI_PAGE_SCAN_ENABLE))
 		return false;
 
-	ret = enqueue_hci_event_con_req(bdaddr, uclass0, uclass0, uclass1, link_type);
-	return ret == IOS_OK;
+	return true;
 }
 
 /* HCI connection handle virt<->phys mapping */
