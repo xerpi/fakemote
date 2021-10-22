@@ -1,6 +1,8 @@
 # *_fakemote_*
 _An IOS module that fakes Wiimotes from the input of USB game controllers._
 
+## Features
+
 ### Supported USB game controllers
 | Device Name              | Vendor Name | Vendor ID | Product ID |
 |:------------------------:|:-----------:|:---------:|:----------:|
@@ -8,11 +10,31 @@ _An IOS module that fakes Wiimotes from the input of USB game controllers._
 | DualShock 4 [CUH-ZCT1x]  | Sony Corp.  | 054c      | 05c4       |
 | DualShock 4 [CUH-ZCT2x]  | Sony Corp.  | 054c      | 09cc       |
 
+- DS3 and DS4 support includes LEDs, rumble, and the accelerometer
+- DS4's touchpad is used to emulate the Wiimote IR Camera pointer (only tested with the sensor bar configured on top of the screen)
+- Both controllers emulate a Wiimote with the Nunchuk extension connected
+
 ## Installation
-1) [Download](https://wii.guide/assets/files/d2x-cIOS-Installer-Wii.zip) and copy `d2x-cIOS-Installer-Wii/v10/beta52`  to `sd:/apps/d2x-cIOS-Installer-Wii/v10/beta52/d2x-v10-beta52-fake-wiimote`
-2) Apply [this patch](https://pastebin.com/raw/yyEgpyfL) to `sd:/apps/d2x-cIOS-Installer-Wii/ciosmaps.xml`
-3) Copy the IOS module (`.app`) to `sd:/apps/d2x-cIOS-Installer-Wii/v10/beta52/d2x-v10-beta52-fake-wiimote/`
-4) Run _d2x cIOS installer_ and install `d2x-v10-beta52-fake-wiimote` (tested on base IOS57)
+1) Download [d2x cIOS Installer](https://wii.guide/assets/files/d2x-cIOS-Installer-Wii.zip) and extract it to the SD card
+2) Copy `FAKEMOTE.app` to the d2x cIOS Installer directory that contains the modules of the cIOS version you want to install.  
+   For example, for `d2x-v10-beta52` copy `FAKEMOTE.app` to `sd:/apps/d2x-cIOS-Installer-Wii/v10/beta52/d2x-v10-beta52`
+3) Open d2x cIOS Installer's `ciosmaps.xml` (located at `sd:/apps/d2x-cIOS-Installer-Wii/ciosmaps.xml`) and do the following:
+   1) Locate the line containing the base IOS version you want to install. It starts with `<base ios=`.  
+      For base IOS 57:
+      ```xml
+      <base ios="57" version="5918" contentscount="26" modulescount="7">
+      ```
+   3) Increase `modulescount` by 1.  
+      For base IOS 57:
+      ```xml
+      <base ios="57" version="5918" contentscount="26" modulescount="8">
+      ```
+   3) Add a `<content>` entry for `FAKEMOTE`after the last `<content module>`.  
+      For base IOS 57:
+      ```xml
+      <content id="0x24" module="FAKEMOTE" tmdmoduleid="-1"/>
+      ```
+4) Run d2x cIOS Installer and install the cIOS
 
 ## Compilation
 1) Download and install [devkitARM](https://devkitpro.org/wiki/Getting_Started)
@@ -26,10 +48,11 @@ _An IOS module that fakes Wiimotes from the input of USB game controllers._
    ```bash
    cp stripios $DEVKITPRO/tools/bin
    ```
-3) Run `make` to compile _fakemote_ and generate `FAKEMOTE.app`
+3) Run `make` to compile `FAKEMOTE.app`
 
 ## Notes
-**This is still in beta-stage, therefore it might not work as expected.**
+- This has only been tested with `d2x-v10-beta52` and base IOS 57
+- This is still in beta-stage, therefore it might not work as expected
 
 ## Credits
 - [Dolphin emulator](https://dolphin-emu.org/) developers
