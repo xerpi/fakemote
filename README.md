@@ -24,10 +24,10 @@ _An IOS module that fakes Wiimotes from the input of USB game controllers._
       ```xml
       <base ios="57" version="5918" contentscount="26" modulescount="7">
       ```
-   3) Increase `modulescount` by 1.  
+   3) Increase `modulescount` and `contentscount` by 1.  
       For base IOS 57:
       ```xml
-      <base ios="57" version="5918" contentscount="26" modulescount="8">
+      <base ios="57" version="5918" contentscount="27" modulescount="8">
       ```
    3) Add a `<content>` entry for `FAKEMOTE`after the last `<content module>`.  
       For base IOS 57:
