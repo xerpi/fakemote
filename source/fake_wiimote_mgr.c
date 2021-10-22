@@ -868,13 +868,10 @@ static inline bool does_hci_con_handle_belong_to_fake_wiimote(u16 hci_con_handle
 
 static bool fake_wiimote_mgr_handle_hci_cmd_accept_con(const bdaddr_t *bdaddr, u8 role)
 {
-	int ret;
+	int ret, i;
 
 	/* Check if the bdaddr belongs to a fake wiimote */
-	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
-		if (memcmp(bdaddr, &fake_wiimotes[i].bdaddr, sizeof(bdaddr_t) != 0))
-			continue;
-
+	if (does_bdaddr_belong_to_fake_wiimote(bdaddr, &i)) {
 		/* Connection accepted to our fake wiimote */
 		DEBUG("Connection accepted for fake Wiimote %d!\n", i);
 
