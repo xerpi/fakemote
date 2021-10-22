@@ -31,8 +31,16 @@ LIBS	=	cios-lib/cios-lib.a
 TARGET	=	FAKEMOTE
 
 # Objects
-OBJS	= source/start.o source/main.o source/hci_state.o source/fake_wiimote_mgr.o source/libc.o \
-	  source/wiimote_crypto.o source/conf.o source/usb_hid.o source/usb_driver_ds3.o \
+OBJS	= source/start.o		\
+	  source/main.o			\
+	  source/hci_state.o		\
+	  source/injmessage.o		\
+	  source/fake_wiimote_mgr.o	\
+	  source/libc.o			\
+	  source/wiimote_crypto.o	\
+	  source/conf.o			\
+	  source/usb_hid.o		\
+	  source/usb_driver_ds3.o	\
 	  source/usb_driver_ds4.o
 
 

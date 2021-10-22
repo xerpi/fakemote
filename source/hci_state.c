@@ -3,7 +3,7 @@
 #include "fake_wiimote_mgr.h"
 #include "hci.h"
 #include "hci_state.h"
-#include "l2cap.h"
+#include "injmessage.h"
 #include "utils.h"
 #include "syscalls.h"
 
