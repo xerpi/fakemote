@@ -37,20 +37,23 @@ static inline void fake_wiimote_mgr_send_event_number_of_completed_packets(void)
 {
 	u16 con_handles[MAX_FAKE_WIIMOTES];
 	u16 compl_pkts[MAX_FAKE_WIIMOTES];
+	u32 total = 0;
 	u8 num_con_handles = 0;
 
 	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
 		if (fake_wiimote_is_connected(&fake_wiimotes[i])) {
 			con_handles[num_con_handles] = fake_wiimotes[i].hci_con_handle;
 			compl_pkts[num_con_handles] = fake_wiimotes[i].num_completed_acl_data_packets;
+			/* Accumulate completed packets count */
+			total += fake_wiimotes[i].num_completed_acl_data_packets;
 			/* Reset count */
 			fake_wiimotes[i].num_completed_acl_data_packets = 0;
 			num_con_handles++;
 		}
 	}
 
-	/* No Fake Wiimotes, no event */
-	if (num_con_handles > 0)
+	/* No completed packets, no event */
+	if (total > 0)
 		inject_hci_event_num_compl_pkts(num_con_handles, con_handles, compl_pkts);
 }
 
