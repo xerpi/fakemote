@@ -191,7 +191,7 @@ int ds3_driver_ops_init(usb_input_device_t *device)
 	priv->extension = WIIMOTE_EXT_NUNCHUK;
 
 	/* Set initial extension */
-	fake_wiimote_mgr_set_extension(device->wiimote, priv->extension);
+	fake_wiimote_set_extension(device->wiimote, priv->extension);
 
 	ret = ds3_request_data(device);
 	if (ret < 0)
@@ -248,7 +248,7 @@ int ds3_driver_ops_usb_async_resp(usb_input_device_t *device)
 	acc_y = ACCEL_ZERO_G + (ds3_acc_y * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS3_ACC_RES_PER_G;
 	acc_z = ACCEL_ZERO_G + (ds3_acc_z * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS3_ACC_RES_PER_G;
 
-	fake_wiimote_mgr_report_accelerometer(device->wiimote, acc_x, acc_y, acc_z);
+	fake_wiimote_report_accelerometer(device->wiimote, acc_x, acc_y, acc_z);
 
 	if (priv->extension == WIIMOTE_EXT_NUNCHUK) {
 		memset(&nunchuk, 0, sizeof(nunchuk));
@@ -256,10 +256,10 @@ int ds3_driver_ops_usb_async_resp(usb_input_device_t *device)
 		nunchuk.jy = 255 - report->left_y;
 		nunchuk.bt.c = !report->l1;
 		nunchuk.bt.z = !report->l2;
-		fake_wiimote_mgr_report_input_ext(device->wiimote, buttons,
+		fake_wiimote_report_input_ext(device->wiimote, buttons,
 						  &nunchuk, sizeof(nunchuk));
 	} else {
-		fake_wiimote_mgr_report_input(device->wiimote, buttons);
+		fake_wiimote_report_input(device->wiimote, buttons);
 	}
 
 	return ds3_request_data(device);

@@ -84,18 +84,28 @@ typedef struct fake_wiimote_t {
 	} read_request;
 } fake_wiimote_t;
 
+/** Used by the Fake Wiimote manager **/
 void fake_wiimote_init(fake_wiimote_t *wiimote, const bdaddr_t *bdaddr);
 void fake_wiimote_reset_state(fake_wiimote_t *wiimote, void *usrdata, const input_device_ops_t *ops);
+void fake_wiimote_handle_hci_cmd_accept_con(fake_wiimote_t *wiimote, u8 role);
 int fake_wiimote_disconnect(fake_wiimote_t *wiimote);
 void fake_wiimote_tick(fake_wiimote_t *wiimote);
 void fake_wiimote_handle_acl_data_out_request_from_host(fake_wiimote_t *wiimote,
 							const hci_acldata_hdr_t *acl);
 
+/** Used by the input devices **/
+void fake_wiimote_set_extension(fake_wiimote_t *wiimote, enum wiimote_ext_e ext);
+void fake_wiimote_report_input(fake_wiimote_t *wiimote, u16 buttons);
+void fake_wiimote_report_accelerometer(fake_wiimote_t *wiimote, u16 acc_x, u16 acc_y, u16 acc_z);
+void fake_wiimote_report_ir_dots(fake_wiimote_t *wiimote, u8 num_dots, struct ir_dot_t *dots);
+void fake_wiimote_report_input_ext(fake_wiimote_t *wiimote, u16 buttons,
+				       const void *ext_data, u8 ext_size);
+
 /* Helper functions */
 
 static inline bool fake_wiimote_is_connected(const fake_wiimote_t *wiimote)
 {
-	return wiimote->baseband_state == BASEBAND_STATE_COMPLETE;
+	return wiimote->active && (wiimote->baseband_state == BASEBAND_STATE_COMPLETE);
 }
 
 #endif

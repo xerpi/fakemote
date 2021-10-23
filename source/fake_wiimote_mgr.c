@@ -19,15 +19,18 @@ bool fake_wiimote_mgr_add_input_device(void *usrdata, const input_device_ops_t *
 {
 	/* Find an inactive fake Wiimote */
 	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
-		if (fake_wiimotes[i].active)
-			continue;
-
-		fake_wiimote_reset_state(&fake_wiimotes[i], usrdata, ops);
-
-		fake_wiimotes[i].active = true;
-		return true;
+		if (!fake_wiimotes[i].active) {
+			fake_wiimote_reset_state(&fake_wiimotes[i], usrdata, ops);
+			fake_wiimotes[i].active = true;
+			return true;
+		}
 	}
 	return false;
+}
+
+bool fake_wiimote_mgr_remove_input_device(fake_wiimote_t *wiimote)
+{
+	return fake_wiimote_disconnect(wiimote) == IOS_OK;
 }
 
 static inline void fake_wiimote_mgr_send_event_number_of_completed_packets(void)
@@ -37,7 +40,7 @@ static inline void fake_wiimote_mgr_send_event_number_of_completed_packets(void)
 	u8 num_con_handles = 0;
 
 	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
-		if (fake_wiimotes[i].active) {
+		if (fake_wiimote_is_connected(&fake_wiimotes[i])) {
 			con_handles[num_con_handles] = fake_wiimotes[i].hci_con_handle;
 			compl_pkts[num_con_handles] = fake_wiimotes[i].num_completed_acl_data_packets;
 			/* Reset count */
@@ -76,53 +79,30 @@ static inline bool does_bdaddr_belong_to_fake_wiimote(const bdaddr_t *bdaddr, in
 	return false;
 }
 
-static inline bool does_hci_con_handle_belong_to_fake_wiimote(u16 hci_con_handle)
+static inline fake_wiimote_t *get_fake_wiimote_for_hci_con_handle(u16 hci_con_handle)
 {
 	/* Check if the HCI connection handle belongs to a fake wiimote */
 	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
 		if (fake_wiimote_is_connected(&fake_wiimotes[i]) &&
 		    (fake_wiimotes[i].hci_con_handle == hci_con_handle))
-		return true;
+			return &fake_wiimotes[i];
 	}
 
-	return false;
+	return NULL;
+}
+
+static inline bool does_hci_con_handle_belong_to_fake_wiimote(u16 hci_con_handle)
+{
+	return get_fake_wiimote_for_hci_con_handle(hci_con_handle) != NULL;
 }
 
 static bool fake_wiimote_mgr_handle_hci_cmd_accept_con(const bdaddr_t *bdaddr, u8 role)
 {
-	int ret, i;
+	int i;
 
 	/* Check if the bdaddr belongs to a fake wiimote */
 	if (does_bdaddr_belong_to_fake_wiimote(bdaddr, &i)) {
-		/* Connection accepted to our fake wiimote */
-		DEBUG("Connection accepted for fake Wiimote %d!\n", i);
-
-		/* The Accept_Connection_Request command will cause the Command Status
-		   event to be sent from the Host Controller when the Host Controller
-		   begins setting up the connection */
-
-		ret = inject_hci_event_command_status(HCI_CMD_ACCEPT_CON);
-		assert(ret == IOS_OK);
-
-		fake_wiimotes[i].baseband_state = BASEBAND_STATE_COMPLETE;
-		fake_wiimotes[i].hci_con_handle = hci_con_handle_virt_alloc();
-		DEBUG("Fake Wiimote %d got HCI con_handle: 0x%x\n", i, fake_wiimotes[i].hci_con_handle);
-
-		/* We can start the ACL (L2CAP) linking now */
-		fake_wiimotes[i].acl_state = ACL_STATE_LINKING;
-
-		if (role == HCI_ROLE_MASTER) {
-			ret = inject_hci_event_role_change(bdaddr, HCI_ROLE_MASTER);
-			assert(ret == IOS_OK);
-		}
-
-		/* In addition, when the Link Manager determines the connection is established,
-		 * the Host Controllers on both Bluetooth devices that form the connection
-		 * will send a Connection Complete event to each Host */
-		ret = inject_hci_event_con_compl(bdaddr, fake_wiimotes[i].hci_con_handle, 0);
-		assert(ret == IOS_OK);
-
-		DEBUG("Connection complete sent, starting ACL linking!\n");
+		fake_wiimote_handle_hci_cmd_accept_con(&fake_wiimotes[i], role);
 		return true;
 	}
 
@@ -131,15 +111,15 @@ static bool fake_wiimote_mgr_handle_hci_cmd_accept_con(const bdaddr_t *bdaddr, u
 
 static bool fake_wiimote_mgr_handle_hci_cmd_reject_con(const bdaddr_t *bdaddr, u8 reason)
 {
+	int i;
+
 	/* Check if the bdaddr belongs to a fake wiimote */
-	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
-		if (bacmp(bdaddr, &fake_wiimotes[i].bdaddr) == 0) {
-			/* TODO: Send inject_hci_event_command_status(HCI_CMD_REJECT_CON) ? */
-			/* Connection rejected to our fake wiimote. Disconnect */
-			DEBUG("Connection to fake Wiimote %d rejected!\n", i);
-			fake_wiimote_disconnect(&fake_wiimotes[i]);
-			return true;
-		}
+	if (does_bdaddr_belong_to_fake_wiimote(bdaddr, &i)) {
+		/* TODO: Send inject_hci_event_command_status(HCI_CMD_REJECT_CON) ? */
+		/* Connection rejected to our fake wiimote. Disconnect */
+		DEBUG("Connection to fake Wiimote %d rejected!\n", i);
+		fake_wiimote_disconnect(&fake_wiimotes[i]);
+		return true;
 	}
 
 	return false;
@@ -148,23 +128,19 @@ static bool fake_wiimote_mgr_handle_hci_cmd_reject_con(const bdaddr_t *bdaddr, u
 static bool fake_wiimote_mgr_handle_hci_cmd_disconnect(u16 hci_con_handle, u8 reason)
 {
 	int ret;
+	fake_wiimote_t *wiimote;
 
-	/* Check if the HCI connection handle belongs to a fake wiimote */
-	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
-		if (!fake_wiimote_is_connected(&fake_wiimotes[i]) ||
-		    (fake_wiimotes[i].hci_con_handle != hci_con_handle))
-			continue;
+	wiimote = get_fake_wiimote_for_hci_con_handle(hci_con_handle);
+	if (!wiimote)
+		return false;
 
-		ret = inject_hci_event_command_status(HCI_CMD_DISCONNECT);
-		assert(ret == IOS_OK);
+	ret = inject_hci_event_command_status(HCI_CMD_DISCONNECT);
+	assert(ret == IOS_OK);
 
-		/* Host wants disconnection to our fake wiimote. Disconnect */
-		DEBUG("Host requested disconnection of fake Wiimote %d.\n", i);
-		fake_wiimote_disconnect(&fake_wiimotes[i]);
-		return true;
-	}
-
-	return false;
+	/* Host wants disconnection to our fake wiimote. Disconnect */
+	DEBUG("Host requested disconnection of fake Wiimote\n");
+	fake_wiimote_disconnect(wiimote);
+	return true;
 }
 
 bool fake_wiimote_mgr_handle_hci_cmd_from_host(const hci_cmd_hdr_t *hdr)
@@ -340,16 +316,13 @@ bool fake_wiimote_mgr_handle_hci_cmd_from_host(const hci_cmd_hdr_t *hdr)
 
 bool fake_wiimote_mgr_handle_acl_data_out_request_from_host(u16 hci_con_handle, const hci_acldata_hdr_t *acl)
 {
-	/* Check if the HCI connection handle belongs to a fake wiimote */
-	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
-		if (!fake_wiimote_is_connected(&fake_wiimotes[i]) ||
-		    (fake_wiimotes[i].hci_con_handle != hci_con_handle))
-			continue;
+	fake_wiimote_t *wiimote;
 
-		fake_wiimote_handle_acl_data_out_request_from_host(&fake_wiimotes[i], acl);
+	wiimote = get_fake_wiimote_for_hci_con_handle(hci_con_handle);
+	if (!wiimote)
+		return false;
 
-		return true;
-	}
+	fake_wiimote_handle_acl_data_out_request_from_host(wiimote, acl);
 
-	return false;
+	return true;
 }

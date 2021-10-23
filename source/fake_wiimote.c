@@ -213,9 +213,43 @@ void fake_wiimote_reset_state(fake_wiimote_t *wiimote, void *usrdata, const inpu
 	wiimote->reporting_continuous = false;
 }
 
+void fake_wiimote_handle_hci_cmd_accept_con(fake_wiimote_t *wiimote, u8 role)
+{
+	int ret;
+
+	/* Connection accepted to our fake wiimote */
+	DEBUG("Connection accepted for fake Wiimote %d!\n", i);
+
+	/* The Accept_Connection_Request command will cause the Command Status
+	   event to be sent from the Host Controller when the Host Controller
+	   begins setting up the connection */
+	ret = inject_hci_event_command_status(HCI_CMD_ACCEPT_CON);
+	assert(ret == IOS_OK);
+
+	wiimote->baseband_state = BASEBAND_STATE_COMPLETE;
+	wiimote->hci_con_handle = hci_con_handle_virt_alloc();
+	DEBUG("Fake Wiimote %d got HCI con_handle: 0x%x\n", i, wiimote->hci_con_handle);
+
+	/* We can start the ACL (L2CAP) linking now */
+	wiimote->acl_state = ACL_STATE_LINKING;
+
+	if (role == HCI_ROLE_MASTER) {
+		ret = inject_hci_event_role_change(&wiimote->bdaddr, HCI_ROLE_MASTER);
+		assert(ret == IOS_OK);
+	}
+
+	/* In addition, when the Link Manager determines the connection is established,
+	 * the Host Controllers on both Bluetooth devices that form the connection
+	 * will send a Connection Complete event to each Host */
+	ret = inject_hci_event_con_compl(&wiimote->bdaddr, wiimote->hci_con_handle, 0);
+	assert(ret == IOS_OK);
+
+	DEBUG("Connection complete sent, starting ACL linking!\n");
+}
+
 int fake_wiimote_disconnect(fake_wiimote_t *wiimote)
 {
-	int ret = 0, ret2;
+	int ret = 0;
 
 	/* If we had a L2CAP Interrupt channel connection, notify the driver of disconnection */
 	if (l2cap_channel_is_complete(&wiimote->psm_hid_intr_chn)) {
@@ -223,29 +257,11 @@ int fake_wiimote_disconnect(fake_wiimote_t *wiimote)
 			wiimote->input_device_ops->disconnect(wiimote->usrdata);
 	}
 
-	if (l2cap_channel_is_accepted(&wiimote->psm_sdp_chn)) {
-		ret2 = disconnect_l2cap_channel(wiimote->hci_con_handle, &wiimote->psm_sdp_chn);
-		if (ret2 < 0 && ret == 0)
-			ret = ret2;
-	}
-
-	if (l2cap_channel_is_accepted(&wiimote->psm_hid_cntl_chn)) {
-		ret2 = disconnect_l2cap_channel(wiimote->hci_con_handle, &wiimote->psm_hid_cntl_chn);
-		if (ret2 < 0 && ret == 0)
-			ret = ret2;
-	}
-
-	if (l2cap_channel_is_accepted(&wiimote->psm_hid_intr_chn)) {
-		ret2 = disconnect_l2cap_channel(wiimote->hci_con_handle, &wiimote->psm_hid_intr_chn);
-		if (ret2 < 0 && ret == 0)
-			ret = ret2;
-	}
-
+	/* Does a real Wiimote gracefully disconnect l2cap channels first?
+	   Not doing that doesn't seem to break anything. */
 	if (wiimote->baseband_state == BASEBAND_STATE_COMPLETE) {
-		ret2 = inject_hci_event_discon_compl(wiimote->hci_con_handle,
-						     0, 0x13 /* User Ended Connection */);
-		if (ret2 < 0 && ret == 0)
-			ret = ret2;
+		ret = inject_hci_event_discon_compl(wiimote->hci_con_handle,
+						    0, 0x13 /* User Ended Connection */);
 	}
 
 	wiimote->active = false;
@@ -253,17 +269,12 @@ int fake_wiimote_disconnect(fake_wiimote_t *wiimote)
 	return ret;
 }
 
-bool fake_wiimote_mgr_remove_input_device(fake_wiimote_t *wiimote)
-{
-	return fake_wiimote_disconnect(wiimote) == IOS_OK;
-}
-
-void fake_wiimote_mgr_set_extension(fake_wiimote_t *wiimote, enum wiimote_ext_e ext)
+void fake_wiimote_set_extension(fake_wiimote_t *wiimote, enum wiimote_ext_e ext)
 {
 	wiimote->new_extension = ext;
 }
 
-void fake_wiimote_mgr_report_input(fake_wiimote_t *wiimote, u16 buttons)
+void fake_wiimote_report_input(fake_wiimote_t *wiimote, u16 buttons)
 {
 	bool btn_changed = (wiimote->buttons ^ buttons) != 0;
 
@@ -273,14 +284,14 @@ void fake_wiimote_mgr_report_input(fake_wiimote_t *wiimote, u16 buttons)
 	}
 }
 
-void fake_wiimote_mgr_report_accelerometer(fake_wiimote_t *wiimote, u16 acc_x, u16 acc_y, u16 acc_z)
+void fake_wiimote_report_accelerometer(fake_wiimote_t *wiimote, u16 acc_x, u16 acc_y, u16 acc_z)
 {
 	wiimote->acc_x = acc_x & 0x3FF;
 	wiimote->acc_y = acc_y & 0x3FF;
 	wiimote->acc_z = acc_z & 0x3FF;
 }
 
-void fake_wiimote_mgr_report_ir_dots(fake_wiimote_t *wiimote, u8 num_dots, struct ir_dot_t *dots)
+void fake_wiimote_report_ir_dots(fake_wiimote_t *wiimote, u8 num_dots, struct ir_dot_t *dots)
 {
 	u8 *ir_data = wiimote->ir_regs.camera_data;
 	struct ir_dot_t ir_dots[2];
@@ -364,7 +375,7 @@ void fake_wiimote_mgr_report_ir_dots(fake_wiimote_t *wiimote, u8 num_dots, struc
 	}
 }
 
-void fake_wiimote_mgr_report_input_ext(fake_wiimote_t *wiimote, u16 buttons, const void *ext_data, u8 ext_size)
+void fake_wiimote_report_input_ext(fake_wiimote_t *wiimote, u16 buttons, const void *ext_data, u8 ext_size)
 {
 	u8 *ext_controller_data = wiimote->extension_regs.controller_data;
 	bool btn_changed = (wiimote->buttons ^ buttons) != 0;
