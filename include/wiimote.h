@@ -80,18 +80,46 @@
 #define WIIMOTE_EXP_MEM_CALIBR	0x20
 #define WIIMOTE_EXP_ID		0xFA
 
-/* Buttons */
-#define WPAD_BUTTON_2		0x0001
-#define WPAD_BUTTON_1		0x0002
-#define WPAD_BUTTON_B		0x0004
-#define WPAD_BUTTON_A		0x0008
-#define WPAD_BUTTON_MINUS	0x0010
-#define WPAD_BUTTON_HOME	0x0080
-#define WPAD_BUTTON_LEFT	0x0100
-#define WPAD_BUTTON_RIGHT	0x0200
-#define WPAD_BUTTON_DOWN	0x0400
-#define WPAD_BUTTON_UP		0x0800
-#define WPAD_BUTTON_PLUS	0x1000
+/* Wiimote button codes */
+#define WIIMOTE_BUTTON_TWO		0x0001
+#define WIIMOTE_BUTTON_ONE		0x0002
+#define WIIMOTE_BUTTON_B		0x0004
+#define WIIMOTE_BUTTON_A		0x0008
+#define WIIMOTE_BUTTON_MINUS		0x0010
+#define WIIMOTE_BUTTON_ZACCEL_BIT6	0x0020
+#define WIIMOTE_BUTTON_ZACCEL_BIT7	0x0040
+#define WIIMOTE_BUTTON_HOME		0x0080
+#define WIIMOTE_BUTTON_LEFT		0x0100
+#define WIIMOTE_BUTTON_RIGHT		0x0200
+#define WIIMOTE_BUTTON_DOWN		0x0400
+#define WIIMOTE_BUTTON_UP		0x0800
+#define WIIMOTE_BUTTON_PLUS		0x1000
+#define WIIMOTE_BUTTON_ZACCEL_BIT4	0x2000
+#define WIIMOTE_BUTTON_ZACCEL_BIT5	0x4000
+#define WIIMOTE_BUTTON_UNKNOWN		0x8000
+#define WIIMOTE_BUTTON_ALL		0x1F9F
+
+/* Nunchuk button codes */
+#define NUNCHUK_BUTTON_Z	0x01
+#define NUNCHUK_BUTTON_C	0x02
+
+/* Classic Controller button codes */
+#define CLASSIC_CTRL_BUTTON_UP		0x0001
+#define CLASSIC_CTRL_BUTTON_LEFT	0x0002
+#define CLASSIC_CTRL_BUTTON_ZR		0x0004
+#define CLASSIC_CTRL_BUTTON_X		0x0008
+#define CLASSIC_CTRL_BUTTON_A		0x0010
+#define CLASSIC_CTRL_BUTTON_Y		0x0020
+#define CLASSIC_CTRL_BUTTON_B		0x0040
+#define CLASSIC_CTRL_BUTTON_ZL		0x0080
+#define CLASSIC_CTRL_BUTTON_FULL_R	0x0200
+#define CLASSIC_CTRL_BUTTON_PLUS	0x0400
+#define CLASSIC_CTRL_BUTTON_HOME	0x0800
+#define CLASSIC_CTRL_BUTTON_MINUS	0x1000
+#define CLASSIC_CTRL_BUTTON_FULL_L	0x2000
+#define CLASSIC_CTRL_BUTTON_DOWN	0x4000
+#define CLASSIC_CTRL_BUTTON_RIGHT	0x8000
+#define CLASSIC_CTRL_BUTTON_ALL		0xFEFF
 
 /* Acceleromter configuration */
 #define ACCEL_ZERO_G	(0x80 << 2)
@@ -267,7 +295,50 @@ struct wiimote_extension_data_format_nunchuk_t {
 		};
 	} bt;
 };
-static_assert(sizeof(struct wiimote_extension_data_format_nunchuk_t) <= CONTROLLER_DATA_BYTES);
+
+struct wiimote_extension_data_format_classic_t {
+	u8 rx3 : 2; // byte 0
+	u8 lx : 6;
+
+	u8 rx2 : 2; // byte 1
+	u8 ly : 6;
+
+	u8 rx1 : 1;
+	u8 lt2 : 2;
+	u8 ry : 5;
+
+	u8 lt1 : 3;
+	u8 rt : 5;
+
+	union { // byte 4, 5
+		u16 hex;
+		struct {
+			u8 dpad_right : 1;
+			u8 dpad_down : 1;
+			u8 lt : 1;  // left trigger
+			u8 minus : 1;
+			u8 home : 1;
+			u8 plus : 1;
+			u8 rt : 1;  // right trigger
+			u8 : 1;
+
+			u8 zl : 1;  // left z button
+			u8 b : 1;
+			u8 y : 1;
+			u8 a : 1;
+			u8 x : 1;
+			u8 zr : 1;
+			u8 dpad_left : 1;
+			u8 dpad_up : 1;
+		};
+	} bt;
+};
+
+union wiimote_extension_data_t {
+	struct wiimote_extension_data_format_nunchuk_t nunchuk;
+	struct wiimote_extension_data_format_classic_t classic;
+};
+static_assert(sizeof(union wiimote_extension_data_t) <= CONTROLLER_DATA_BYTES);
 
 #define ENCRYPTION_ENABLED 0xaa
 
