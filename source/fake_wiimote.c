@@ -588,11 +588,19 @@ static inline bool fake_wiimote_process_extension_change(fake_wiimote_t *wiimote
 		memcpy(wiimote->extension_regs.identifier, id_code,
 		       sizeof(wiimote->extension_regs.identifier));
 	}
-	wiimote->cur_extension = wiimote->new_extension;
 
 	/* Following a connection or disconnection event on the Extension Port, data reporting
 	 * is disabled and the Data Reporting Mode must be reset before new data can arrive */
 	wiimote->reporting_mode = INPUT_REPORT_ID_REPORT_DISABLED;
+
+	/* Extension disconnect */
+	if (wiimote->cur_extension != WIIMOTE_EXT_NONE) {
+		wiimote->cur_extension = WIIMOTE_EXT_NONE;
+		wiimote_send_input_report_status(wiimote);
+	}
+
+	/* Extension connect */
+	wiimote->cur_extension = wiimote->new_extension;
 	wiimote_send_input_report_status(wiimote);
 
 	return true;
@@ -997,6 +1005,7 @@ static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data,
 	}
 	default:
 		DEBUG("Unhandled output report: 0x%x\n", data[0]);
+		assert(0);
 		break;
 	}
 }
