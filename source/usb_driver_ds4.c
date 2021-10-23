@@ -1,3 +1,4 @@
+#include "button_mapping.h"
 #include "usb_device_drivers.h"
 #include "utils.h"
 #include "wiimote.h"
@@ -6,12 +7,67 @@
 #define DS4_TOUCHPAD_H		940
 #define DS4_ACC_RES_PER_G	8192
 
+enum ds4_buttons_e {
+	DS4_BUTTON_TRIANGLE,
+	DS4_BUTTON_CIRCLE,
+	DS4_BUTTON_CROSS,
+	DS4_BUTTON_SQUARE,
+	DS4_BUTTON_UP,
+	DS4_BUTTON_DOWN,
+	DS4_BUTTON_LEFT,
+	DS4_BUTTON_RIGHT,
+	DS4_BUTTON_R3,
+	DS4_BUTTON_L3,
+	DS4_BUTTON_OPTIONS,
+	DS4_BUTTON_SHARE,
+	DS4_BUTTON_R2,
+	DS4_BUTTON_L2,
+	DS4_BUTTON_R1,
+	DS4_BUTTON_L1,
+	DS4_BUTTON_TOUCHPAD,
+	DS4_BUTTON_PS,
+	DS4_BUTTON__NUM
+};
+
+enum ds4_analog_axis_e {
+	DS4_ANALOG_AXIS_LEFT_X,
+	DS4_ANALOG_AXIS_LEFT_Y,
+	DS4_ANALOG_AXIS_RIGHT_X,
+	DS4_ANALOG_AXIS_RIGHT_Y,
+	DS4_ANALOG_AXIS__NUM
+};
+
 struct ds4_private_data_t {
 	enum wiimote_ext_e extension;
 	u8 leds;
 	bool rumble_on;
 };
 static_assert(sizeof(struct ds4_private_data_t) <= USB_INPUT_DEVICE_PRIVATE_DATA_SIZE);
+
+static const u16 wiimote_button_mapping[DS4_BUTTON__NUM] = {
+	[DS4_BUTTON_TRIANGLE] = WPAD_BUTTON_1,
+	[DS4_BUTTON_CIRCLE]   = WPAD_BUTTON_B,
+	[DS4_BUTTON_CROSS]    = WPAD_BUTTON_A,
+	[DS4_BUTTON_SQUARE]   = WPAD_BUTTON_2,
+	[DS4_BUTTON_UP]       = WPAD_BUTTON_UP,
+	[DS4_BUTTON_DOWN]     = WPAD_BUTTON_DOWN,
+	[DS4_BUTTON_LEFT]     = WPAD_BUTTON_LEFT,
+	[DS4_BUTTON_RIGHT]    = WPAD_BUTTON_RIGHT,
+	[DS4_BUTTON_OPTIONS]  = WPAD_BUTTON_PLUS,
+	[DS4_BUTTON_SHARE]    = WPAD_BUTTON_MINUS,
+	[DS4_BUTTON_TOUCHPAD] = WPAD_BUTTON_A,
+	[DS4_BUTTON_PS]       = WPAD_BUTTON_HOME,
+};
+
+static const u8 nunchuk_button_mapping[DS4_BUTTON__NUM] = {
+	[DS4_BUTTON_L1] = BM_NUNCHUK_BUTTON_C,
+	[DS4_BUTTON_L2] = BM_NUNCHUK_BUTTON_Z,
+};
+
+static const u8 nunchuk_analog_axis_mapping[DS4_ANALOG_AXIS__NUM] = {
+	[DS4_ANALOG_AXIS_LEFT_X] = BM_NUNCHUK_ANALOG_AXIS_X,
+	[DS4_ANALOG_AXIS_LEFT_Y] = BM_NUNCHUK_ANALOG_AXIS_Y,
+};
 
 struct ds4_input_report {
 	u8 report_id;
@@ -93,30 +149,68 @@ struct ds4_input_report {
 	u8 finger2_y_hi;
 } ATTRIBUTE_PACKED;
 
-static inline void ds4_map_buttons(const struct ds4_input_report *input, u16 *buttons)
+static inline void ds4_get_buttons(const struct ds4_input_report *input, u32 *buttons)
 {
+#define MAP(field, button) \
+	if (input->field) \
+		*buttons |= BIT(button);
+
+	MAP(triangle, DS4_BUTTON_TRIANGLE)
+	MAP(circle, DS4_BUTTON_CIRCLE)
+	MAP(cross, DS4_BUTTON_CROSS)
+	MAP(square, DS4_BUTTON_SQUARE)
+
 	if (input->dpad == 0 || input->dpad == 1 || input->dpad == 7)
-		*buttons |= WPAD_BUTTON_UP;
+		*buttons |= BIT(DS4_BUTTON_UP);
 	else if (input->dpad == 3 || input->dpad == 4 || input->dpad == 5)
-		*buttons |= WPAD_BUTTON_DOWN;
-	if (input->dpad == 1 || input->dpad == 2 || input->dpad == 3)
-		*buttons |= WPAD_BUTTON_RIGHT;
-	else if (input->dpad == 5 || input->dpad == 6 || input->dpad == 7)
-		*buttons |= WPAD_BUTTON_LEFT;
-	if (input->cross || input->tpad)
-		*buttons |= WPAD_BUTTON_A;
-	if (input->circle)
-		*buttons |= WPAD_BUTTON_B;
-	if (input->triangle)
-		*buttons |= WPAD_BUTTON_1;
-	if (input->square)
-		*buttons |= WPAD_BUTTON_2;
-	if (input->ps)
-		*buttons |= WPAD_BUTTON_HOME;
-	if (input->share)
-		*buttons |= WPAD_BUTTON_MINUS;
-	if (input->options)
-		*buttons |= WPAD_BUTTON_PLUS;
+		*buttons |= BIT(DS4_BUTTON_DOWN);
+	if (input->dpad == 5 || input->dpad == 6 || input->dpad == 7)
+		*buttons |= DS4_BUTTON_LEFT;
+	else if (input->dpad == 1 || input->dpad == 2 || input->dpad == 3)
+		*buttons |= BIT(DS4_BUTTON_RIGHT);
+
+	MAP(r3, DS4_BUTTON_R3)
+	MAP(l3, DS4_BUTTON_L3)
+	MAP(options, DS4_BUTTON_OPTIONS)
+	MAP(share, DS4_BUTTON_SHARE)
+	MAP(r2, DS4_BUTTON_R2)
+	MAP(l2, DS4_BUTTON_L2)
+	MAP(r1, DS4_BUTTON_R1)
+	MAP(l1, DS4_BUTTON_L1)
+	MAP(tpad, DS4_BUTTON_TOUCHPAD)
+	MAP(ps, DS4_BUTTON_PS)
+
+#undef MAP
+}
+
+static inline void ds4_get_analog_axis(const struct ds4_input_report *input,
+				       u8 analog_axis[static DS4_ANALOG_AXIS__NUM])
+{
+	analog_axis[DS4_ANALOG_AXIS_LEFT_X] = input->left_x;
+	analog_axis[DS4_ANALOG_AXIS_LEFT_Y] = 255 - input->left_y;
+	analog_axis[DS4_ANALOG_AXIS_RIGHT_X] = input->right_x;
+	analog_axis[DS4_ANALOG_AXIS_RIGHT_Y] = input->right_y;
+}
+
+static inline void ds4_map(struct ds4_private_data_t *priv,
+			   const struct ds4_input_report *input,
+			   u16 *wiimote_buttons,
+			   union bm_extension_t *ext_data)
+{
+	u32 ds4_buttons = 0;
+	u8 ds4_analog_axis[DS4_ANALOG_AXIS__NUM];
+
+	ds4_get_buttons(input, &ds4_buttons);
+	ds4_get_analog_axis(input, ds4_analog_axis);
+
+	bm_map(priv->extension,
+	       DS4_BUTTON__NUM, ds4_buttons,
+	       DS4_ANALOG_AXIS__NUM, ds4_analog_axis,
+	       wiimote_button_mapping,
+	       nunchuk_button_mapping,
+	       nunchuk_analog_axis_mapping,
+	       wiimote_buttons,
+	       ext_data);
 }
 
 static inline int ds4_set_leds_rumble(usb_input_device_t *device, u8 r, u8 g, u8 b,
@@ -211,6 +305,7 @@ int ds4_driver_ops_usb_async_resp(usb_input_device_t *device)
 	struct ds4_private_data_t *priv = (void *)device->private_data;
 	struct ds4_input_report *report = (void *)device->usb_async_resp;
 	u16 buttons = 0;
+	union bm_extension_t bm_ext = {0};
 	s32 ds4_acc_x, ds4_acc_y, ds4_acc_z;
 	u16 acc_x, acc_y, acc_z;
 	struct wiimote_extension_data_format_nunchuk_t nunchuk;
@@ -219,7 +314,7 @@ int ds4_driver_ops_usb_async_resp(usb_input_device_t *device)
 	u8 num_ir_dots = 0;
 
 	if (report->report_id == 0x01) {
-		ds4_map_buttons(report, &buttons);
+		ds4_map(priv, report, &buttons, &bm_ext);
 
 		ds4_acc_x = (s32)(s16)le16toh(report->accel_x);
 		ds4_acc_y = (s32)(s16)le16toh(report->accel_y);
@@ -251,13 +346,9 @@ int ds4_driver_ops_usb_async_resp(usb_input_device_t *device)
 		fake_wiimote_report_ir_dots(device->wiimote, num_ir_dots, ir_dots);
 
 		if (priv->extension == WIIMOTE_EXT_NUNCHUK) {
-			memset(&nunchuk, 0, sizeof(nunchuk));
-			nunchuk.jx = report->left_x;
-			nunchuk.jy = 255 - report->left_y;
-			nunchuk.bt.c = !report->l1;
-			nunchuk.bt.z = !report->l2;
+			bm_nunchuk_format(&nunchuk, &bm_ext.nunchuk);
 			fake_wiimote_report_input_ext(device->wiimote, buttons,
-							  &nunchuk, sizeof(nunchuk));
+						      &nunchuk, sizeof(nunchuk));
 		} else {
 			fake_wiimote_report_input(device->wiimote, buttons);
 		}
