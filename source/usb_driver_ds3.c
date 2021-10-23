@@ -1,3 +1,4 @@
+#include "button_mapping.h"
 #include "usb_device_drivers.h"
 #include "usb.h"
 #include "utils.h"
@@ -5,12 +6,65 @@
 
 #define DS3_ACC_RES_PER_G	113
 
+enum ds3_buttons_e {
+	DS3_BUTTON_TRIANGLE,
+	DS3_BUTTON_CIRCLE,
+	DS3_BUTTON_CROSS,
+	DS3_BUTTON_SQUARE,
+	DS3_BUTTON_UP,
+	DS3_BUTTON_DOWN,
+	DS3_BUTTON_LEFT,
+	DS3_BUTTON_RIGHT,
+	DS3_BUTTON_R3,
+	DS3_BUTTON_L3,
+	DS3_BUTTON_START,
+	DS3_BUTTON_SELECT,
+	DS3_BUTTON_R2,
+	DS3_BUTTON_L2,
+	DS3_BUTTON_R1,
+	DS3_BUTTON_L1,
+	DS3_BUTTON_PS,
+	DS3_BUTTON__NUM
+};
+
+enum ds3_analog_axis_e {
+	DS3_ANALOG_AXIS_LEFT_X,
+	DS3_ANALOG_AXIS_LEFT_Y,
+	DS3_ANALOG_AXIS_RIGHT_X,
+	DS3_ANALOG_AXIS_RIGHT_Y,
+	DS3_ANALOG_AXIS__NUM
+};
+
 struct ds3_private_data_t {
 	enum wiimote_ext_e extension;
 	u8 leds;
 	bool rumble_on;
 };
 static_assert(sizeof(struct ds3_private_data_t) <= USB_INPUT_DEVICE_PRIVATE_DATA_SIZE);
+
+static const u16 wiimote_button_mapping[DS3_BUTTON__NUM] = {
+	[DS3_BUTTON_TRIANGLE] = WPAD_BUTTON_1,
+	[DS3_BUTTON_CIRCLE]   = WPAD_BUTTON_B,
+	[DS3_BUTTON_CROSS]    = WPAD_BUTTON_A,
+	[DS3_BUTTON_SQUARE]   = WPAD_BUTTON_2,
+	[DS3_BUTTON_UP]       = WPAD_BUTTON_UP,
+	[DS3_BUTTON_DOWN]     = WPAD_BUTTON_DOWN,
+	[DS3_BUTTON_LEFT]     = WPAD_BUTTON_LEFT,
+	[DS3_BUTTON_RIGHT]    = WPAD_BUTTON_RIGHT,
+	[DS3_BUTTON_START]    = WPAD_BUTTON_PLUS,
+	[DS3_BUTTON_SELECT]   = WPAD_BUTTON_MINUS,
+	[DS3_BUTTON_PS]       = WPAD_BUTTON_HOME,
+};
+
+static const u8 nunchuk_button_mapping[DS3_BUTTON__NUM] = {
+	[DS3_BUTTON_L1] = BM_NUNCHUK_BUTTON_C,
+	[DS3_BUTTON_L2] = BM_NUNCHUK_BUTTON_Z,
+};
+
+static const u8 nunchuk_analog_axis_mapping[DS3_ANALOG_AXIS__NUM] = {
+	[DS3_ANALOG_AXIS_LEFT_X] = BM_NUNCHUK_ANALOG_AXIS_X,
+	[DS3_ANALOG_AXIS_LEFT_Y] = BM_NUNCHUK_ANALOG_AXIS_Y,
+};
 
 struct ds3_input_report {
 	u8 report_id;
@@ -85,30 +139,61 @@ struct ds3_rumble {
 	u8 power_left;
 };
 
-static inline void ds3_map_buttons(const struct ds3_input_report *input, u16 *buttons)
+static inline void ds3_get_buttons(const struct ds3_input_report *input, u32 *buttons)
 {
-	if (input->left)
-		*buttons |= WPAD_BUTTON_LEFT;
-	if (input->down)
-		*buttons |= WPAD_BUTTON_DOWN;
-	if (input->right)
-		*buttons |= WPAD_BUTTON_RIGHT;
-	if (input->up)
-		*buttons |= WPAD_BUTTON_UP;
-	if (input->cross)
-		*buttons |= WPAD_BUTTON_A;
-	if (input->circle)
-		*buttons |= WPAD_BUTTON_B;
-	if (input->triangle)
-		*buttons |= WPAD_BUTTON_1;
-	if (input->square)
-		*buttons |= WPAD_BUTTON_2;
-	if (input->ps)
-		*buttons |= WPAD_BUTTON_HOME;
-	if (input->select)
-		*buttons |= WPAD_BUTTON_MINUS;
-	if (input->start)
-		*buttons |= WPAD_BUTTON_PLUS;
+#define MAP(field, button) \
+	if (input->field) \
+		*buttons |= BIT(button);
+
+	MAP(triangle, DS3_BUTTON_TRIANGLE)
+	MAP(circle, DS3_BUTTON_CIRCLE)
+	MAP(cross, DS3_BUTTON_CROSS)
+	MAP(square, DS3_BUTTON_SQUARE)
+	MAP(up, DS3_BUTTON_UP)
+	MAP(down, DS3_BUTTON_DOWN)
+	MAP(left, DS3_BUTTON_LEFT)
+	MAP(right, DS3_BUTTON_RIGHT)
+	MAP(r3, DS3_BUTTON_R3)
+	MAP(l3, DS3_BUTTON_L3)
+	MAP(start, DS3_BUTTON_START)
+	MAP(select, DS3_BUTTON_SELECT)
+	MAP(r2, DS3_BUTTON_R2)
+	MAP(l2, DS3_BUTTON_L2)
+	MAP(r1, DS3_BUTTON_R1)
+	MAP(l1, DS3_BUTTON_L1)
+	MAP(ps, DS3_BUTTON_PS)
+
+#undef MAP
+}
+
+static inline void ds3_get_analog_axis(const struct ds3_input_report *input,
+				       u8 analog_axis[static DS3_ANALOG_AXIS__NUM])
+{
+	analog_axis[DS3_ANALOG_AXIS_LEFT_X] = input->left_x;
+	analog_axis[DS3_ANALOG_AXIS_LEFT_Y] = 255 - input->left_y;
+	analog_axis[DS3_ANALOG_AXIS_RIGHT_X] = input->right_x;
+	analog_axis[DS3_ANALOG_AXIS_RIGHT_Y] = input->right_y;
+}
+
+static inline void ds3_map(struct ds3_private_data_t *priv,
+			   const struct ds3_input_report *input,
+			   u16 *wiimote_buttons,
+			   union bm_extension_t *ext_data)
+{
+	u32 ds3_buttons = 0;
+	u8 ds3_analog_axis[DS3_ANALOG_AXIS__NUM];
+
+	ds3_get_buttons(input, &ds3_buttons);
+	ds3_get_analog_axis(input, ds3_analog_axis);
+
+	bm_map(priv->extension,
+	       DS3_BUTTON__NUM, ds3_buttons,
+	       DS3_ANALOG_AXIS__NUM, ds3_analog_axis,
+	       wiimote_button_mapping,
+	       nunchuk_button_mapping,
+	       nunchuk_analog_axis_mapping,
+	       wiimote_buttons,
+	       ext_data);
 }
 
 static int ds3_set_operational(usb_input_device_t *device)
@@ -233,11 +318,12 @@ int ds3_driver_ops_usb_async_resp(usb_input_device_t *device)
 	struct ds3_private_data_t *priv = (void *)device->private_data;
 	struct ds3_input_report *report = (void *)device->usb_async_resp;
 	u16 buttons = 0;
+	union bm_extension_t bm_ext = {0};
 	s32 ds3_acc_x, ds3_acc_y, ds3_acc_z;
 	u16 acc_x, acc_y, acc_z;
 	struct wiimote_extension_data_format_nunchuk_t nunchuk;
 
-	ds3_map_buttons(report, &buttons);
+	ds3_map(priv, report, &buttons, &bm_ext);
 
 	ds3_acc_x = (s32)report->acc_x - 511;
 	ds3_acc_y = 511 - (s32)report->acc_y;
@@ -251,11 +337,7 @@ int ds3_driver_ops_usb_async_resp(usb_input_device_t *device)
 	fake_wiimote_report_accelerometer(device->wiimote, acc_x, acc_y, acc_z);
 
 	if (priv->extension == WIIMOTE_EXT_NUNCHUK) {
-		memset(&nunchuk, 0, sizeof(nunchuk));
-		nunchuk.jx = report->left_x;
-		nunchuk.jy = 255 - report->left_y;
-		nunchuk.bt.c = !report->l1;
-		nunchuk.bt.z = !report->l2;
+		bm_nunchuk_format(&nunchuk, &bm_ext.nunchuk);
 		fake_wiimote_report_input_ext(device->wiimote, buttons,
 						  &nunchuk, sizeof(nunchuk));
 	} else {
