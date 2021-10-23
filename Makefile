@@ -35,6 +35,7 @@ OBJS	= source/start.o		\
 	  source/main.o			\
 	  source/hci_state.o		\
 	  source/injmessage.o		\
+	  source/fake_wiimote.o		\
 	  source/fake_wiimote_mgr.o	\
 	  source/libc.o			\
 	  source/wiimote_crypto.o	\

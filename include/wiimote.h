@@ -118,6 +118,15 @@
 #define IR_DOT_CENTER_MIN_Y              (180 - 12 + 2)
 #define IR_DOT_CENTER_MAX_Y (IR_HIGH_Y - (180 + 12 + 2))
 
+enum wiimote_ext_e {
+	WIIMOTE_EXT_NONE = 0,
+	WIIMOTE_EXT_NUNCHUK,
+	WIIMOTE_EXT_CLASSIC,
+	WIIMOTE_EXT_CLASSIC_WIIU_PRO,
+	WIIMOTE_EXT_GUITAR,
+	WIIMOTE_EXT_MOTION_PLUS,
+};
+
 /* Input reports (Wiimote -> Host) */
 
 struct wiimote_input_report_ack_t {

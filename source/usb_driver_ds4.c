@@ -7,7 +7,7 @@
 #define DS4_ACC_RES_PER_G	8192
 
 struct ds4_private_data_t {
-	enum wiimote_mgr_ext_u extension;
+	enum wiimote_ext_e extension;
 	u8 leds;
 	bool rumble_on;
 };
@@ -170,7 +170,7 @@ int ds4_driver_ops_init(usb_input_device_t *device)
 	/* Init private state */
 	priv->leds = 0;
 	priv->rumble_on = false;
-	priv->extension = WIIMOTE_MGR_EXT_NUNCHUK;
+	priv->extension = WIIMOTE_EXT_NUNCHUK;
 
 	/* Set initial extension */
 	fake_wiimote_mgr_set_extension(device->wiimote, priv->extension);
@@ -250,7 +250,7 @@ int ds4_driver_ops_usb_async_resp(usb_input_device_t *device)
 
 		fake_wiimote_mgr_report_ir_dots(device->wiimote, num_ir_dots, ir_dots);
 
-		if (priv->extension == WIIMOTE_MGR_EXT_NUNCHUK) {
+		if (priv->extension == WIIMOTE_EXT_NUNCHUK) {
 			memset(&nunchuk, 0, sizeof(nunchuk));
 			nunchuk.jx = report->left_x;
 			nunchuk.jy = 255 - report->left_y;
