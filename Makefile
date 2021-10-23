@@ -13,7 +13,7 @@ STRIP	=	stripios
 FAKEMOTE_MAJOR	=	0
 FAKEMOTE_MINOR	=	1
 FAKEMOTE_PATCH	=	1
-FAKEMOTE_HASH	=	"$(shell git describe --dirty --always --tags)"
+FAKEMOTE_HASH	=	"$(shell git describe --dirty --always --exclude '*')"
 
 # Flags
 ARCH	=	-mcpu=arm926ej-s -mthumb -mthumb-interwork -mbig-endian
