@@ -181,6 +181,13 @@ void fake_wiimote_init(fake_wiimote_t *wiimote, const bdaddr_t *bdaddr)
 	bacpy(&wiimote->bdaddr, bdaddr);
 }
 
+static inline void fake_wiimote_reset_extension_state(fake_wiimote_t *wiimote)
+{
+	memset(&wiimote->extension_regs, 0, sizeof(wiimote->extension_regs));
+	memset(&wiimote->extension_key, 0, sizeof(wiimote->extension_key));
+	wiimote->extension_key_dirty = true;
+}
+
 void fake_wiimote_reset_state(fake_wiimote_t *wiimote, void *usrdata, const input_device_ops_t *ops)
 {
 	wiimote->baseband_state = BASEBAND_STATE_REQUEST_CONNECTION;
@@ -202,11 +209,9 @@ void fake_wiimote_reset_state(fake_wiimote_t *wiimote, void *usrdata, const inpu
 	wiimote->rumble_on = false;
 	memset(&wiimote->ir_regs, 0, sizeof(wiimote->ir_regs));
 	wiimote->ir_valid_dots = 0;
-	memset(&wiimote->extension_regs, 0, sizeof(wiimote->extension_regs));
-	memset(&wiimote->extension_key, 0, sizeof(wiimote->extension_key));
+	fake_wiimote_reset_extension_state(wiimote);
 	wiimote->cur_extension = WIIMOTE_EXT_NONE;
 	wiimote->new_extension = WIIMOTE_EXT_NONE;
-	wiimote->extension_key_dirty = true;
 	eeprom_init(&wiimote->eeprom);
 	wiimote->read_request.size = 0;
 	wiimote->reporting_mode = INPUT_REPORT_ID_BTN;
@@ -595,6 +600,9 @@ static inline bool fake_wiimote_process_extension_change(fake_wiimote_t *wiimote
 
 	/* Extension disconnect */
 	if (wiimote->cur_extension != WIIMOTE_EXT_NONE) {
+		/* Reset extension state */
+		fake_wiimote_reset_extension_state(wiimote);
+
 		wiimote->cur_extension = WIIMOTE_EXT_NONE;
 		wiimote_send_input_report_status(wiimote);
 	}

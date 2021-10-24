@@ -70,9 +70,9 @@ typedef struct fake_wiimote_t {
 	/* Extension */
 	struct wiimote_extension_registers_t extension_regs;
 	struct wiimote_encryption_key_t extension_key;
+	bool extension_key_dirty;
 	enum wiimote_ext_e cur_extension;
 	enum wiimote_ext_e new_extension;
-	bool extension_key_dirty;
 	/* EEPROM */
 	union wiimote_usable_eeprom_data_t eeprom;
 	/* Current in-progress "memory read request" */
