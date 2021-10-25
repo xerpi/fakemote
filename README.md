@@ -11,8 +11,8 @@ _An IOS module that fakes Wiimotes from the input of USB game controllers._
 | DualShock 4 [CUH-ZCT2x]  | Sony Corp.  | 054c      | 09cc       |
 
 - DS3 and DS4 support includes LEDs, rumble, and the accelerometer
-- DS4's touchpad is used to emulate the Wiimote IR Camera pointer (only tested with the sensor bar configured on top of the screen)
-- Both controllers emulate a Wiimote with the Nunchuk extension connected
+- DS4's touchpad is used to emulate the Wiimote IR Camera pointer
+- Both controllers emulate a Wiimote with the Nunchuk and Classic Controller extensions connected. Press R3 to switch between them
 
 ## Installation
 1) Download [d2x cIOS Installer for regular Wii](https://wii.guide/cios.html)/[d2x cIOS Installer for vWii](https://wiiu.hacks.guide/#/vwii-modding) and extract it to the SD card
@@ -41,7 +41,7 @@ _An IOS module that fakes Wiimotes from the input of USB game controllers._
 - You can configure your USB loader to specify the IOS slot to use when running the loader and/or games
 
 ## Notes
-- This has only been tested with `d2x-v10-beta52` and base IOS 57 and 58
+- This has only been tested with base IOS 57 and 58
 - Use base IOS 58 to have compatibility with both USB ports
 - This is still in beta-stage, therefore it might not work as expected
 
