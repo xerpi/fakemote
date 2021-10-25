@@ -6,6 +6,8 @@
 
 /* From libogc/gc/ogc/conf.h */
 
+#define CONF_SIZE	0x4000
+
 #define CONF_EBADFILE	-0x6001
 #define CONF_ENOENT		-0x6002
 #define CONF_ETOOBIG	-0x6003

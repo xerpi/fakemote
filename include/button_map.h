@@ -51,4 +51,11 @@ void bm_map_classic(
 	/* Outputs */
 	struct wiimote_extension_data_format_classic_t *classic);
 
+void bm_calculate_ir(
+	/* Inputs */
+	int num_coordinates, const u16 *x, const u16 *y,
+	u16 max_x, u16 max_y,
+	/* Outputs */
+	struct ir_dot_t ir_dots[static IR_MAX_DOTS]);
+
 #endif

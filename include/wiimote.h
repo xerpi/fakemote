@@ -131,20 +131,23 @@
 #define IR_MODE_FULL		5
 
 /* IR configuration */
+#define IR_MAX_DOTS	4
 #define IR_LOW_X	0
 #define IR_LOW_Y	0
 #define IR_HIGH_X	(1024 - 1)
 #define IR_HIGH_Y	(768 - 1)
 #define IR_CENTER_X	((IR_HIGH_X + IR_LOW_X) >> 1)
 #define IR_CENTER_Y	((IR_HIGH_Y + IR_LOW_Y) >> 1)
+#define IR_HORIZONTAL_OFFSET	64
+#define IR_VERTICAL_OFFSET	110
 #define IR_DOT_SIZE	4
 /* Experimentally found */
-#define IR_HORIZONTAL_OFFSET	64
-#define IR_VERTICAL_OFFSET	128
-#define IR_DOT_CENTER_MIN_X              (4 * 64 - 24 + 2)
-#define IR_DOT_CENTER_MAX_X (IR_HIGH_X - (4 * 64 - 24 - 1))
-#define IR_DOT_CENTER_MIN_Y              (180 - 12 + 2)
-#define IR_DOT_CENTER_MAX_Y (IR_HIGH_Y - (180 + 12 + 2))
+#define IR_DOT_MIN_X	170
+#define IR_DOT_MIN_Y	70
+#define IR_DOT_CENTER_MIN_X             ((IR_DOT_MIN_X + IR_HORIZONTAL_OFFSET) + IR_DOT_SIZE)
+#define IR_DOT_CENTER_MAX_X (IR_HIGH_X - (IR_DOT_MIN_X + IR_HORIZONTAL_OFFSET) - IR_DOT_SIZE)
+#define IR_DOT_CENTER_MIN_Y             ((IR_DOT_MIN_Y + IR_VERTICAL_OFFSET) + IR_DOT_SIZE)
+#define IR_DOT_CENTER_MAX_Y (IR_HIGH_Y - (IR_DOT_MIN_Y + IR_VERTICAL_OFFSET) - IR_DOT_SIZE)
 
 enum wiimote_ext_e {
 	WIIMOTE_EXT_NONE = 0,

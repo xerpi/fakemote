@@ -296,23 +296,9 @@ void fake_wiimote_report_accelerometer(fake_wiimote_t *wiimote, u16 acc_x, u16 a
 	wiimote->acc_z = acc_z & 0x3FF;
 }
 
-void fake_wiimote_report_ir_dots(fake_wiimote_t *wiimote, u8 num_dots, struct ir_dot_t *dots)
+void fake_wiimote_report_ir_dots(fake_wiimote_t *wiimote, struct ir_dot_t ir_dots[static IR_MAX_DOTS])
 {
 	u8 *ir_data = wiimote->ir_regs.camera_data;
-	struct ir_dot_t ir_dots[2];
-
-	/* TODO: For now we only care about 1 reported dot... */
-	if (num_dots == 0) {
-		ir_dots[0].x = 1023;
-		ir_dots[0].y = 1023;
-		ir_dots[1].x = 1023;
-		ir_dots[1].y = 1023;
-	} else {
-		ir_dots[0].x = (IR_HIGH_X - dots[0].x) - IR_HORIZONTAL_OFFSET;
-		ir_dots[0].y = dots[0].y + IR_VERTICAL_OFFSET;
-		ir_dots[1].x = (IR_HIGH_X - dots[0].x) + IR_HORIZONTAL_OFFSET;
-		ir_dots[1].y = dots[0].y + IR_VERTICAL_OFFSET;
-	}
 
 	switch (wiimote->ir_regs.mode) {
 	case IR_MODE_BASIC:

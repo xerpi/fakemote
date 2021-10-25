@@ -1,4 +1,5 @@
 #include "button_map.h"
+#include "globals.h"
 
 static inline void bm_nunchuk_format(struct wiimote_extension_data_format_nunchuk_t *out,
 				     u8 buttons, u8 analog_axis[static BM_NUNCHUK_ANALOG_AXIS__NUM],
@@ -106,4 +107,32 @@ void bm_map_classic(
 	}
 
 	bm_classic_format(classic, classic_buttons, classic_analog_axis);
+}
+
+void bm_calculate_ir(
+	/* Inputs */
+	int num_coordinates, const u16 *x, const u16 *y,
+	u16 max_x, u16 max_y,
+	/* Outputs */
+	struct ir_dot_t ir_dots[static IR_MAX_DOTS])
+{
+	struct ir_dot_t dot;
+	s16 vert_offset = g_sensor_bar_position_top ? IR_VERTICAL_OFFSET : -IR_VERTICAL_OFFSET;
+
+	/* TODO: For now we only care about 1 reported coordinate... */
+	if (num_coordinates == 0) {
+		ir_dots[0].x = 1023;
+		ir_dots[0].y = 1023;
+		ir_dots[1].x = 1023;
+		ir_dots[1].y = 1023;
+		return;
+	}
+
+	dot.x = IR_DOT_CENTER_MIN_X + (x[0] * (IR_DOT_CENTER_MAX_X - IR_DOT_CENTER_MIN_X)) / max_x;
+	dot.y = IR_DOT_CENTER_MIN_Y + (y[0] * (IR_DOT_CENTER_MAX_Y - IR_DOT_CENTER_MIN_Y)) / max_y;
+
+	ir_dots[0].x = (IR_HIGH_X - dot.x) - IR_HORIZONTAL_OFFSET;
+	ir_dots[0].y = dot.y + vert_offset;
+	ir_dots[1].x = (IR_HIGH_X - dot.x) + IR_HORIZONTAL_OFFSET;
+	ir_dots[1].y = dot.y + vert_offset;
 }

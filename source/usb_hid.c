@@ -431,7 +431,7 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 		device->host_fd = host_fd;
 		device->dev_id = dev_id;
 		device->driver = driver;
-		/* We will get a fake Wiimote assigneed on the init() callback */
+		/* We will get a fake Wiimote assigneed at the init() callback */
 		device->wiimote = NULL;
 		device->valid = true;
 

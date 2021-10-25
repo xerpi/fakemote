@@ -6,6 +6,7 @@
 
 #include "conf.h"
 #include "fake_wiimote_mgr.h"
+#include "globals.h"
 #include "injmessage.h"
 #include "ipc.h"
 #include "hci.h"
@@ -55,6 +56,9 @@
 /* The Real Wiimmote sends report every ~5ms (200 Hz). */
 #define PERIODC_TIMER_PERIOD		5 * 1000
 #define HAND_DOWN_MSG_DATA_SIZE		4096
+
+/* Global variables */
+u8 g_sensor_bar_position_top;
 
 /* Required by cios-lib... */
 char *moduleName = "TST";
@@ -483,23 +487,43 @@ static s32 Patch_OH1UsbModule(void)
 	return 0;
 }
 
-static int patch_conf_bt_dinf(void)
+static int read_conf(u8 conf_buffer[static 0x4000])
 {
-	static u8 conf_buffer[0x4000];
-	static struct conf_pads_setting conf_pads;
-	bdaddr_t bdaddr;
 	int fd, ret;
-	int paired_count;
-	int start, count;
 
-	/* Read SYSCONF */
 	fd = os_open("/shared2/sys/SYSCONF", IOS_OPEN_READ);
 	if (fd < 0)
 		return fd;
-	ret = os_read(fd, conf_buffer, sizeof(conf_buffer));
+
+	ret = os_read(fd, conf_buffer, 0x4000);
+
 	os_close(fd);
-	if (ret != sizeof(conf_buffer))
-		return ret;
+
+	return ret;
+}
+
+static int write_conf(u8 conf_buffer[static 0x4000])
+{
+	int fd, ret;
+
+	fd = os_open("/shared2/sys/SYSCONF", IOS_OPEN_WRITE);
+	if (fd < 0)
+		return fd;
+
+	ret = os_write(fd, conf_buffer, 0x4000);
+
+	os_close(fd);
+
+	return ret;
+}
+
+static int patch_conf_bt_dinf(u8 conf_buffer[static CONF_SIZE])
+{
+	static struct conf_pads_setting conf_pads;
+	bdaddr_t bdaddr;
+	int ret;
+	int paired_count;
+	int start, count;
 
 	/* Get paired Wiimote configuration */
 	ret = conf_get(conf_buffer, "BT.DINF", &conf_pads, sizeof(conf_pads));
@@ -540,13 +564,8 @@ static int patch_conf_bt_dinf(void)
 	conf_set(conf_buffer, "BT.DINF", &conf_pads, sizeof(conf_pads));
 
 	/* Write updated SYSCONF back */
-	fd = os_open("/shared2/sys/SYSCONF", IOS_OPEN_WRITE);
-	if (fd < 0)
-		return fd;
-
-	ret = os_write(fd, conf_buffer, sizeof(conf_buffer));
-	os_close(fd);
-	if (ret != sizeof(conf_buffer))
+	ret = write_conf(conf_buffer);
+	if (ret != CONF_SIZE)
 		return IOS_EINVAL;
 
 	return 0;
@@ -554,6 +573,7 @@ static int patch_conf_bt_dinf(void)
 
 int main(void)
 {
+	static u8 conf_buffer[CONF_SIZE];
 	int ret;
 
 	/* Print info */
@@ -563,7 +583,21 @@ int main(void)
 		  TOSTRING(FAKEMOTE_PATCH) "-"
 		  FAKEMOTE_HASH " $\n");
 
-	patch_conf_bt_dinf();
+	/* Read SYSCONF */
+	ret = read_conf(conf_buffer);
+	if (ret != CONF_SIZE)
+		return IOS_EINVAL;
+
+	/* Read IR sensor bar position */
+	ret = conf_get(conf_buffer, "BT.BAR", &g_sensor_bar_position_top,
+		       sizeof(g_sensor_bar_position_top));
+	if (ret != sizeof(g_sensor_bar_position_top))
+		return IOS_EINVAL;
+
+	/* Patch SYSCONF's BT.DINF */
+	ret = patch_conf_bt_dinf(conf_buffer);
+	if (ret < 0)
+		return ret;
 
 	/* System patchers */
 	patcher patchers[] = {

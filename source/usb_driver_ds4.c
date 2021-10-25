@@ -330,9 +330,9 @@ int ds4_driver_ops_usb_async_resp(usb_input_device_t *device)
 	u16 acc_x, acc_y, acc_z;
 	u16 wiimote_buttons = 0;
 	union wiimote_extension_data_t extension_data;
-	u32 f_x, f_y;
-	struct ir_dot_t ir_dots[2];
-	u8 num_ir_dots = 0;
+	int num_fingers = 0;
+	u16 finger_x[2], finger_y[2];
+	struct ir_dot_t ir_dots[IR_MAX_DOTS];
 	bool switch_input;
 
 	if (report->report_id == 0x01) {
@@ -363,22 +363,22 @@ int ds4_driver_ops_usb_async_resp(usb_input_device_t *device)
 		fake_wiimote_report_accelerometer(device->wiimote, acc_x, acc_y, acc_z);
 
 		if (!report->finger1_nactive) {
-			f_x = report->finger1_x_lo | ((u32)report->finger1_x_hi << 8);
-			f_y = report->finger1_y_lo | ((u32)report->finger1_y_hi << 4);
-			ir_dots[0].x = IR_DOT_CENTER_MIN_X + (f_x * (IR_DOT_CENTER_MAX_X - IR_DOT_CENTER_MIN_X)) / (DS4_TOUCHPAD_W - 1);
-			ir_dots[0].y = IR_DOT_CENTER_MIN_Y + (f_y * (IR_DOT_CENTER_MAX_Y - IR_DOT_CENTER_MIN_Y)) / (DS4_TOUCHPAD_H - 1);
-			num_ir_dots++;
+			finger_x[0] = report->finger1_x_lo | ((u16)report->finger1_x_hi << 8);
+			finger_y[0] = report->finger1_y_lo | ((u16)report->finger1_y_hi << 4);
+			num_fingers++;
 		}
 
 		if (!report->finger2_nactive) {
-			f_x = report->finger2_x_lo | ((u32)report->finger2_x_hi << 8);
-			f_y = report->finger2_y_lo | ((u32)report->finger2_y_hi << 4);
-			ir_dots[1].x = IR_DOT_CENTER_MIN_X + (f_x * (IR_DOT_CENTER_MAX_X - IR_DOT_CENTER_MIN_X)) / (DS4_TOUCHPAD_W - 1);
-			ir_dots[1].y = IR_DOT_CENTER_MIN_Y + (f_y * (IR_DOT_CENTER_MAX_Y - IR_DOT_CENTER_MIN_Y)) / (DS4_TOUCHPAD_H - 1);
-			num_ir_dots++;
+			finger_x[1] = report->finger2_x_lo | ((u16)report->finger2_x_hi << 8);
+			finger_y[1] = report->finger2_y_lo | ((u16)report->finger2_y_hi << 4);
+			num_fingers++;
 		}
 
-		fake_wiimote_report_ir_dots(device->wiimote, num_ir_dots, ir_dots);
+		bm_calculate_ir(num_fingers, finger_x, finger_y,
+				DS4_TOUCHPAD_W - 1, DS4_TOUCHPAD_H - 1,
+				ir_dots);
+
+		fake_wiimote_report_ir_dots(device->wiimote, ir_dots);
 
 		if (input_mappings[priv->mapping].extension == WIIMOTE_EXT_NONE) {
 			fake_wiimote_report_input(device->wiimote, wiimote_buttons);
