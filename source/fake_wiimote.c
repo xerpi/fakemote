@@ -1,3 +1,4 @@
+#include "button_map.h"
 #include "fake_wiimote.h"
 #include "hci.h"
 #include "hci_state.h"
@@ -183,9 +184,57 @@ void fake_wiimote_init(fake_wiimote_t *wiimote, const bdaddr_t *bdaddr)
 
 static inline void fake_wiimote_reset_extension_state(fake_wiimote_t *wiimote)
 {
+	union wiimote_extension_data_t ext;
+	u8 *ext_controller_data = wiimote->extension_regs.controller_data;
+	const u8 *id_code = NULL;
+
 	memset(&wiimote->extension_regs, 0, sizeof(wiimote->extension_regs));
 	memset(&wiimote->extension_key, 0, sizeof(wiimote->extension_key));
 	wiimote->extension_key_dirty = true;
+
+	switch (wiimote->cur_extension) {
+	case WIIMOTE_EXT_NUNCHUK:
+		id_code = EXT_ID_CODE_NUNCHUNK;
+		break;
+	case WIIMOTE_EXT_CLASSIC:
+		id_code = EXP_ID_CODE_CLASSIC_CONTROLLER;
+		break;
+	case WIIMOTE_EXT_CLASSIC_WIIU_PRO:
+		id_code = EXP_ID_CODE_CLASSIC_WIIU_PRO;
+		break;
+	case WIIMOTE_EXT_GUITAR:
+		id_code = EXP_ID_CODE_GUITAR;
+		break;
+	case WIIMOTE_EXT_MOTION_PLUS:
+		id_code = EXP_ID_CODE_MOTION_PLUS;
+		break;
+	default:
+		break;
+	}
+
+	if (id_code) {
+		memcpy(wiimote->extension_regs.identifier, id_code,
+		       sizeof(wiimote->extension_regs.identifier));
+	}
+
+	/* Reset extension controller state to defaults */
+	if (wiimote->cur_extension == WIIMOTE_EXT_NUNCHUK) {
+		u8 analog_axis[BM_NUNCHUK_ANALOG_AXIS__NUM];
+
+		for (int i = 0; i < ARRAY_SIZE(analog_axis); i++)
+			analog_axis[i] = 0x80;
+
+		bm_nunchuk_format(&ext.nunchuk, 0, analog_axis, 0, 0, 0);
+		memcpy(ext_controller_data, &ext.nunchuk, sizeof(ext.nunchuk));
+	} else if (wiimote->cur_extension == WIIMOTE_EXT_CLASSIC) {
+		u8 analog_axis[BM_CLASSIC_ANALOG_AXIS__NUM];
+
+		for (int i = 0; i < ARRAY_SIZE(analog_axis); i++)
+			analog_axis[i] = 0x80;
+
+		bm_classic_format(&ext.classic, 0, analog_axis);
+		memcpy(ext_controller_data, &ext.classic, sizeof(ext.classic));
+	}
 }
 
 void fake_wiimote_reset_state(fake_wiimote_t *wiimote, void *usrdata, const input_device_ops_t *ops)
@@ -550,51 +599,23 @@ static void fake_wiimote_process_write_request(fake_wiimote_t *wiimote,
 
 static inline bool fake_wiimote_process_extension_change(fake_wiimote_t *wiimote)
 {
-	const u8 *id_code = NULL;
-
 	if (wiimote->new_extension == wiimote->cur_extension)
 		return false;
-
-	switch (wiimote->new_extension) {
-	case WIIMOTE_EXT_NUNCHUK:
-		id_code = EXT_ID_CODE_NUNCHUNK;
-		break;
-	case WIIMOTE_EXT_CLASSIC:
-		id_code = EXP_ID_CODE_CLASSIC_CONTROLLER;
-		break;
-	case WIIMOTE_EXT_CLASSIC_WIIU_PRO:
-		id_code = EXP_ID_CODE_CLASSIC_WIIU_PRO;
-		break;
-	case WIIMOTE_EXT_GUITAR:
-		id_code = EXP_ID_CODE_GUITAR;
-		break;
-	case WIIMOTE_EXT_MOTION_PLUS:
-		id_code = EXP_ID_CODE_MOTION_PLUS;
-		break;
-	default:
-		break;
-	}
-
-	if (id_code) {
-		memcpy(wiimote->extension_regs.identifier, id_code,
-		       sizeof(wiimote->extension_regs.identifier));
-	}
 
 	/* Following a connection or disconnection event on the Extension Port, data reporting
 	 * is disabled and the Data Reporting Mode must be reset before new data can arrive */
 	wiimote->reporting_mode = INPUT_REPORT_ID_REPORT_DISABLED;
 
-	/* Extension disconnect */
-	if (wiimote->cur_extension != WIIMOTE_EXT_NONE) {
-		/* Reset extension state */
-		fake_wiimote_reset_extension_state(wiimote);
-
+	if (wiimote->cur_extension == WIIMOTE_EXT_NONE) {
+		/* Extension connect */
+		wiimote->cur_extension = wiimote->new_extension;
+	} else {
+		/* First we must detach the current extension.
+		   The next call will change to the new extension if needed. */
 		wiimote->cur_extension = WIIMOTE_EXT_NONE;
-		wiimote_send_input_report_status(wiimote);
 	}
 
-	/* Extension connect */
-	wiimote->cur_extension = wiimote->new_extension;
+	fake_wiimote_reset_extension_state(wiimote);
 	wiimote_send_input_report_status(wiimote);
 
 	return true;

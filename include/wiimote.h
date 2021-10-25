@@ -350,8 +350,8 @@ struct wiimote_extension_registers_t {
 	u8 controller_data[CONTROLLER_DATA_BYTES];
 	u8 unknown2[11];
 	// address 0x20
-	u8 calibration[0x10];
-	u8 unknown3[0x10];
+	u8 calibration1[0x10];
+	u8 calibration2[0x10];
 	// address 0x40
 	u8 encryption_key_data[0x10];
 	u8 unknown4[0xA0];
