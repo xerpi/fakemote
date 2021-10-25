@@ -15,7 +15,7 @@ _An IOS module that fakes Wiimotes from the input of USB game controllers._
 - Both controllers emulate a Wiimote with the Nunchuk extension connected
 
 ## Installation
-1) Download [d2x cIOS Installer](https://wii.guide/assets/files/d2x-cIOS-Installer-Wii.zip) and extract it to the SD card
+1) Download [d2x cIOS Installer for regular Wii](https://wii.guide/cios.html)/[d2x cIOS Installer for vWii](https://wiiu.hacks.guide/#/vwii-modding) and extract it to the SD card
 2) Copy `FAKEMOTE.app` to the d2x cIOS Installer directory that contains the modules of the cIOS version you want to install.  
    For example, for `d2x-v10-beta52` copy `FAKEMOTE.app` to `sd:/apps/d2x-cIOS-Installer-Wii/v10/beta52/d2x-v10-beta52`
 3) Open d2x cIOS Installer's `ciosmaps.xml` (located at `sd:/apps/d2x-cIOS-Installer-Wii/ciosmaps.xml`) and do the following:
@@ -36,6 +36,15 @@ _An IOS module that fakes Wiimotes from the input of USB game controllers._
       ```
 4) Run d2x cIOS Installer and install the cIOS
 
+## Usage
+- If you have a **regular Wii**, **not a Wii U (vWii)**, you can install [Priiloader](https://wii.guide/priiloader.html) and change the IOS slot to use when running System Menu and disc games
+- You can configure your USB loader to specify the IOS slot to use when running the loader and/or games
+
+## Notes
+- This has only been tested with `d2x-v10-beta52` and base IOS 57 and 58
+- Use base IOS 58 to have compatibility with both USB ports
+- This is still in beta-stage, therefore it might not work as expected
+
 ## Compilation
 1) Download and install [devkitARM](https://devkitpro.org/wiki/Getting_Started)
 2) Install `stripios`:
@@ -49,10 +58,6 @@ _An IOS module that fakes Wiimotes from the input of USB game controllers._
    cp stripios $DEVKITPRO/tools/bin
    ```
 3) Run `make` to compile `FAKEMOTE.app`
-
-## Notes
-- This has only been tested with `d2x-v10-beta52` and base IOS 57
-- This is still in beta-stage, therefore it might not work as expected
 
 ## Credits
 - [Dolphin emulator](https://dolphin-emu.org/) developers
