@@ -4,6 +4,7 @@
 // Copyright (C) Hector Martin "marcan" (hector@marcansoft.com)
 
 #include <string.h>
+#include "utils.h"
 #include "wiimote_crypto.h"
 
 /* Code ported from:
@@ -196,6 +197,7 @@ static const sbox_t sboxes_1st_party[] = {
 
 static inline u8 ror8(u8 word, unsigned int shift)
 {
+	shift %= 8;
 	return (word >> shift) | (word << (8 - shift));
 }
 
@@ -249,8 +251,8 @@ void wiimote_crypto_generate_key_from_extension_key_data(struct wiimote_encrypti
 	u8 key[6], check_key[6];
 	u32 idx;
 
-	memcpy(rand, key_data, sizeof(rand));
-	memcpy(key, key_data + sizeof(rand), sizeof(key));
+	reverse_memcpy(rand, key_data, sizeof(rand));
+	reverse_memcpy(key, key_data + sizeof(rand), sizeof(key));
 
 	/* Bruteforcing */
 	for (idx = 0; idx != 7; ++idx) {

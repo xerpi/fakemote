@@ -45,6 +45,14 @@ static inline int memmismatch(const void *restrict a, const void *restrict b, in
 	return i;
 }
 
+static inline void reverse_memcpy(void *restrict dst, const void *restrict src, int size)
+{
+	u8 *d = dst;
+	const u8 *s = src;
+	for (int i = 0; i < size; i++)
+		d[i] = s[size - 1 - i];
+}
+
 /* Message injection helpers */
 int inject_msg_to_usb_intr_ready_queue(void *msg);
 int inject_msg_to_usb_bulk_in_ready_queue(void *msg);
