@@ -279,7 +279,16 @@ static int ds3_driver_update_leds_rumble(usb_input_device_t *device)
 	return ds3_set_leds_rumble(device, leds, &rumble);
 }
 
-int ds3_driver_ops_init(usb_input_device_t *device)
+bool ds3_driver_ops_probe(u16 vid, u16 pid)
+{
+	static const struct device_id_t compatible[] = {
+		{SONY_VID, 0x0268},
+	};
+
+	return usb_driver_is_comaptible(vid, pid, compatible, ARRAY_SIZE(compatible));
+}
+
+int ds3_driver_ops_init(usb_input_device_t *device, u16 vid, u16 pid)
 {
 	int ret;
 	struct ds3_private_data_t *priv = (void *)device->private_data;
@@ -393,3 +402,12 @@ int ds3_driver_ops_usb_async_resp(usb_input_device_t *device)
 
 	return ds3_request_data(device);
 }
+
+const usb_device_driver_t ds3_usb_device_driver = {
+	.probe		= ds3_driver_ops_probe,
+	.init		= ds3_driver_ops_init,
+	.disconnect	= ds3_driver_ops_disconnect,
+	.slot_changed	= ds3_driver_ops_slot_changed,
+	.set_rumble	= ds3_driver_ops_set_rumble,
+	.usb_async_resp	= ds3_driver_ops_usb_async_resp,
+};

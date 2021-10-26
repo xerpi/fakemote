@@ -3,21 +3,24 @@
 
 #include "usb_hid.h"
 
-#define SONY_VID  0x054c
-#define DS3_PID   0x0268
-#define DS4_PID   0x05c4
-#define DS4_2_PID 0x09cc
+#define SONY_VID	0x054c
 
-extern int ds3_driver_ops_init(usb_input_device_t *device);
-extern int ds3_driver_ops_disconnect(usb_input_device_t *device);
-extern int ds3_driver_ops_slot_changed(usb_input_device_t *device, u8 slot);
-extern int ds3_driver_ops_set_rumble(usb_input_device_t *device, bool rumble_on);
-extern int ds3_driver_ops_usb_async_resp(usb_input_device_t *device);
+struct device_id_t {
+	u16 vid;
+	u16 pid;
+};
 
-extern int ds4_driver_ops_init(usb_input_device_t *device);
-extern int ds4_driver_ops_disconnect(usb_input_device_t *device);
-extern int ds4_driver_ops_slot_changed(usb_input_device_t *device, u8 slot);
-extern int ds4_driver_ops_set_rumble(usb_input_device_t *device, bool rumble_on);
-extern int ds4_driver_ops_usb_async_resp(usb_input_device_t *device);
+static inline bool usb_driver_is_comaptible(u16 vid, u16 pid, const struct device_id_t *ids, int num)
+{
+	for (int i = 0; i < num; i++) {
+		if (ids[i].vid == vid && ids[i].pid == pid)
+			return true;
+	}
+
+	return false;
+}
+
+extern const usb_device_driver_t ds3_usb_device_driver;
+extern const usb_device_driver_t ds4_usb_device_driver;
 
 #endif

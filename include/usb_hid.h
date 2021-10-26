@@ -11,6 +11,9 @@ typedef struct usb_device_driver_t usb_device_driver_t;
 
 typedef struct {
 	bool valid;
+	/* VID and PID */
+	u16 vid;
+	u16 pid;
 	/* Used to communicate with Wii's USB module */
 	int host_fd;
 	u32 dev_id;
@@ -27,9 +30,8 @@ typedef struct {
 } usb_input_device_t;
 
 typedef struct usb_device_driver_t {
-	u16 vid;
-	u16 pid;
-	int (*init)(usb_input_device_t *device);
+	bool (*probe)(u16 vid, u16 pid);
+	int (*init)(usb_input_device_t *device, u16 vid, u16 pid);
 	int (*disconnect)(usb_input_device_t *device);
 	int (*slot_changed)(usb_input_device_t *device, u8 slot);
 	int (*set_rumble)(usb_input_device_t *device, bool rumble_on);

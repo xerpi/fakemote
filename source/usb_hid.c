@@ -49,23 +49,14 @@ struct usb_hid_v5_transfer {
 		u32 data[14];
 	};
 } ATTRIBUTE_PACKED;
-
 static_assert(sizeof(struct usb_hid_v5_transfer) == 64);
 
-static usb_input_device_t usb_devices[MAX_FAKE_WIIMOTES];
-
-static const usb_device_driver_t usb_device_drivers[] = {
-	{SONY_VID, DS3_PID,   ds3_driver_ops_init, ds3_driver_ops_disconnect,
-			      ds3_driver_ops_slot_changed, ds3_driver_ops_set_rumble,
-			      ds3_driver_ops_usb_async_resp},
-	{SONY_VID, DS4_PID,   ds4_driver_ops_init, ds4_driver_ops_disconnect,
-			      ds4_driver_ops_slot_changed, ds4_driver_ops_set_rumble,
-			      ds4_driver_ops_usb_async_resp},
-	{SONY_VID, DS4_2_PID, ds4_driver_ops_init, ds4_driver_ops_disconnect,
-			      ds4_driver_ops_slot_changed, ds4_driver_ops_set_rumble,
-			      ds4_driver_ops_usb_async_resp},
+static const usb_device_driver_t *usb_device_drivers[] = {
+	&ds3_usb_device_driver,
+	&ds4_usb_device_driver,
 };
 
+static usb_input_device_t usb_devices[MAX_FAKE_WIIMOTES];
 static usb_device_entry device_change_devices[USB_MAX_DEVICES] ATTRIBUTE_ALIGN(32);
 static int host_fd = -1;
 static u8 worker_thread_stack[1024] ATTRIBUTE_ALIGN(32);
@@ -105,8 +96,8 @@ static inline bool is_usb_device_connected(u32 dev_id)
 static inline const usb_device_driver_t *get_usb_device_driver_for(u16 vid, u16 pid)
 {
 	for (int i = 0; i < ARRAY_SIZE(usb_device_drivers); i++) {
-		if ((usb_device_drivers[i].vid == vid) && (usb_device_drivers[i].pid == pid))
-			return &usb_device_drivers[i];
+		if (usb_device_drivers[i]->probe(vid, pid))
+			return usb_device_drivers[i];
 	}
 
 	return NULL;
@@ -280,7 +271,7 @@ static int usb_device_ops_init(void *usrdata, fake_wiimote_t *wiimote)
 	device->wiimote = wiimote;
 
 	if (device->driver->init)
-		return device->driver->init(device);
+		return device->driver->init(device, device->pid, device->vid);
 
 	return 0;
 }
@@ -428,6 +419,8 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 		}
 
 		/* We have ownership, populate the device info */
+		device->vid = vid;
+		device->pid = pid;
 		device->host_fd = host_fd;
 		device->dev_id = dev_id;
 		device->driver = driver;
