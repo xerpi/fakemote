@@ -12,7 +12,7 @@ STRIP	=	stripios
 # Version
 FAKEMOTE_MAJOR	=	0
 FAKEMOTE_MINOR	=	3
-FAKEMOTE_PATCH	=	0
+FAKEMOTE_PATCH	=	1
 FAKEMOTE_HASH	=	"$(shell git describe --dirty --always --exclude '*')"
 
 # Flags
