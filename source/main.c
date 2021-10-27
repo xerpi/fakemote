@@ -377,6 +377,7 @@ static int OH1_IOS_ResourceReply_hook(ipcmessage *ready_msg, int retval)
 	int ret;
 	ioctlv *vector;
 	void *data;
+	bool fwd_to_host = true;
 
 	if (ready_msg == &usb_intr_hand_down_msg) {
 		usb_intr_hand_down_msg_pending = 0;
@@ -403,11 +404,14 @@ static int OH1_IOS_ResourceReply_hook(ipcmessage *ready_msg, int retval)
 		if (retval > 0) {
 			vector = ready_msg->ioctlv.vector;
 			data = vector[2].data;
-			hci_state_handle_acl_data_in_response_from_controller(data, retval);
+			hci_state_handle_acl_data_in_response_from_controller(data, retval, &fwd_to_host);
 		}
-		ready_msg->result = retval;
-		ret = handle_bulk_intr_ready_message(ready_msg, pending_usb_bulk_in_msg_queue_id,
-						     ready_usb_bulk_in_msg_queue_id);
+		if (fwd_to_host) {
+			ready_msg->result = retval;
+			ret = handle_bulk_intr_ready_message(ready_msg,
+							     pending_usb_bulk_in_msg_queue_id,
+							     ready_usb_bulk_in_msg_queue_id);
+		}
 		return ret;
 	} else if ((ready_msg->command == IOS_OPEN) && (orig_open_fd == -1)) {
 		orig_open_fd = retval;

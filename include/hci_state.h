@@ -13,7 +13,7 @@ bool hci_can_request_connection(void);
 
 void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb);
 void hci_state_handle_hci_event_from_controller(void *data, u32 length);
-void hci_state_handle_acl_data_in_response_from_controller(void *data, u32 length);
+void hci_state_handle_acl_data_in_response_from_controller(void *data, u32 length, bool *fwd_to_host);
 void hci_state_handle_acl_data_out_request_from_host(void *data, u32 length, bool *fwd_to_usb);
 
 #endif

@@ -131,7 +131,11 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 		/* TODO */
 		assert(0);
 		break;
-	TRANSLATE_CON_HANDLE(HCI_CMD_DISCONNECT, hci_discon_cp)
+	case HCI_CMD_DISCONNECT: {
+		hci_discon_cp *cp = payload;
+		printf("  HCI_CMD_DISCONNECT\n");
+		*fwd_to_usb = false;
+	};
 	case HCI_CMD_WRITE_SCAN_ENABLE: {
 		hci_write_scan_enable_cp *cp = payload;
 		hci_page_scan_enable = cp->scan_enable;
@@ -309,7 +313,7 @@ void hci_state_handle_hci_event_from_controller(void *data, u32 length)
 #undef TRANSLATE_CON_HANDLE
 }
 
-void hci_state_handle_acl_data_in_response_from_controller(void *data, u32 length)
+void hci_state_handle_acl_data_in_response_from_controller(void *data, u32 length, bool *fwd_to_host)
 {
 	bool ret;
 	u16 virt = 0;
@@ -322,6 +326,12 @@ void hci_state_handle_acl_data_in_response_from_controller(void *data, u32 lengt
 	UNUSED(payload_len);
 
 	DEBUG("H < C ACL  IN: pcon_handle: 0x%x, len: 0x%x\n", phys, payload_len);
+
+	/* If this ACL Data In comes from a BT device, don't forward the packet to the Host */
+	if (bt_device_mgr_handle_acl_data_in_response_from_controller(phys, data, hdr)) {
+		*fwd_to_host = false;
+		return;
+	}
 
 	ret = hci_virt_con_handle_get_virt(phys, &virt);
 	assert(ret);
@@ -346,6 +356,43 @@ void hci_state_handle_acl_data_out_request_from_host(void *data, u32 length, boo
 	UNUSED(payload_len);
 
 	DEBUG("H > C ACL OUT: vcon_handle: 0x%x, len: 0x%x\n", virt, payload_len);
+
+#if 0
+	/* If this ACL Data Out targets from a BT device, don't forward the packet to the Host */
+	if (bt_device_mgr_handle_acl_data_in_response_from_controller(phys, data, hdr)) {
+		*fwd_to_host = false;
+		return;
+	}
+
+	const l2cap_hdr_t *header;
+	u16 dcid, l2cap_length;
+	const u8 *payload;
+	/* L2CAP header */
+	header  = (const void *)((u8 *)hdr + sizeof(hci_acldata_hdr_t));
+	l2cap_length  = le16toh(header->length);
+	dcid    = le16toh(header->dcid);
+	payload = (u8 *)header + sizeof(l2cap_hdr_t);
+
+	printf("  L2CAP: dcid: 0x%x, len: 0x%x\n", dcid, l2cap_length);
+
+	if (dcid == L2CAP_SIGNAL_CID) {
+		const l2cap_cmd_hdr_t *cmd_hdr;
+		const void *cmd_payload;
+		u16 cmd_len;
+
+		while (l2cap_length >= sizeof(l2cap_cmd_hdr_t)) {
+			cmd_hdr = (const void *)payload;
+			cmd_len = le16toh(cmd_hdr->length);
+			cmd_payload = (const void *)((u8 *)payload + sizeof(*cmd_hdr));
+
+			handle_l2cap_signal_channel(cmd_hdr->code, cmd_hdr->ident,
+						    cmd_payload, cmd_len);
+
+			payload += sizeof(l2cap_cmd_hdr_t) + cmd_len;
+			l2cap_length -= sizeof(l2cap_cmd_hdr_t) + cmd_len;
+		}
+	}
+#endif
 
 	/* First check if the virtual connection handle corresponds to a fake wiimote */
 	if (fake_wiimote_mgr_handle_acl_data_out_request_from_host(virt, hdr)) {

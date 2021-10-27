@@ -33,6 +33,7 @@ TARGET	=	FAKEMOTE
 # Objects
 OBJS	= source/start.o		\
 	  source/button_map.o		\
+	  source/bt_device_mgr.o	\
 	  source/main.o			\
 	  source/hci_state.o		\
 	  source/injmessage.o		\
