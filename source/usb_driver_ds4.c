@@ -279,8 +279,8 @@ static int ds4_driver_update_leds_rumble(usb_input_device_t *device)
 bool ds4_driver_ops_probe(u16 vid, u16 pid)
 {
 	static const struct device_id_t compatible[] = {
-		{SONY_VID, 0x05c4},
-		{SONY_VID, 0x09cc},
+		{0x054c, 0x05c4},
+		{0x054c, 0x09cc},
 	};
 
 	return usb_driver_is_comaptible(vid, pid, compatible, ARRAY_SIZE(compatible));

@@ -54,6 +54,7 @@ static_assert(sizeof(struct usb_hid_v5_transfer) == 64);
 static const usb_device_driver_t *usb_device_drivers[] = {
 	&ds3_usb_device_driver,
 	&ds4_usb_device_driver,
+	&xbox_usb_device_driver,
 };
 
 static usb_input_device_t usb_devices[MAX_FAKE_WIIMOTES];
@@ -265,7 +266,7 @@ static int usb_device_ops_init(void *usrdata, fake_wiimote_t *wiimote)
 {
 	usb_input_device_t *device = usrdata;
 
-	DEBUG("usb_device_ops_init\n");
+	printf("usb_device_ops_init\n");
 
 	/* Store assigned fake Wiimote */
 	device->wiimote = wiimote;
@@ -281,7 +282,7 @@ static int usb_device_ops_disconnect(void *usrdata)
 	int ret = 0;
 	usb_input_device_t *device = usrdata;
 
-	DEBUG("usb_device_ops_disconnect\n");
+	printf("usb_device_ops_disconnect\n");
 
 	if (device->driver->disconnect)
 		ret = device->driver->disconnect(device);
@@ -303,7 +304,7 @@ static int usb_device_ops_set_leds(void *usrdata, int leds)
 	int slot;
 	usb_input_device_t *device = usrdata;
 
-	DEBUG("usb_device_ops_set_leds\n");
+	printf("usb_device_ops_set_leds\n");
 
 	if (device->driver->slot_changed) {
 		slot = __builtin_ffs(leds);
@@ -317,7 +318,7 @@ static int usb_device_ops_set_rumble(void *usrdata, bool rumble_on)
 {
 	usb_input_device_t *device = usrdata;
 
-	DEBUG("usb_device_ops_set_rumble\n");
+	printf("usb_device_ops_set_rumble\n");
 
 	if (device->driver->set_rumble)
 		return device->driver->set_rumble(device, rumble_on);
@@ -342,7 +343,7 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 	int ret;
 	bool found;
 
-	DEBUG("Device change, #Attached devices: %d\n", reply->result);
+	printf("Device change, #Attached devices: %d\n", reply->result);
 
 	if (reply->result < 0)
 		return;
@@ -377,7 +378,7 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 		vid = device_change_devices[i].vid;
 		pid = device_change_devices[i].pid;
 		dev_id = device_change_devices[i].device_id;
-		DEBUG("[%d] VID: 0x%04x, PID: 0x%04x, dev_id: 0x%x\n", i, vid, pid, dev_id);
+		printf("[%d] VID: 0x%04x, PID: 0x%04x, dev_id: 0x%x\n", i, vid, pid, dev_id);
 
 		/* Find if we have a driver for that VID/PID */
 		driver = get_usb_device_driver_for(vid, pid);
@@ -432,7 +433,7 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 
 	ret = os_ioctl_async(host_fd, USBV5_IOCTL_ATTACHFINISH, NULL, 0, NULL, 0,
 			     queue_id, MESSAGE_ATTACHFINISH);
-	DEBUG("ioctl(ATTACHFINISH): %d\n", ret);
+	printf("ioctl(ATTACHFINISH): %d\n", ret);
 }
 
 static int usb_hid_worker(void *arg)
@@ -441,20 +442,24 @@ static int usb_hid_worker(void *arg)
 	usb_input_device_t *device;
 	int ret;
 
-	DEBUG("usb_hid_worker thread started\n");
+	printf("usb_hid_worker thread started\n");
 
 	for (int i = 0; i < ARRAY_SIZE(usb_devices); i++)
 		usb_devices[i].valid = false;
 
 	/* USB_HID supports 16 handles, libogc uses handle 0, so we use handle 15...*/
 	ret = os_open("/dev/usb/hid", 15);
+	printf("os_open(\"/dev/usb/hid\"): %d\n", ret);
 	if (ret < 0)
 		return ret;
 	host_fd = ret;
 
 	ret = os_ioctl(host_fd, USBV5_IOCTL_GETVERSION, NULL, 0, ver, sizeof(ver));
+	printf("os_ioctl(USBV5_IOCTL_GETVERSION): %d\n", ret);
 	if (ret < 0)
 		return ret;
+
+	printf("USB HID ver: 0x%x\n", ver[0]);
 
 	/* We only support USBv5 for now */
 	if (ver[0] != 0x50001)
@@ -462,6 +467,7 @@ static int usb_hid_worker(void *arg)
 
 	ret = os_ioctl_async(host_fd, USBV5_IOCTL_GETDEVICECHANGE, NULL, 0, device_change_devices,
 			     sizeof(device_change_devices), queue_id, MESSAGE_DEVCHANGE);
+	printf("os_ioctl(USBV5_IOCTL_GETDEVICECHANGE): %d\n", ret);
 
 	while (1) {
 		areply *message;

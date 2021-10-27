@@ -282,7 +282,7 @@ static int ds3_driver_update_leds_rumble(usb_input_device_t *device)
 bool ds3_driver_ops_probe(u16 vid, u16 pid)
 {
 	static const struct device_id_t compatible[] = {
-		{SONY_VID, 0x0268},
+		{0x054c, 0x0268},
 	};
 
 	return usb_driver_is_comaptible(vid, pid, compatible, ARRAY_SIZE(compatible));
