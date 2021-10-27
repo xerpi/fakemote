@@ -98,3 +98,18 @@ void bm_calculate_ir(
 	ir_dots[1].x = (IR_HIGH_X - dot.x) + IR_HORIZONTAL_OFFSET;
 	ir_dots[1].y = dot.y + vert_offset;
 }
+
+bool bm_check_switch_mapping(u32 *buttons, bool *switch_mapping, u32 switch_mapping_combo)
+{
+	bool switch_pressed = (*buttons & switch_mapping_combo) == switch_mapping_combo;
+	bool ret = false;
+
+	if (switch_pressed && !*switch_mapping) {
+		/* Remove the mapping switch combo from the pressed buttons */
+		*buttons &= ~switch_mapping_combo;
+		ret = true;
+	}
+
+	*switch_mapping = switch_pressed;
+	return ret;
+}

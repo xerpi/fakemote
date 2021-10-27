@@ -121,11 +121,11 @@ struct ds4_private_data_t {
 	u8 mapping;
 	u8 leds;
 	bool rumble_on;
-	bool switch_input_combo_pressed;
+	bool switch_mapping;
 };
 static_assert(sizeof(struct ds4_private_data_t) <= USB_INPUT_DEVICE_PRIVATE_DATA_SIZE);
 
-#define SWITCH_INPUT_MAPPING_COMBO	(BIT(DS4_BUTTON_R3))
+#define SWITCH_MAPPING_COMBO	(BIT(DS4_BUTTON_R3))
 
 static const struct {
 	enum wiimote_ext_e extension;
@@ -294,7 +294,7 @@ int ds4_driver_ops_init(usb_input_device_t *device, u16 vid, u16 pid)
 	priv->leds = 0;
 	priv->rumble_on = false;
 	priv->mapping = 0;
-	priv->switch_input_combo_pressed = false;
+	priv->switch_mapping = false;
 
 	/* Set initial extension */
 	fake_wiimote_set_extension(device->wiimote, input_mappings[priv->mapping].extension);
@@ -343,19 +343,15 @@ int ds4_driver_ops_usb_async_resp(usb_input_device_t *device)
 	int num_fingers = 0;
 	u16 finger_x[2], finger_y[2];
 	struct ir_dot_t ir_dots[IR_MAX_DOTS];
-	bool switch_input;
 
 	if (report->report_id == 0x01) {
 		ds4_get_buttons(report, &ds4_buttons);
 		ds4_get_analog_axis(report, ds4_analog_axis);
 
-		switch_input = (ds4_buttons & SWITCH_INPUT_MAPPING_COMBO) == SWITCH_INPUT_MAPPING_COMBO;
-		if (switch_input && !priv->switch_input_combo_pressed) {
+		if (bm_check_switch_mapping(&ds4_buttons, &priv->switch_mapping, SWITCH_MAPPING_COMBO)) {
 			priv->mapping = (priv->mapping + 1) % ARRAY_SIZE(input_mappings);
-			fake_wiimote_set_extension(device->wiimote,
-						   input_mappings[priv->mapping].extension);
+			fake_wiimote_set_extension(device->wiimote, input_mappings[priv->mapping].extension);
 		}
-		priv->switch_input_combo_pressed = switch_input;
 
 		bm_map_wiimote(DS4_BUTTON__NUM, ds4_buttons,
 		       input_mappings[priv->mapping].wiimote_button_map,
