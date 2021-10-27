@@ -272,7 +272,7 @@ void fake_wiimote_handle_hci_cmd_accept_con(fake_wiimote_t *wiimote, u8 role)
 	int ret;
 
 	/* Connection accepted to our fake wiimote */
-	DEBUG("Connection accepted for fake Wiimote %d!\n", i);
+	DEBUG("Connection accepted to a Fake Wiimote!\n");
 
 	/* The Accept_Connection_Request command will cause the Command Status
 	   event to be sent from the Host Controller when the Host Controller
@@ -282,7 +282,7 @@ void fake_wiimote_handle_hci_cmd_accept_con(fake_wiimote_t *wiimote, u8 role)
 
 	wiimote->baseband_state = BASEBAND_STATE_COMPLETE;
 	wiimote->hci_con_handle = hci_con_handle_virt_alloc();
-	DEBUG("Fake Wiimote %d got HCI con_handle: 0x%x\n", i, wiimote->hci_con_handle);
+	DEBUG("Fake Wiimote got HCI con_handle: 0x%x\n",  wiimote->hci_con_handle);
 
 	/* We can start the ACL (L2CAP) linking now */
 	wiimote->acl_state = ACL_STATE_LINKING;
@@ -1041,8 +1041,7 @@ void fake_wiimote_handle_acl_data_out_request_from_host(fake_wiimote_t *wiimote,
 	dcid    = le16toh(header->dcid);
 	payload = (u8 *)header + sizeof(l2cap_hdr_t);
 
-	DEBUG(" Fake Wiimote ACL OUT: con_handle: 0x%x, dcid: 0x%x, len: 0x%x\n",
-		hci_con_handle, dcid, length);
+	DEBUG(" Fake Wiimote ACL OUT: dcid: 0x%x, len: 0x%x\n", dcid, length);
 
 	if (dcid == L2CAP_SIGNAL_CID) {
 		handle_l2cap_signal_channel_request(wiimote, payload, length);
