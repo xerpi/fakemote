@@ -58,7 +58,17 @@ void bm_calculate_ir(
 	/* Outputs */
 	struct ir_dot_t ir_dots[static IR_MAX_DOTS]);
 
-bool bm_check_switch_mapping(u32 *buttons, bool *switch_mapping, u32 switch_mapping_combo);
+static inline bool bm_check_switch_mapping(u32 buttons, bool *switch_mapping, u32 switch_mapping_combo)
+{
+	bool switch_pressed = (buttons & switch_mapping_combo) == switch_mapping_combo;
+	bool ret = false;
+
+	if (switch_pressed && !*switch_mapping)
+		ret = true;
+
+	*switch_mapping = switch_pressed;
+	return ret;
+}
 
 static inline void bm_nunchuk_format(struct wiimote_extension_data_format_nunchuk_t *out,
 				     u8 buttons, u8 analog_axis[static BM_NUNCHUK_ANALOG_AXIS__NUM],

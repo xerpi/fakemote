@@ -109,6 +109,11 @@ enum ds3_analog_axis_e {
 };
 
 struct ds3_private_data_t {
+	struct {
+		u32 buttons;
+		u8 analog_axis[DS3_ANALOG_AXIS__NUM];
+		s16 acc_x, acc_y, acc_z;
+	} input;
 	u8 mapping;
 	u8 leds;
 	bool rumble_on;
@@ -180,9 +185,11 @@ static const struct {
 
 static inline void ds3_get_buttons(const struct ds3_input_report *report, u32 *buttons)
 {
+	u32 mask = 0;
+
 #define MAP(field, button) \
 	if (report->field) \
-		*buttons |= BIT(button);
+		mask |= BIT(button);
 
 	MAP(triangle, DS3_BUTTON_TRIANGLE)
 	MAP(circle, DS3_BUTTON_CIRCLE)
@@ -201,8 +208,9 @@ static inline void ds3_get_buttons(const struct ds3_input_report *report, u32 *b
 	MAP(r1, DS3_BUTTON_R1)
 	MAP(l1, DS3_BUTTON_L1)
 	MAP(ps, DS3_BUTTON_PS)
-
 #undef MAP
+
+	*buttons = mask;
 }
 
 static inline void ds3_get_analog_axis(const struct ds3_input_report *report,
@@ -341,45 +349,35 @@ int ds3_driver_ops_set_rumble(usb_input_device_t *device, bool rumble_on)
 	return ds3_driver_update_leds_rumble(device);
 }
 
-int ds3_driver_ops_usb_async_resp(usb_input_device_t *device)
+bool ds3_report_input(usb_input_device_t *device)
 {
 	struct ds3_private_data_t *priv = (void *)device->private_data;
-	struct ds3_input_report *report = (void *)device->usb_async_resp;
-	u32 ds3_buttons = 0;
-	u8 ds3_analog_axis[DS3_ANALOG_AXIS__NUM];
-	s32 ds3_acc_x, ds3_acc_y, ds3_acc_z;
-	u16 acc_x, acc_y, acc_z;
 	u16 wiimote_buttons = 0;
+	u16 acc_x, acc_y, acc_z;
 	union wiimote_extension_data_t extension_data;
 
-	ds3_get_buttons(report, &ds3_buttons);
-	ds3_get_analog_axis(report, ds3_analog_axis);
-
-	if (bm_check_switch_mapping(&ds3_buttons, &priv->switch_mapping, SWITCH_MAPPING_COMBO)) {
+	if (bm_check_switch_mapping(priv->input.buttons, &priv->switch_mapping, SWITCH_MAPPING_COMBO)) {
 		priv->mapping = (priv->mapping + 1) % ARRAY_SIZE(input_mappings);
 		fake_wiimote_set_extension(device->wiimote, input_mappings[priv->mapping].extension);
+		return false;
 	}
 
-	bm_map_wiimote(DS3_BUTTON__NUM, ds3_buttons,
+	bm_map_wiimote(DS3_BUTTON__NUM, priv->input.buttons,
 		       input_mappings[priv->mapping].wiimote_button_map,
 		       &wiimote_buttons);
 
-	ds3_acc_x = (s32)report->acc_x - 511;
-	ds3_acc_y = 511 - (s32)report->acc_y;
-	ds3_acc_z = 511 - (s32)report->acc_z;
-
 	/* Normalize to accelerometer calibration configuration */
-	acc_x = ACCEL_ZERO_G - (ds3_acc_x * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS3_ACC_RES_PER_G;
-	acc_y = ACCEL_ZERO_G + (ds3_acc_y * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS3_ACC_RES_PER_G;
-	acc_z = ACCEL_ZERO_G + (ds3_acc_z * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS3_ACC_RES_PER_G;
+	acc_x = ACCEL_ZERO_G - ((s32)priv->input.acc_x * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS3_ACC_RES_PER_G;
+	acc_y = ACCEL_ZERO_G + ((s32)priv->input.acc_y * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS3_ACC_RES_PER_G;
+	acc_z = ACCEL_ZERO_G + ((s32)priv->input.acc_z * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS3_ACC_RES_PER_G;
 
 	fake_wiimote_report_accelerometer(device->wiimote, acc_x, acc_y, acc_z);
 
 	if (input_mappings[priv->mapping].extension == WIIMOTE_EXT_NONE) {
 		fake_wiimote_report_input(device->wiimote, wiimote_buttons);
 	} else if (input_mappings[priv->mapping].extension == WIIMOTE_EXT_NUNCHUK) {
-		bm_map_nunchuk(DS3_BUTTON__NUM, ds3_buttons,
-			       DS3_ANALOG_AXIS__NUM, ds3_analog_axis,
+		bm_map_nunchuk(DS3_BUTTON__NUM, priv->input.buttons,
+			       DS3_ANALOG_AXIS__NUM, priv->input.analog_axis,
 			       0, 0, 0,
 			       input_mappings[priv->mapping].nunchuk_button_map,
 			       input_mappings[priv->mapping].nunchuk_analog_axis_map,
@@ -387,14 +385,29 @@ int ds3_driver_ops_usb_async_resp(usb_input_device_t *device)
 		fake_wiimote_report_input_ext(device->wiimote, wiimote_buttons,
 					      &extension_data, sizeof(extension_data.nunchuk));
 	} else if (input_mappings[priv->mapping].extension == WIIMOTE_EXT_CLASSIC) {
-		bm_map_classic(DS3_BUTTON__NUM, ds3_buttons,
-			       DS3_ANALOG_AXIS__NUM, ds3_analog_axis,
+		bm_map_classic(DS3_BUTTON__NUM, priv->input.buttons,
+			       DS3_ANALOG_AXIS__NUM, priv->input.analog_axis,
 			       input_mappings[priv->mapping].classic_button_map,
 			       input_mappings[priv->mapping].classic_analog_axis_map,
 			       &extension_data.classic);
 		fake_wiimote_report_input_ext(device->wiimote, wiimote_buttons,
 					      &extension_data, sizeof(extension_data.classic));
 	}
+
+	return true;
+}
+
+int ds3_driver_ops_usb_async_resp(usb_input_device_t *device)
+{
+	struct ds3_private_data_t *priv = (void *)device->private_data;
+	struct ds3_input_report *report = (void *)device->usb_async_resp;
+
+	ds3_get_buttons(report, &priv->input.buttons);
+	ds3_get_analog_axis(report, priv->input.analog_axis);
+
+	priv->input.acc_x = (s16)report->acc_x - 511;
+	priv->input.acc_y = 511 - (s16)report->acc_y;
+	priv->input.acc_z = 511 - (s16)report->acc_z;
 
 	return ds3_request_data(device);
 }
@@ -405,5 +418,6 @@ const usb_device_driver_t ds3_usb_device_driver = {
 	.disconnect	= ds3_driver_ops_disconnect,
 	.slot_changed	= ds3_driver_ops_slot_changed,
 	.set_rumble	= ds3_driver_ops_set_rumble,
+	.report_input	= ds3_report_input,
 	.usb_async_resp	= ds3_driver_ops_usb_async_resp,
 };

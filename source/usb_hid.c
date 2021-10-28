@@ -325,11 +325,21 @@ static int usb_device_ops_set_rumble(void *usrdata, bool rumble_on)
 	return 0;
 }
 
+static bool usb_device_ops_report_input(void *usrdata)
+{
+	usb_input_device_t *device = usrdata;
+
+	DEBUG("usb_device_ops_report_input\n");
+
+	return device->driver->report_input(device);
+}
+
 static const input_device_ops_t input_device_usb_ops = {
-	.init       = usb_device_ops_init,
-	.disconnect = usb_device_ops_disconnect,
-	.set_leds   = usb_device_ops_set_leds,
-	.set_rumble = usb_device_ops_set_rumble
+	.init		= usb_device_ops_init,
+	.disconnect	= usb_device_ops_disconnect,
+	.set_leds	= usb_device_ops_set_leds,
+	.set_rumble	= usb_device_ops_set_rumble,
+	.report_input	= usb_device_ops_report_input,
 };
 
 static void handle_device_change_reply(int host_fd, areply *reply)

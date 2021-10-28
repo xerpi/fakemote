@@ -8,6 +8,7 @@ typedef struct input_device_ops_t {
 	int (*disconnect)(void *usrdata);
 	int (*set_leds)(void *usrdata, int leds);
 	int (*set_rumble)(void *usrdata, bool rumble_on);
+	bool (*report_input)(void *usrdata);
 } input_device_ops_t;
 
 #endif

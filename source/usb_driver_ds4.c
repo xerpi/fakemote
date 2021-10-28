@@ -118,6 +118,15 @@ enum ds4_analog_axis_e {
 };
 
 struct ds4_private_data_t {
+	struct {
+		u32 buttons;
+		u8 analog_axis[DS4_ANALOG_AXIS__NUM];
+		s16 acc_x, acc_y, acc_z;
+		struct {
+			u16 x, y;
+		} fingers[2];
+		u8 num_fingers;
+	} input;
 	u8 mapping;
 	u8 leds;
 	bool rumble_on;
@@ -191,9 +200,11 @@ static const struct {
 
 static inline void ds4_get_buttons(const struct ds4_input_report *report, u32 *buttons)
 {
+	u32 mask = 0;
+
 #define MAP(field, button) \
 	if (report->field) \
-		*buttons |= BIT(button);
+		mask |= BIT(button);
 
 	MAP(triangle, DS4_BUTTON_TRIANGLE)
 	MAP(circle, DS4_BUTTON_CIRCLE)
@@ -201,13 +212,13 @@ static inline void ds4_get_buttons(const struct ds4_input_report *report, u32 *b
 	MAP(square, DS4_BUTTON_SQUARE)
 
 	if (report->dpad == 0 || report->dpad == 1 || report->dpad == 7)
-		*buttons |= BIT(DS4_BUTTON_UP);
+		mask |= BIT(DS4_BUTTON_UP);
 	else if (report->dpad == 3 || report->dpad == 4 || report->dpad == 5)
-		*buttons |= BIT(DS4_BUTTON_DOWN);
+		mask |= BIT(DS4_BUTTON_DOWN);
 	if (report->dpad == 5 || report->dpad == 6 || report->dpad == 7)
-		*buttons |= BIT(DS4_BUTTON_LEFT);
+		mask |= BIT(DS4_BUTTON_LEFT);
 	else if (report->dpad == 1 || report->dpad == 2 || report->dpad == 3)
-		*buttons |= BIT(DS4_BUTTON_RIGHT);
+		mask |= BIT(DS4_BUTTON_RIGHT);
 
 	MAP(r3, DS4_BUTTON_R3)
 	MAP(l3, DS4_BUTTON_L3)
@@ -219,8 +230,9 @@ static inline void ds4_get_buttons(const struct ds4_input_report *report, u32 *b
 	MAP(l1, DS4_BUTTON_L1)
 	MAP(tpad, DS4_BUTTON_TOUCHPAD)
 	MAP(ps, DS4_BUTTON_PS)
-
 #undef MAP
+
+	*buttons = mask;
 }
 
 static inline void ds4_get_analog_axis(const struct ds4_input_report *report,
@@ -330,81 +342,86 @@ int ds4_driver_ops_set_rumble(usb_input_device_t *device, bool rumble_on)
 	return ds4_driver_update_leds_rumble(device);
 }
 
+bool ds4_report_input(usb_input_device_t *device)
+{
+	struct ds4_private_data_t *priv = (void *)device->private_data;
+	u16 wiimote_buttons = 0;
+	u16 acc_x, acc_y, acc_z;
+	union wiimote_extension_data_t extension_data;
+	struct ir_dot_t ir_dots[IR_MAX_DOTS];
+
+	if (bm_check_switch_mapping(priv->input.buttons, &priv->switch_mapping, SWITCH_MAPPING_COMBO)) {
+		priv->mapping = (priv->mapping + 1) % ARRAY_SIZE(input_mappings);
+		fake_wiimote_set_extension(device->wiimote, input_mappings[priv->mapping].extension);
+		return false;
+	}
+
+	bm_map_wiimote(DS4_BUTTON__NUM, priv->input.buttons,
+	       input_mappings[priv->mapping].wiimote_button_map,
+	       &wiimote_buttons);
+
+	/* Normalize to accelerometer calibration configuration */
+	acc_x = ACCEL_ZERO_G - ((s32)priv->input.acc_x * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS4_ACC_RES_PER_G;
+	acc_y = ACCEL_ZERO_G + ((s32)priv->input.acc_z * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS4_ACC_RES_PER_G;
+	acc_z = ACCEL_ZERO_G + ((s32)priv->input.acc_y * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS4_ACC_RES_PER_G;
+
+	fake_wiimote_report_accelerometer(device->wiimote, acc_x, acc_y, acc_z);
+
+	bm_calculate_ir(priv->input.num_fingers, &priv->input.fingers[0].x, &priv->input.fingers[0].y,
+			DS4_TOUCHPAD_W - 1, DS4_TOUCHPAD_H - 1,
+			ir_dots);
+
+	fake_wiimote_report_ir_dots(device->wiimote, ir_dots);
+
+	if (input_mappings[priv->mapping].extension == WIIMOTE_EXT_NONE) {
+		fake_wiimote_report_input(device->wiimote, wiimote_buttons);
+	} else if (input_mappings[priv->mapping].extension == WIIMOTE_EXT_NUNCHUK) {
+		bm_map_nunchuk(DS4_BUTTON__NUM, priv->input.buttons,
+			       DS4_ANALOG_AXIS__NUM, priv->input.analog_axis,
+			       0, 0, 0,
+			       input_mappings[priv->mapping].nunchuk_button_map,
+			       input_mappings[priv->mapping].nunchuk_analog_axis_map,
+			       &extension_data.nunchuk);
+		fake_wiimote_report_input_ext(device->wiimote, wiimote_buttons,
+					      &extension_data, sizeof(extension_data.nunchuk));
+	} else if (input_mappings[priv->mapping].extension == WIIMOTE_EXT_CLASSIC) {
+		bm_map_classic(DS4_BUTTON__NUM, priv->input.buttons,
+			       DS4_ANALOG_AXIS__NUM, priv->input.analog_axis,
+			       input_mappings[priv->mapping].classic_button_map,
+			       input_mappings[priv->mapping].classic_analog_axis_map,
+			       &extension_data.classic);
+		fake_wiimote_report_input_ext(device->wiimote, wiimote_buttons,
+					      &extension_data, sizeof(extension_data.classic));
+	}
+
+	return true;
+}
+
 int ds4_driver_ops_usb_async_resp(usb_input_device_t *device)
 {
 	struct ds4_private_data_t *priv = (void *)device->private_data;
 	struct ds4_input_report *report = (void *)device->usb_async_resp;
-	u32 ds4_buttons = 0;
-	u8 ds4_analog_axis[DS4_ANALOG_AXIS__NUM];
-	s32 ds4_acc_x, ds4_acc_y, ds4_acc_z;
-	u16 acc_x, acc_y, acc_z;
-	u16 wiimote_buttons = 0;
-	union wiimote_extension_data_t extension_data;
-	int num_fingers = 0;
-	u16 finger_x[2], finger_y[2];
-	struct ir_dot_t ir_dots[IR_MAX_DOTS];
 
 	if (report->report_id == 0x01) {
-		ds4_get_buttons(report, &ds4_buttons);
-		ds4_get_analog_axis(report, ds4_analog_axis);
+		ds4_get_buttons(report, &priv->input.buttons);
+		ds4_get_analog_axis(report, priv->input.analog_axis);
 
-		if (bm_check_switch_mapping(&ds4_buttons, &priv->switch_mapping, SWITCH_MAPPING_COMBO)) {
-			priv->mapping = (priv->mapping + 1) % ARRAY_SIZE(input_mappings);
-			fake_wiimote_set_extension(device->wiimote, input_mappings[priv->mapping].extension);
-		}
+		priv->input.acc_x = (s16)le16toh(report->accel_x);
+		priv->input.acc_y = (s16)le16toh(report->accel_y);
+		priv->input.acc_z = (s16)le16toh(report->accel_z);
 
-		bm_map_wiimote(DS4_BUTTON__NUM, ds4_buttons,
-		       input_mappings[priv->mapping].wiimote_button_map,
-		       &wiimote_buttons);
-
-		ds4_acc_x = (s32)(s16)le16toh(report->accel_x);
-		ds4_acc_y = (s32)(s16)le16toh(report->accel_y);
-		ds4_acc_z = (s32)(s16)le16toh(report->accel_z);
-
-		/* Normalize to accelerometer calibration configuration */
-		acc_x = ACCEL_ZERO_G - (ds4_acc_x * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS4_ACC_RES_PER_G;
-		acc_y = ACCEL_ZERO_G + (ds4_acc_z * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS4_ACC_RES_PER_G;
-		acc_z = ACCEL_ZERO_G + (ds4_acc_y * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS4_ACC_RES_PER_G;
-
-		fake_wiimote_report_accelerometer(device->wiimote, acc_x, acc_y, acc_z);
+		priv->input.num_fingers = 0;
 
 		if (!report->finger1_nactive) {
-			finger_x[0] = report->finger1_x_lo | ((u16)report->finger1_x_hi << 8);
-			finger_y[0] = report->finger1_y_lo | ((u16)report->finger1_y_hi << 4);
-			num_fingers++;
+			priv->input.fingers[0].x = report->finger1_x_lo | ((u16)report->finger1_x_hi << 8);
+			priv->input.fingers[0].y = report->finger1_y_lo | ((u16)report->finger1_y_hi << 4);
+			priv->input.num_fingers++;
 		}
 
 		if (!report->finger2_nactive) {
-			finger_x[1] = report->finger2_x_lo | ((u16)report->finger2_x_hi << 8);
-			finger_y[1] = report->finger2_y_lo | ((u16)report->finger2_y_hi << 4);
-			num_fingers++;
-		}
-
-		bm_calculate_ir(num_fingers, finger_x, finger_y,
-				DS4_TOUCHPAD_W - 1, DS4_TOUCHPAD_H - 1,
-				ir_dots);
-
-		fake_wiimote_report_ir_dots(device->wiimote, ir_dots);
-
-		if (input_mappings[priv->mapping].extension == WIIMOTE_EXT_NONE) {
-			fake_wiimote_report_input(device->wiimote, wiimote_buttons);
-		} else if (input_mappings[priv->mapping].extension == WIIMOTE_EXT_NUNCHUK) {
-			bm_map_nunchuk(DS4_BUTTON__NUM, ds4_buttons,
-				       DS4_ANALOG_AXIS__NUM, ds4_analog_axis,
-				       0, 0, 0,
-				       input_mappings[priv->mapping].nunchuk_button_map,
-				       input_mappings[priv->mapping].nunchuk_analog_axis_map,
-				       &extension_data.nunchuk);
-			fake_wiimote_report_input_ext(device->wiimote, wiimote_buttons,
-						      &extension_data, sizeof(extension_data.nunchuk));
-		} else if (input_mappings[priv->mapping].extension == WIIMOTE_EXT_CLASSIC) {
-			bm_map_classic(DS4_BUTTON__NUM, ds4_buttons,
-				       DS4_ANALOG_AXIS__NUM, ds4_analog_axis,
-				       input_mappings[priv->mapping].classic_button_map,
-				       input_mappings[priv->mapping].classic_analog_axis_map,
-				       &extension_data.classic);
-			fake_wiimote_report_input_ext(device->wiimote, wiimote_buttons,
-						      &extension_data, sizeof(extension_data.classic));
+			priv->input.fingers[1].x = report->finger2_x_lo | ((u16)report->finger2_x_hi << 8);
+			priv->input.fingers[1].y = report->finger2_y_lo | ((u16)report->finger2_y_hi << 4);
+			priv->input.num_fingers++;
 		}
 	}
 
@@ -417,5 +434,6 @@ const usb_device_driver_t ds4_usb_device_driver = {
 	.disconnect	= ds4_driver_ops_disconnect,
 	.slot_changed	= ds4_driver_ops_slot_changed,
 	.set_rumble	= ds4_driver_ops_set_rumble,
+	.report_input	= ds4_report_input,
 	.usb_async_resp	= ds4_driver_ops_usb_async_resp,
 };

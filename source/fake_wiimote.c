@@ -430,20 +430,6 @@ void fake_wiimote_report_input_ext(fake_wiimote_t *wiimote, u16 buttons, const v
 	}
 }
 
-static void check_send_config_for_new_channel(u16 hci_con_handle, l2cap_channel_info_t *info)
-{
-	int ret;
-
-	if (l2cap_channel_is_accepted(info) &&
-	    (info->state == L2CAP_CHANNEL_STATE_INACTIVE)) {
-		ret = inject_l2cap_config_req(hci_con_handle, info->remote_cid,
-					      WII_REQUEST_MTU, L2CAP_FLUSH_TIMO_DEFAULT);
-		if (ret == IOS_OK) {
-			info->state = L2CAP_CHANNEL_STATE_CONFIG_PEND;
-		}
-	}
-}
-
 static inline bool ir_camera_read_data(fake_wiimote_t *wiimote, void *dst, u16 address, u16 size)
 {
 	if (address + size > sizeof(wiimote->ir_regs))
@@ -684,6 +670,20 @@ static inline void fake_wiimote_update_rumble(fake_wiimote_t *wiimote, bool rumb
 	}
 }
 
+static void check_send_config_for_new_channel(u16 hci_con_handle, l2cap_channel_info_t *info)
+{
+	int ret;
+
+	if (l2cap_channel_is_accepted(info) &&
+	    (info->state == L2CAP_CHANNEL_STATE_INACTIVE)) {
+		ret = inject_l2cap_config_req(hci_con_handle, info->remote_cid,
+					      WII_REQUEST_MTU, L2CAP_FLUSH_TIMO_DEFAULT);
+		if (ret == IOS_OK) {
+			info->state = L2CAP_CHANNEL_STATE_CONFIG_PEND;
+		}
+	}
+}
+
 void fake_wiimote_tick(fake_wiimote_t *wiimote)
 {
 	int ret;
@@ -740,7 +740,8 @@ void fake_wiimote_tick(fake_wiimote_t *wiimote)
 				return;
 			}
 
-			fake_wiimote_send_data_report(wiimote);
+			if (wiimote->input_device_ops->report_input(wiimote->usrdata))
+				fake_wiimote_send_data_report(wiimote);
 		}
 	}
 }
