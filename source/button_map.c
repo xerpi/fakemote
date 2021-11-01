@@ -71,7 +71,17 @@ void bm_map_classic(
 	bm_classic_format(classic, classic_buttons, classic_analog_axis);
 }
 
-void bm_calculate_ir(
+static inline void map_ir_dot(struct ir_dot_t ir_dots[static IR_MAX_DOTS], const struct ir_dot_t *dot)
+{
+	s16 vert_offset = g_sensor_bar_position_top ? IR_VERTICAL_OFFSET : -IR_VERTICAL_OFFSET;
+
+	ir_dots[0].x = (IR_HIGH_X - dot->x) - IR_HORIZONTAL_OFFSET;
+	ir_dots[0].y = dot->y + vert_offset;
+	ir_dots[1].x = (IR_HIGH_X - dot->x) + IR_HORIZONTAL_OFFSET;
+	ir_dots[1].y = dot->y + vert_offset;
+}
+
+void bm_map_ir_direct(
 	/* Inputs */
 	int num_coordinates, const u16 *x, const u16 *y,
 	u16 max_x, u16 max_y,
@@ -79,22 +89,54 @@ void bm_calculate_ir(
 	struct ir_dot_t ir_dots[static IR_MAX_DOTS])
 {
 	struct ir_dot_t dot;
-	s16 vert_offset = g_sensor_bar_position_top ? IR_VERTICAL_OFFSET : -IR_VERTICAL_OFFSET;
 
 	/* TODO: For now we only care about 1 reported coordinate... */
 	if (num_coordinates == 0) {
-		ir_dots[0].x = 1023;
-		ir_dots[0].y = 1023;
-		ir_dots[1].x = 1023;
-		ir_dots[1].y = 1023;
+		bm_ir_dots_set_out_of_screen(ir_dots);
 		return;
 	}
 
 	dot.x = IR_DOT_CENTER_MIN_X + (x[0] * (IR_DOT_CENTER_MAX_X - IR_DOT_CENTER_MIN_X)) / max_x;
 	dot.y = IR_DOT_CENTER_MIN_Y + (y[0] * (IR_DOT_CENTER_MAX_Y - IR_DOT_CENTER_MIN_Y)) / max_y;
+	map_ir_dot(ir_dots, &dot);
+}
 
-	ir_dots[0].x = (IR_HIGH_X - dot.x) - IR_HORIZONTAL_OFFSET;
-	ir_dots[0].y = dot.y + vert_offset;
-	ir_dots[1].x = (IR_HIGH_X - dot.x) + IR_HORIZONTAL_OFFSET;
-	ir_dots[1].y = dot.y + vert_offset;
+void bm_map_ir_analog_axis(
+	/* Inputs */
+	enum bm_ir_emulation_mode_e mode,
+	struct bm_ir_emulation_state_t *state,
+	int num_analog_axis, const u8 *analog_axis,
+	const u8 *ir_analog_axis_map,
+	/* Outputs */
+	struct ir_dot_t ir_dots[static IR_MAX_DOTS])
+{
+	struct ir_dot_t dot;
+
+	for (int i = 0; i < num_analog_axis; i++) {
+		if (ir_analog_axis_map[i]) {
+			s16 val = (s16)analog_axis[i] - 128;
+
+			if (mode == BM_IR_EMULATION_MODE_RELATIVE_ANALOG_AXIS) {
+				state->position[ir_analog_axis_map[i] - 1] += val / 16;
+			} else if (mode == BM_IR_EMULATION_MODE_ABSOLUTE_ANALOG_AXIS) {
+				u16 center = (ir_analog_axis_map[i] == BM_IR_AXIS_X) ? IR_CENTER_X : IR_CENTER_Y;
+				state->position[ir_analog_axis_map[i] - 1] = center + val;
+			}
+		}
+	}
+
+	if (state->position[BM_IR_AXIS_X - 1] < IR_DOT_CENTER_MIN_X)
+		state->position[BM_IR_AXIS_X - 1] = IR_DOT_CENTER_MIN_X;
+	else if (state->position[BM_IR_AXIS_X - 1] > IR_DOT_CENTER_MAX_X)
+		state->position[BM_IR_AXIS_X - 1] = IR_DOT_CENTER_MAX_X;
+
+	if (state->position[BM_IR_AXIS_Y - 1] < IR_DOT_CENTER_MIN_Y)
+		state->position[BM_IR_AXIS_Y - 1] = IR_DOT_CENTER_MIN_Y;
+	else if (state->position[BM_IR_AXIS_Y - 1] > IR_DOT_CENTER_MAX_Y)
+		state->position[BM_IR_AXIS_Y - 1] = IR_DOT_CENTER_MAX_Y;
+
+
+	dot.x = state->position[BM_IR_AXIS_X - 1];
+	dot.y = IR_HIGH_Y - state->position[BM_IR_AXIS_Y - 1];
+	map_ir_dot(ir_dots, &dot);
 }

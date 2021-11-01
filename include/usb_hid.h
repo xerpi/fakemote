@@ -5,7 +5,7 @@
 #include "types.h"
 #include "fake_wiimote_mgr.h"
 
-#define USB_INPUT_DEVICE_PRIVATE_DATA_SIZE 32
+#define USB_INPUT_DEVICE_PRIVATE_DATA_SIZE 64
 
 typedef struct usb_device_driver_t usb_device_driver_t;
 

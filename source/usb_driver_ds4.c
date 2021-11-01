@@ -127,14 +127,19 @@ struct ds4_private_data_t {
 		} fingers[2];
 		u8 num_fingers;
 	} input;
+	enum bm_ir_emulation_mode_e ir_emu_mode;
+	struct bm_ir_emulation_state_t ir_emu_state;
 	u8 mapping;
+	u8 ir_emu_mode_idx;
 	u8 leds;
 	bool rumble_on;
 	bool switch_mapping;
+	bool switch_ir_emu_mode;
 };
 static_assert(sizeof(struct ds4_private_data_t) <= USB_INPUT_DEVICE_PRIVATE_DATA_SIZE);
 
-#define SWITCH_MAPPING_COMBO	(BIT(DS4_BUTTON_R3))
+#define SWITCH_MAPPING_COMBO		(BIT(DS4_BUTTON_L1) | BIT(DS4_BUTTON_L3))
+#define SWITCH_IR_EMU_MODE_COMBO	(BIT(DS4_BUTTON_R1) | BIT(DS4_BUTTON_R3))
 
 static const struct {
 	enum wiimote_ext_e extension;
@@ -196,6 +201,17 @@ static const struct {
 			[DS4_ANALOG_AXIS_RIGHT_Y] = BM_CLASSIC_ANALOG_AXIS_RIGHT_Y,
 		},
 	},
+};
+
+static const u8 ir_analog_axis_map[DS4_ANALOG_AXIS__NUM] = {
+	[DS4_ANALOG_AXIS_RIGHT_X] = BM_IR_AXIS_X,
+	[DS4_ANALOG_AXIS_RIGHT_Y] = BM_IR_AXIS_Y,
+};
+
+static const enum bm_ir_emulation_mode_e ir_emu_modes[] = {
+	BM_IR_EMULATION_MODE_DIRECT,
+	BM_IR_EMULATION_MODE_RELATIVE_ANALOG_AXIS,
+	BM_IR_EMULATION_MODE_ABSOLUTE_ANALOG_AXIS,
 };
 
 static inline void ds4_get_buttons(const struct ds4_input_report *report, u32 *buttons)
@@ -303,10 +319,13 @@ int ds4_driver_ops_init(usb_input_device_t *device, u16 vid, u16 pid)
 	struct ds4_private_data_t *priv = (void *)device->private_data;
 
 	/* Init private state */
+	priv->ir_emu_mode_idx = 0;
+	bm_ir_emulation_state_reset(&priv->ir_emu_state);
+	priv->mapping = 0;
 	priv->leds = 0;
 	priv->rumble_on = false;
-	priv->mapping = 0;
 	priv->switch_mapping = false;
+	priv->switch_ir_emu_mode = false;
 
 	/* Set initial extension */
 	fake_wiimote_set_extension(device->wiimote, input_mappings[priv->mapping].extension);
@@ -349,11 +368,15 @@ bool ds4_report_input(usb_input_device_t *device)
 	u16 acc_x, acc_y, acc_z;
 	union wiimote_extension_data_t extension_data;
 	struct ir_dot_t ir_dots[IR_MAX_DOTS];
+	enum bm_ir_emulation_mode_e ir_emu_mode;
 
 	if (bm_check_switch_mapping(priv->input.buttons, &priv->switch_mapping, SWITCH_MAPPING_COMBO)) {
 		priv->mapping = (priv->mapping + 1) % ARRAY_SIZE(input_mappings);
 		fake_wiimote_set_extension(device->wiimote, input_mappings[priv->mapping].extension);
 		return false;
+	} else if (bm_check_switch_mapping(priv->input.buttons, &priv->switch_ir_emu_mode, SWITCH_IR_EMU_MODE_COMBO)) {
+		priv->ir_emu_mode_idx = (priv->ir_emu_mode_idx + 1) % ARRAY_SIZE(ir_emu_modes);
+		bm_ir_emulation_state_reset(&priv->ir_emu_state);
 	}
 
 	bm_map_wiimote(DS4_BUTTON__NUM, priv->input.buttons,
@@ -367,9 +390,21 @@ bool ds4_report_input(usb_input_device_t *device)
 
 	fake_wiimote_report_accelerometer(device->wiimote, acc_x, acc_y, acc_z);
 
-	bm_calculate_ir(priv->input.num_fingers, &priv->input.fingers[0].x, &priv->input.fingers[0].y,
-			DS4_TOUCHPAD_W - 1, DS4_TOUCHPAD_H - 1,
-			ir_dots);
+	ir_emu_mode = ir_emu_modes[priv->ir_emu_mode_idx];
+	if (ir_emu_mode == BM_IR_EMULATION_MODE_NONE) {
+		bm_ir_dots_set_out_of_screen(ir_dots);
+	} else {
+		if (ir_emu_mode == BM_IR_EMULATION_MODE_DIRECT) {
+			bm_map_ir_direct(priv->input.num_fingers,
+					 &priv->input.fingers[0].x, &priv->input.fingers[0].y,
+					 DS4_TOUCHPAD_W - 1, DS4_TOUCHPAD_H - 1,
+					 ir_dots);
+		} else {
+			bm_map_ir_analog_axis(ir_emu_mode, &priv->ir_emu_state,
+					      DS4_ANALOG_AXIS__NUM, priv->input.analog_axis,
+					      ir_analog_axis_map, ir_dots);
+		}
+	}
 
 	fake_wiimote_report_ir_dots(device->wiimote, ir_dots);
 

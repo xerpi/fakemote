@@ -12,7 +12,8 @@ _An IOS module that fakes Wiimotes from the input of USB game controllers._
 
 - DS3 and DS4 support includes LEDs, rumble, and the accelerometer
 - DS4's touchpad is used to emulate the Wiimote IR Camera pointer
-- Both controllers emulate a Wiimote with the Nunchuk and Classic Controller extensions connected. Press R3 to switch between them
+- Both controllers emulate a Wiimote with the Nunchuk and Classic Controller extensions connected. Press L1+L3 to switch between them
+- Three IR pointer emulation modes: direct (touchpad, only for DS4), analog axis relative (move the pointer with the right analog) and analog axis absolute (the pointer is moved proportionally to the right analog starting from the center). Press R1+R3 to switch between them
 
 ## Installation
 1) Download [d2x cIOS Installer for regular Wii](https://wii.guide/cios.html)/[d2x cIOS Installer for vWii](https://wiiu.hacks.guide/#/vwii-modding) and extract it to the SD card
