@@ -148,5 +148,4 @@ static inline void bm_ir_dots_set_out_of_screen(struct ir_dot_t ir_dots[static I
 		ir_dots[i].y = 1023;
 }
 
-
 #endif

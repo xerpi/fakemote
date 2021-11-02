@@ -1,5 +1,5 @@
 # *_fakemote_*
-_An IOS module that fakes Wiimotes from the input of USB game controllers._
+_A Wii cIOS module that fakes Wiimotes from the input of USB game controllers._
 
 ## Features
 
