@@ -75,9 +75,9 @@ static inline void map_ir_dot(struct ir_dot_t ir_dots[static IR_MAX_DOTS], const
 {
 	s16 vert_offset = g_sensor_bar_position_top ? IR_VERTICAL_OFFSET : -IR_VERTICAL_OFFSET;
 
-	ir_dots[0].x = (IR_HIGH_X - dot->x) - IR_HORIZONTAL_OFFSET;
+	ir_dots[0].x = (IR_DOT_CENTER_MIN_X + (IR_DOT_CENTER_MAX_X - dot->x)) - IR_HORIZONTAL_OFFSET;
 	ir_dots[0].y = dot->y + vert_offset;
-	ir_dots[1].x = (IR_HIGH_X - dot->x) + IR_HORIZONTAL_OFFSET;
+	ir_dots[1].x = (IR_DOT_CENTER_MIN_X + (IR_DOT_CENTER_MAX_X - dot->x)) + IR_HORIZONTAL_OFFSET;
 	ir_dots[1].y = dot->y + vert_offset;
 }
 
@@ -137,6 +137,6 @@ void bm_map_ir_analog_axis(
 
 
 	dot.x = state->position[BM_IR_AXIS_X - 1];
-	dot.y = IR_HIGH_Y - state->position[BM_IR_AXIS_Y - 1];
+	dot.y = IR_DOT_CENTER_MIN_Y + (IR_DOT_CENTER_MAX_Y - state->position[BM_IR_AXIS_Y - 1]);
 	map_ir_dot(ir_dots, &dot);
 }
