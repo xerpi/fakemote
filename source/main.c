@@ -64,7 +64,10 @@ u8 g_sensor_bar_position_top;
 char *moduleName = "TST";
 
 /* Queue ID created by OH1 that receives ipcmessages from /dev/usb/oh1 */
-int orig_msg_queueid;
+static int orig_msg_queueid;
+
+/* FD returned to BT SW stack when it opens /dev/usb/oh1/57e/305 */
+static int orig_open_fd = -1;
 
 /* Periodic timer with large period to tick fakedevices to check their state */
 static int periodic_timer_id;
@@ -228,13 +231,13 @@ static inline void copy_data_to_ipcmessage(ipcmessage *dst, const void *src, u16
 	os_sync_after_write(dst_data, len);
 }
 
-static inline void configure_hand_down_msg(ipcmessage *msg, int fd, u16 wLength)
+static inline void configure_hand_down_msg(ipcmessage *msg, u16 wLength)
 {
 	assert(wLength <= HAND_DOWN_MSG_DATA_SIZE);
 
 	*(u16 *)msg->ioctlv.vector[1].data = wLength;
 	msg->ioctlv.vector[2].len = wLength;
-	msg->fd = fd;
+	msg->fd = orig_open_fd;
 
 	os_sync_before_read(msg->ioctlv.vector[2].data, wLength);
 }
@@ -281,7 +284,7 @@ static int handle_bulk_intr_pending_message(ipcmessage *pend_msg, u16 size, ipcm
 		ret = os_message_queue_send(pending_queue_id, pend_msg, IOS_MESSAGE_NOBLOCK);
 		if ((ret == IOS_OK) && !*hand_down_msg_pending) {
 			/* Hand down to OH1 a copy of the message for it to fill it from real USB data */
-			configure_hand_down_msg(hand_down_msg, pend_msg->fd, size);
+			configure_hand_down_msg(hand_down_msg, size);
 			*ret_msg = hand_down_msg;
 			*hand_down_msg_pending = true;
 		} else {
@@ -342,7 +345,10 @@ static int OH1_IOS_ReceiveMessage_hook(int queueid, ipcmessage **ret_msg, u32 fl
 			/* Default to forward message to OH1 */
 			fwd_to_usb = true;
 
-			if (recv_msg->command == IOS_IOCTLV) {
+			if (recv_msg->command == IOS_OPEN) {
+				printf("IOS_OPEN: fd: %d, device: %s, mode: 0x%x, resultfd: %d\n",
+					recv_msg->fd, recv_msg->open.device, recv_msg->open.mode, recv_msg->open.resultfd);
+			} else if (recv_msg->command == IOS_IOCTLV) {
 				ioctlv *vector = recv_msg->ioctlv.vector;
 				u32     inlen  = recv_msg->ioctlv.num_in;
 				u32     iolen  = recv_msg->ioctlv.num_io;
@@ -403,6 +409,8 @@ static int OH1_IOS_ResourceReply_hook(ipcmessage *ready_msg, int retval)
 		ret = handle_bulk_intr_ready_message(ready_msg, pending_usb_bulk_in_msg_queue_id,
 						     ready_usb_bulk_in_msg_queue_id);
 		return ret;
+	} else if ((ready_msg->command == IOS_OPEN) && (orig_open_fd == -1)) {
+		orig_open_fd = retval;
 	}
 
 	return os_message_queue_ack(ready_msg, retval);
