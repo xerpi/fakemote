@@ -20,9 +20,4 @@ bool fake_wiimote_mgr_handle_hci_cmd_from_host(const hci_cmd_hdr_t *hdr);
 /* Processes and returns true if the HCI connection handle belongs to a fake wiimote */
 bool fake_wiimote_mgr_handle_acl_data_out_request_from_host(u16 hci_con_handle, const hci_acldata_hdr_t *hdr);
 
-/** Used by the input devices **/
-
-bool fake_wiimote_mgr_add_input_device(void *usrdata, const input_device_ops_t *ops);
-bool fake_wiimote_mgr_remove_input_device(fake_wiimote_t *wiimote);
-
 #endif

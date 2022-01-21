@@ -334,6 +334,7 @@ static int OH1_IOS_ReceiveMessage_hook(int queueid, ipcmessage **ret_msg, u32 fl
 			*ret_msg = (ipcmessage *)0xcafef00d;
 			break;
 		} else if (recv_data == (uintptr_t)&periodic_timer_cookie) {
+			input_devices_tick();
 			fake_wiimote_mgr_tick_devices();
 			fwd_to_usb = false;
 		} else {
@@ -446,7 +447,8 @@ static int ensure_initalized(void)
 
 		/* Initialize global state */
 		injmessage_init_heap();
-		hci_state_init();
+		hci_state_reset();
+		input_devices_init();
 		fake_wiimote_mgr_init();
 		usb_hid_init();
 

@@ -237,7 +237,7 @@ static inline void fake_wiimote_reset_extension_state(fake_wiimote_t *wiimote)
 	}
 }
 
-void fake_wiimote_reset_state(fake_wiimote_t *wiimote, void *usrdata, const input_device_ops_t *ops)
+void fake_wiimote_init_state(fake_wiimote_t *wiimote, input_device_t *input_device)
 {
 	wiimote->baseband_state = BASEBAND_STATE_REQUEST_CONNECTION;
 	wiimote->acl_state = L2CAP_CHANNEL_STATE_INACTIVE;
@@ -245,8 +245,7 @@ void fake_wiimote_reset_state(fake_wiimote_t *wiimote, void *usrdata, const inpu
 	wiimote->psm_hid_cntl_chn.valid = false;
 	wiimote->psm_hid_intr_chn.valid = false;
 	wiimote->num_completed_acl_data_packets = 0;
-	wiimote->usrdata = usrdata;
-	wiimote->input_device_ops = ops;
+	wiimote->input_device = input_device;
 	wiimote->status.leds = 0;
 	wiimote->status.ir = 0;
 	wiimote->status.speaker = 0;
@@ -301,15 +300,18 @@ void fake_wiimote_handle_hci_cmd_accept_con(fake_wiimote_t *wiimote, u8 role)
 	DEBUG("Connection complete sent, starting ACL linking!\n");
 }
 
+void fake_wiimote_release_input_device(fake_wiimote_t *wiimote)
+{
+	wiimote->input_device = NULL;
+}
+
 int fake_wiimote_disconnect(fake_wiimote_t *wiimote)
 {
 	int ret = 0;
 
-	/* If we had a L2CAP Interrupt channel connection, notify the driver of disconnection */
-	if (l2cap_channel_is_complete(&wiimote->psm_hid_intr_chn)) {
-		if (wiimote->input_device_ops->disconnect)
-			wiimote->input_device_ops->disconnect(wiimote->usrdata);
-	}
+	/* Unassign the currently assigned input device (if any) */
+	if (wiimote->input_device)
+		input_device_release_wiimote(wiimote->input_device);
 
 	/* Does a real Wiimote gracefully disconnect l2cap channels first?
 	   Not doing that doesn't seem to break anything. */
@@ -665,8 +667,7 @@ static inline void fake_wiimote_update_rumble(fake_wiimote_t *wiimote, bool rumb
 {
 	if (rumble_on != wiimote->rumble_on) {
 		wiimote->rumble_on = rumble_on;
-		if (wiimote->input_device_ops->set_rumble)
-			wiimote->input_device_ops->set_rumble(wiimote->usrdata, rumble_on);
+		input_device_set_rumble(wiimote->input_device, rumble_on);
 	}
 }
 
@@ -701,7 +702,7 @@ void fake_wiimote_tick(fake_wiimote_t *wiimote)
 		/* "If the connection originated from the device (Wiimote) it will create
 		 * HID control and interrupt channels (in that order)." */
 		if (wiimote->acl_state == ACL_STATE_LINKING) {
-			bool hid_cntrl_chn_complete = l2cap_channel_is_complete(&wiimote->psm_hid_cntl_chn);
+			bool hid_cntl_chn_complete = l2cap_channel_is_complete(&wiimote->psm_hid_cntl_chn);
 
 			/* If-else-if cascade to avoid sending too many packets on the same "tick" */
 			if (!wiimote->psm_hid_cntl_chn.valid) {
@@ -711,18 +712,19 @@ void fake_wiimote_tick(fake_wiimote_t *wiimote)
 				assert(ret == IOS_OK);
 				l2cap_channel_info_setup(&wiimote->psm_hid_cntl_chn, L2CAP_PSM_HID_CNTL, local_cid);
 				DEBUG("Generated local CID for HID CNTL: 0x%x\n", local_cid);
-			} else if (hid_cntrl_chn_complete && !wiimote->psm_hid_intr_chn.valid) { /* TODO IMPROVE */
+			} else if (hid_cntl_chn_complete && !wiimote->psm_hid_intr_chn.valid) {
 				u16 local_cid = generate_l2cap_channel_id();
 				ret = inject_l2cap_connect_req(wiimote->hci_con_handle, L2CAP_PSM_HID_INTR,
 							       local_cid);
 				assert(ret == IOS_OK);
 				l2cap_channel_info_setup(&wiimote->psm_hid_intr_chn, L2CAP_PSM_HID_INTR, local_cid);
 				DEBUG("Generated local CID for HID INTR: 0x%x\n", local_cid);
-			} else if (hid_cntrl_chn_complete &&
+			} else if (hid_cntl_chn_complete &&
 				   l2cap_channel_is_complete(&wiimote->psm_hid_intr_chn)) {
 				wiimote->acl_state = ACL_STATE_INACTIVE;
-				/* Call init() input_device callback */
-				wiimote->input_device_ops->init(wiimote->usrdata, wiimote);
+				/* Call resume() input device callback */
+				input_device_resume(wiimote->input_device);
+				return;
 			}
 			/* Send configuration for any newly connected channels. */
 			check_send_config_for_new_channel(wiimote->hci_con_handle, &wiimote->psm_hid_cntl_chn);
@@ -740,7 +742,7 @@ void fake_wiimote_tick(fake_wiimote_t *wiimote)
 				return;
 			}
 
-			if (wiimote->input_device_ops->report_input(wiimote->usrdata))
+			if (input_device_report_input(wiimote->input_device))
 				fake_wiimote_send_data_report(wiimote);
 		}
 	}
@@ -749,28 +751,17 @@ void fake_wiimote_tick(fake_wiimote_t *wiimote)
 static void handle_l2cap_config_req(fake_wiimote_t *wiimote, u8 ident, u16 dcid, u16 flags,
 				    const u8 *options, u16 options_size)
 {
-	u8 tmp[256];
-	u32 opt_size;
 	l2cap_channel_info_t *info;
 	l2cap_cfg_opt_t *opt;
 	l2cap_cfg_opt_val_t *val;
-	l2cap_cfg_rsp_cp *rsp = (l2cap_cfg_rsp_cp *)tmp;
 	u32 offset = 0;
-	u32 resp_len = 0;
 	/* If the option is not provided, configure the default. */
 	u16 remote_mtu = L2CAP_MTU_DEFAULT;
 
 	assert(flags == 0x00);
-	assert(options_size <= sizeof(tmp));
 
 	info = get_channel_info(wiimote, dcid);
 	assert(info);
-
-	/* Response to the config request */
-	rsp->scid = htole16(info->remote_cid);
-	rsp->flags = htole16(0x00);
-	rsp->result = htole16(L2CAP_SUCCESS);
-	resp_len += sizeof(l2cap_cfg_rsp_cp);
 
 	/* Read configuration options. */
 	while (offset < options_size) {
@@ -795,16 +786,13 @@ static void handle_l2cap_config_req(fake_wiimote_t *wiimote, u8 ident, u16 dcid,
 		}
 
 		offset += opt->length;
-		opt_size = sizeof(l2cap_cfg_opt_t) + opt->length;
-		memcpy(&tmp[resp_len], options, opt_size);
-		resp_len += opt_size;
 	}
 
-	/* Send Respone */
-	inject_l2cap_config_rsp(wiimote->hci_con_handle, dcid, ident, tmp, resp_len);
-
-	/* Set the MTU */
+	/* Set the configured MTU */
 	info->remote_mtu = remote_mtu;
+
+	/* Send Respone (with the same options as received) */
+	inject_l2cap_config_rsp(wiimote->hci_con_handle, info->remote_cid, ident, options, options_size);
 }
 
 static void handle_l2cap_signal_channel(fake_wiimote_t *wiimote, u8 code, u8 ident,
@@ -885,15 +873,9 @@ static void handle_l2cap_signal_channel(fake_wiimote_t *wiimote, u8 code, u8 ide
 		u16 scid = le16toh(req->scid);
 		DEBUG("  L2CAP_DISCONNECT_REQ: dcid: 0x%x, scid: 0x%x\n", dcid, scid);
 
-		info = get_channel_info(wiimote, scid);
+		info = get_channel_info(wiimote, dcid);
 		assert(info);
-
-		/* If it's the L2CAP Interrupt channel connection, notify the driver of disconnection */
-		if ((info->psm == L2CAP_PSM_HID_INTR) && l2cap_channel_is_complete(info)) {
-			if (wiimote->input_device_ops->disconnect)
-				wiimote->input_device_ops->disconnect(wiimote->usrdata);
-			info->valid = false;
-		}
+		info->valid = false;
 
 		/* Send disconnect response */
 		inject_l2cap_disconnect_rsp(wiimote->hci_con_handle, ident, dcid, scid);
@@ -939,9 +921,8 @@ static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data,
 	case OUTPUT_REPORT_ID_LED: {
 		struct wiimote_output_report_led_t *led = (void *)&data[1];
 		wiimote->status.leds = led->leds;
-		/* Call set_leds() input_device callback */
-		if (wiimote->input_device_ops->set_leds)
-			wiimote->input_device_ops->set_leds(wiimote->usrdata, led->leds);
+		/* Call set_leds() input device callback */
+		input_device_set_leds(wiimote->input_device, led->leds);
 		if (led->ack)
 			wiimote_send_ack(wiimote, OUTPUT_REPORT_ID_LED, ERROR_CODE_SUCCESS);
 		break;

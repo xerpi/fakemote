@@ -11,6 +11,7 @@ typedef struct usb_device_driver_t usb_device_driver_t;
 
 typedef struct {
 	bool valid;
+	bool suspended;
 	/* VID and PID */
 	u16 vid;
 	u16 pid;
@@ -21,6 +22,8 @@ typedef struct {
 	const usb_device_driver_t *driver;
 	/* Assigned fake Wiimote */
 	fake_wiimote_t *wiimote;
+	/* Assigned input device */
+	input_device_t *input_device;
 	/* Notification message we get when we receive a USB async respone */
 	areply usb_async_resp_msg;
 	/* Buffer where we store the USB async respones */

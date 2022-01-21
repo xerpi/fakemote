@@ -15,24 +15,6 @@ void fake_wiimote_mgr_init(void)
 		fake_wiimote_init(&fake_wiimotes[i], &FAKE_WIIMOTE_BDADDR(i));
 }
 
-bool fake_wiimote_mgr_add_input_device(void *usrdata, const input_device_ops_t *ops)
-{
-	/* Find an inactive fake Wiimote */
-	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
-		if (!fake_wiimotes[i].active) {
-			fake_wiimote_reset_state(&fake_wiimotes[i], usrdata, ops);
-			fake_wiimotes[i].active = true;
-			return true;
-		}
-	}
-	return false;
-}
-
-bool fake_wiimote_mgr_remove_input_device(fake_wiimote_t *wiimote)
-{
-	return fake_wiimote_disconnect(wiimote) == IOS_OK;
-}
-
 static inline void fake_wiimote_mgr_send_event_number_of_completed_packets(void)
 {
 	u16 con_handles[MAX_FAKE_WIIMOTES];
@@ -57,8 +39,29 @@ static inline void fake_wiimote_mgr_send_event_number_of_completed_packets(void)
 		inject_hci_event_num_compl_pkts(num_con_handles, con_handles, compl_pkts);
 }
 
+static inline void fake_wiimote_mgr_check_assign_input_devices(void)
+{
+	input_device_t *input_device;
+
+	/* Find if there's a fake Wiimote without an input device assigned */
+	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
+		if (fake_wiimotes[i].active)
+			continue;
+
+		input_device = input_device_get_unassigned();
+		if (input_device) {
+			input_device_assign_wiimote(input_device, &fake_wiimotes[i]);
+			fake_wiimote_init_state(&fake_wiimotes[i], input_device);
+			fake_wiimotes[i].active = true;
+		}
+	}
+}
+
 void fake_wiimote_mgr_tick_devices(void)
 {
+	if (hci_can_request_connection())
+		fake_wiimote_mgr_check_assign_input_devices();
+
 	for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
 		if (fake_wiimotes[i].active)
 			fake_wiimote_tick(&fake_wiimotes[i]);
@@ -133,6 +136,8 @@ static bool fake_wiimote_mgr_handle_hci_cmd_disconnect(u16 hci_con_handle, u8 re
 	int ret;
 	fake_wiimote_t *wiimote;
 
+	DEBUG("Handle HCI_CMD_DISCONNECT: con handle: 0x%x\n", hci_con_handle);
+
 	wiimote = get_fake_wiimote_for_hci_con_handle(hci_con_handle);
 	if (!wiimote)
 		return false;
@@ -143,6 +148,7 @@ static bool fake_wiimote_mgr_handle_hci_cmd_disconnect(u16 hci_con_handle, u8 re
 	/* Host wants disconnection to our fake wiimote. Disconnect */
 	DEBUG("Host requested disconnection of fake Wiimote\n");
 	fake_wiimote_disconnect(wiimote);
+
 	return true;
 }
 
@@ -273,6 +279,16 @@ bool fake_wiimote_mgr_handle_hci_cmd_from_host(const hci_cmd_hdr_t *hdr)
 		}
 		break;
 	}
+	case HCI_CMD_RESET:
+		for (int i = 0; i < MAX_FAKE_WIIMOTES; i++) {
+			if (fake_wiimotes[i].active) {
+				/* Unassign the currently assigned input device (if any) */
+				if (fake_wiimotes[i].input_device)
+					input_device_release_wiimote(fake_wiimotes[i].input_device);
+				fake_wiimotes[i].active = false;
+			}
+		}
+		break;
 	case HCI_CMD_READ_STORED_LINK_KEY: {
 		hci_read_stored_link_key_cp *cp = payload;
 		if (cp->read_all) {

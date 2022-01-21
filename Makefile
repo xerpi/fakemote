@@ -36,6 +36,7 @@ OBJS	= source/start.o		\
 	  source/main.o			\
 	  source/hci_state.o		\
 	  source/injmessage.o		\
+	  source/input_device.o		\
 	  source/fake_wiimote.o		\
 	  source/fake_wiimote_mgr.o	\
 	  source/libc.o			\

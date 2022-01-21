@@ -45,8 +45,7 @@ typedef struct fake_wiimote_t {
 	l2cap_channel_info_t psm_hid_intr_chn;
 	u32 num_completed_acl_data_packets;
 	/* Associated input device with this fake Wiimote */
-	void *usrdata;
-	const input_device_ops_t *input_device_ops;
+	input_device_t *input_device;
 	/* Reporting mode */
 	u8 reporting_mode;
 	bool reporting_continuous;
@@ -86,8 +85,9 @@ typedef struct fake_wiimote_t {
 
 /** Used by the Fake Wiimote manager **/
 void fake_wiimote_init(fake_wiimote_t *wiimote, const bdaddr_t *bdaddr);
-void fake_wiimote_reset_state(fake_wiimote_t *wiimote, void *usrdata, const input_device_ops_t *ops);
+void fake_wiimote_init_state(fake_wiimote_t *wiimote, input_device_t *input_device);
 void fake_wiimote_handle_hci_cmd_accept_con(fake_wiimote_t *wiimote, u8 role);
+void fake_wiimote_release_input_device(fake_wiimote_t *wiimote);
 int fake_wiimote_disconnect(fake_wiimote_t *wiimote);
 void fake_wiimote_tick(fake_wiimote_t *wiimote);
 void fake_wiimote_handle_acl_data_out_request_from_host(fake_wiimote_t *wiimote,

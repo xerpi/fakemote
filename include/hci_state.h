@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 
-void hci_state_init(void);
+void hci_state_reset(void);
 
 /* Used by fake Wiimote manager */
 u16 hci_con_handle_virt_alloc(void);

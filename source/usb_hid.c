@@ -261,11 +261,21 @@ int usb_device_driver_issue_intr_transfer_async(usb_input_device_t *device, int 
 					      queue_id, &device->usb_async_resp_msg);
 }
 
-static int usb_device_ops_init(void *usrdata, fake_wiimote_t *wiimote)
+static int usb_device_ops_resume(void *usrdata, fake_wiimote_t *wiimote)
 {
 	usb_input_device_t *device = usrdata;
 
-	DEBUG("usb_device_ops_init\n");
+	DEBUG("usb_device_ops_resume\n");
+
+	if (device->suspended) {
+		/* FIXME: Doesn't work properly with DS3.
+		 * It doesn't report any data after suspend+resume... */
+#if 0
+		if (usb_hid_v5_suspend_resume(device->host_fd, device->dev_id, 1, 0) != IOS_OK)
+			return IOS_ENOENT;
+#endif
+		device->suspended = false;
+	}
 
 	/* Store assigned fake Wiimote */
 	device->wiimote = wiimote;
@@ -276,24 +286,21 @@ static int usb_device_ops_init(void *usrdata, fake_wiimote_t *wiimote)
 	return 0;
 }
 
-static int usb_device_ops_disconnect(void *usrdata)
+static int usb_device_ops_suspend(void *usrdata)
 {
 	int ret = 0;
 	usb_input_device_t *device = usrdata;
 
-	DEBUG("usb_device_ops_disconnect\n");
+	DEBUG("usb_device_ops_suspend\n");
 
 	if (device->driver->disconnect)
 		ret = device->driver->disconnect(device);
 
 	/* Suspend the device */
+#if 0
 	usb_hid_v5_suspend_resume(device->host_fd, device->dev_id, 0, 0);
-
-	/* Release the device */
-	usb_hid_v5_release(device->host_fd, device->dev_id);
-
-	/* Set this device as not valid */
-	device->valid = false;
+#endif
+	device->suspended = true;
 
 	return ret;
 }
@@ -329,14 +336,14 @@ static bool usb_device_ops_report_input(void *usrdata)
 {
 	usb_input_device_t *device = usrdata;
 
-	DEBUG("usb_device_ops_report_input\n");
+	//DEBUG("usb_device_ops_report_input\n");
 
 	return device->driver->report_input(device);
 }
 
 static const input_device_ops_t input_device_usb_ops = {
-	.init		= usb_device_ops_init,
-	.disconnect	= usb_device_ops_disconnect,
+	.resume		= usb_device_ops_resume,
+	.suspend	= usb_device_ops_suspend,
 	.set_leds	= usb_device_ops_set_leds,
 	.set_rumble	= usb_device_ops_set_rumble,
 	.report_input	= usb_device_ops_report_input,
@@ -375,8 +382,8 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 		if (!found) {
 			if (device->driver->disconnect)
 				ret = device->driver->disconnect(device);
-			/* Tell the fake Wiimote manager we got a disconnection */
-			fake_wiimote_mgr_remove_input_device(device->wiimote);
+			/* Tell the fake Wiimote manager we got an input device removal */
+			input_devices_remove(device->input_device);
 			/* Set this device as not valid */
 			device->valid = false;
 		}
@@ -423,7 +430,7 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 		}
 
 		/* Get a fake Wiimote from the manager */
-		if (!fake_wiimote_mgr_add_input_device(device, &input_device_usb_ops)) {
+		if (!input_devices_add(device, &input_device_usb_ops, &device->input_device)) {
 			usb_hid_v5_release(host_fd, dev_id);
 			continue;
 		}
@@ -436,6 +443,7 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 		device->driver = driver;
 		/* We will get a fake Wiimote assigneed at the init() callback */
 		device->wiimote = NULL;
+		device->suspended = false;
 		device->valid = true;
 
 	}
@@ -476,7 +484,7 @@ static int usb_hid_worker(void *arg)
 	while (1) {
 		areply *message;
 
-		/* Wait for message */
+		/* Wait for a message from USB devices */
 		ret = os_message_queue_receive(queue_id, (void *)&message, IOS_MESSAGE_BLOCK);
 		if (ret != IOS_OK)
 			continue;

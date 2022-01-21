@@ -10,8 +10,10 @@
 
 /* Snooped HCI state (requested by SW BT stack) */
 static u8 hci_unit_class[HCI_CLASS_SIZE];
-static u8 hci_page_scan_enable = 0;
-static u8 hci_read_stored_link_key_read_all = 0;
+static u8 hci_page_scan_enable;
+static u8 hci_read_stored_link_key_read_all;
+/* Other variables */
+static u16 last_hci_virt_con_handle;
 
 /* Simulated HCI state */
 static struct {
@@ -20,18 +22,23 @@ static struct {
 	u16 phys; /* The one the BT dongle uses */
 } hci_virt_con_handle_map_table[MAX_HCI_CONNECTIONS];
 
-void hci_state_init()
+void hci_state_reset()
 {
 	for (int i = 0; i < ARRAY_SIZE(hci_virt_con_handle_map_table); i++)
 		hci_virt_con_handle_map_table[i].valid = false;
+
+	memset(hci_unit_class, 0, sizeof(hci_unit_class));
+	hci_page_scan_enable = 0;
+	hci_read_stored_link_key_read_all = 0;
+
+	last_hci_virt_con_handle = 0;
 }
 
 u16 hci_con_handle_virt_alloc(void)
 {
-	/* FIXME: We can have collisions after it wraps around! */
-	static u16 last_virt_con_handle = 0;
-	u16 ret = last_virt_con_handle;
-	last_virt_con_handle = (last_virt_con_handle + 1) & 0x0EFF;
+	u16 ret = last_hci_virt_con_handle;
+	/* XXX: We can have collisions after it wraps around! */
+	last_hci_virt_con_handle = (last_hci_virt_con_handle + 1) & 0x0EFF;
 	return ret;
 }
 
@@ -52,7 +59,7 @@ static bool hci_virt_con_handle_map(u16 phys, u16 virt)
 		if (!hci_virt_con_handle_map_table[i].valid) {
 			hci_virt_con_handle_map_table[i].virt = virt;
 			hci_virt_con_handle_map_table[i].phys = phys;
-			hci_virt_con_handle_map_table[i].valid = 1;
+			hci_virt_con_handle_map_table[i].valid = true;
 			return true;
 		}
 	}
@@ -64,7 +71,7 @@ static bool hci_virt_con_handle_unmap_virt(u16 virt)
 	for (int i = 0; i < ARRAY_SIZE(hci_virt_con_handle_map_table); i++) {
 		if (hci_virt_con_handle_map_table[i].valid &&
 		    hci_virt_con_handle_map_table[i].virt == virt) {
-			hci_virt_con_handle_map_table[i].valid = 0;
+			hci_virt_con_handle_map_table[i].valid = false;
 			return true;
 		}
 	}
@@ -166,6 +173,10 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 	TRANSLATE_CON_HANDLE(HCI_CMD_WRITE_LINK_POLICY_SETTINGS, hci_write_link_policy_settings_cp)
 	TRANSLATE_CON_HANDLE(HCI_CMD_FLOW_SPECIFICATION, hci_flow_specification_cp)
 	TRANSLATE_CON_HANDLE(HCI_CMD_SNIFF_SUBRATING, hci_sniff_subrating_cp)
+	case HCI_CMD_RESET:
+		DEBUG("HCI_CMD_RESET\n");
+		hci_state_reset();
+		break;
 	TRANSLATE_CON_HANDLE(HCI_CMD_FLUSH, hci_flush_cp)
 	case HCI_CMD_READ_STORED_LINK_KEY: {
 		hci_read_stored_link_key_cp *cp = payload;
