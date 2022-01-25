@@ -22,5 +22,6 @@ static inline bool usb_driver_is_comaptible(u16 vid, u16 pid, const struct devic
 
 extern const usb_device_driver_t ds3_usb_device_driver;
 extern const usb_device_driver_t ds4_usb_device_driver;
+extern const usb_device_driver_t generic_usb_pid_0006_usb_device_driver;
 
 #endif
