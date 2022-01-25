@@ -22,7 +22,7 @@ void input_devices_init(void)
 }
 
 bool input_devices_add(void *usrdata, const input_device_ops_t *ops,
-		      input_device_t **assigned_input_device)
+		       input_device_t **assigned_input_device)
 {
 	/* Find a free input device slot */
 	for (int i = 0; i < ARRAY_SIZE(input_devices); i++) {

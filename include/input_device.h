@@ -20,7 +20,7 @@ void input_devices_tick(void);
 /** Used by input devices **/
 
 bool input_devices_add(void *usrdata, const input_device_ops_t *ops,
-		      input_device_t **assigned_input_device);
+		       input_device_t **assigned_input_device);
 void input_devices_remove(input_device_t *input_device);
 
 /** Used by fake Wiimotes and fake Wiimote manager **/
