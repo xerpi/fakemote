@@ -5,8 +5,8 @@ ENTRY(_start)
 /* Sections area */
 MEMORY {
 	table		: ORIGIN = 0x0, LENGTH = 0x4000
-	exe(rx)		: ORIGIN = 0x13970000, LENGTH = 0x9000
-	data(rw)	: ORIGIN = 0x13979000, LENGTH = 0xE000
+	exe(rx)		: ORIGIN = 0x13970000, LENGTH = 0xB000
+	data(rw)	: ORIGIN = 0x1397B000, LENGTH = 0xE000
 }
 
 SECTIONS {

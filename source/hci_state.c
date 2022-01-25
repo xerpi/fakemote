@@ -2,6 +2,7 @@
 #include <string.h>
 #include "fake_wiimote_mgr.h"
 #include "hci.h"
+#include "hci_names.h"
 #include "hci_state.h"
 #include "utils.h"
 #include "syscalls.h"
@@ -112,7 +113,7 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 	u16 virt, phys = 0;
 	bool success;
 
-	DEBUG("H > C HCI CMD: opcode: 0x%04x\n", opcode);
+	DEBUG("H > C HCI CMD: opcode: 0x%04x (%s)\n", opcode, hci_cmd_name(opcode));
 
 	/* If the request targets a "fake wiimote", we don't have to hand it down to OH1.
 	 * Otherwise, we just have to patch the HCI connection handle from virtual to physical.
@@ -216,7 +217,7 @@ void hci_state_handle_hci_event_from_controller(void *data, u32 length)
 	/* Here we just have to patch the HCI connection handles from physical to virtual,
 	 * and check for connection/disconnection events to create/remove the mappings.  */
 
-	DEBUG("C > H HCI EVT: event: 0x%02x, len: 0x%x\n", hdr->event, hdr->length);
+	DEBUG("C > H HCI EVT: event: 0x%02x (%s), len: 0x%x\n", hdr->event, hci_event_name(hdr->event), hdr->length);
 
 #define TRANSLATE_CON_HANDLE(event, type) \
 	case event: { \
@@ -335,6 +336,9 @@ void hci_state_handle_acl_data_in_response_from_controller(void *data, u32 lengt
 	DEBUG("H < C ACL  IN: pcon_handle: 0x%x, len: 0x%x\n", phys, payload_len);
 
 	ret = hci_virt_con_handle_get_virt(phys, &virt);
+	if (!ret) {
+		return;
+	}
 	assert(ret);
 	hdr->con_handle = htole16(HCI_MK_CON_HANDLE(virt, pb, pc));
 
