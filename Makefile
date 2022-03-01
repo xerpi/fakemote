@@ -44,7 +44,8 @@ OBJS	= source/start.o		\
 	  source/conf.o			\
 	  source/usb_hid.o		\
 	  source/usb_driver_ds3.o	\
-	  source/usb_driver_ds4.o
+	  source/usb_driver_ds4.o	\
+	  source/usb_driver_nintendont.o
 
 
 # Dependency files
