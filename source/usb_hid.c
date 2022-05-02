@@ -54,6 +54,7 @@ static_assert(sizeof(struct usb_hid_v5_transfer) == 64);
 static const usb_device_driver_t *usb_device_drivers[] = {
 	&ds3_usb_device_driver,
 	&ds4_usb_device_driver,
+	&ds_usb_device_driver,
 };
 
 static usb_input_device_t usb_devices[MAX_FAKE_WIIMOTES];
