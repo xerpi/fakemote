@@ -50,7 +50,7 @@ void input_devices_remove(input_device_t *input_device)
 		fake_wiimote_release_input_device(wiimote);
 		fake_wiimote_disconnect(wiimote);
 	}
-	input_devices->valid = false;
+	input_device->valid = false;
 }
 
 void input_devices_tick(void)
