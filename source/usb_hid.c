@@ -281,7 +281,7 @@ static int usb_device_ops_resume(void *usrdata, fake_wiimote_t *wiimote)
 	device->wiimote = wiimote;
 
 	if (device->driver->init)
-		return device->driver->init(device, device->pid, device->vid);
+		return device->driver->init(device, device->vid, device->pid);
 
 	return 0;
 }
