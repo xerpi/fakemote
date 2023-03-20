@@ -697,6 +697,9 @@ bool ds3_driver_ops_probe(u16 vid, u16 pid)
 {
 	static const struct device_id_t compatible[] = {
 		{SONY_VID, 0x0268},
+		{SONY_INST_VID, GH_GUITAR_PID},
+		{SONY_INST_VID, GH_DRUM_PID},
+		{SONY_INST_VID, DJ_TURNTABLE_PID},
 	};
 
 	return usb_driver_is_comaptible(vid, pid, compatible, ARRAY_SIZE(compatible));
