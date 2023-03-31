@@ -6,11 +6,13 @@
 /* List of Vendor IDs */
 #define SONY_VID			0x054c
 #define SONY_INST_VID		0x12ba
+#define SANTROLLER_VID		0x1209
 
 /* List of Product IDs */
 #define GH_GUITAR_PID		0x0100
 #define GH_DRUM_PID			0x0120
 #define DJ_TURNTABLE_PID	0x0140
+#define SANTROLLER_PID		0x2882
 
 struct device_id_t {
 	u16 vid;

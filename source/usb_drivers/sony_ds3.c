@@ -700,6 +700,7 @@ bool ds3_driver_ops_probe(u16 vid, u16 pid)
 		{SONY_INST_VID, GH_GUITAR_PID},
 		{SONY_INST_VID, GH_DRUM_PID},
 		{SONY_INST_VID, DJ_TURNTABLE_PID},
+		{SANTROLLER_VID, SANTROLLER_PID},
 	};
 
 	return usb_driver_is_comaptible(vid, pid, compatible, ARRAY_SIZE(compatible));
