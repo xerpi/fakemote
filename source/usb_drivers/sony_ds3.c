@@ -723,8 +723,18 @@ int ds3_driver_ops_init(usb_input_device_t *device, u16 vid, u16 pid)
 	priv->switch_mapping = false;
 	priv->switch_ir_emu_mode = false;
 
-	/* Set initial extension */
-	fake_wiimote_set_extension(device->wiimote, input_mappings[priv->mapping].extension);
+	if (device->vid == SONY_INST_VID) {
+        if (device->pid == GH_GUITAR_PID) {
+            fake_wiimote_set_extension(device->wiimote, WIIMOTE_EXT_GUITAR);
+        } else if (device->pid == GH_DRUM_PID) {
+            fake_wiimote_set_extension(device->wiimote, WIIMOTE_EXT_DRUM);
+        } else if (device->pid == DJ_TURNTABLE_PID) {
+            fake_wiimote_set_extension(device->wiimote, WIIMOTE_EXT_TURNTABLE);
+        }
+    } else {
+        /* Set initial extension */
+        fake_wiimote_set_extension(device->wiimote, input_mappings[priv->mapping].extension);
+    }
 
 	ret = ds3_request_data(device);
 	if (ret < 0)
