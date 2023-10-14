@@ -309,6 +309,8 @@ int fake_wiimote_disconnect(fake_wiimote_t *wiimote)
 {
 	int ret = 0;
 
+	wiimote->active = false;
+
 	/* Unassign the currently assigned input device (if any) */
 	if (wiimote->input_device)
 		input_device_release_wiimote(wiimote->input_device);
@@ -319,8 +321,6 @@ int fake_wiimote_disconnect(fake_wiimote_t *wiimote)
 		ret = inject_hci_event_discon_compl(wiimote->hci_con_handle,
 						    0, 0x13 /* User Ended Connection */);
 	}
-
-	wiimote->active = false;
 
 	return ret;
 }
