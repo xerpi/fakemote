@@ -15,6 +15,8 @@ typedef struct {
 	/* VID and PID */
 	u16 vid;
 	u16 pid;
+	u16 max_packet_len;
+	u8 endpoint_address;
 	/* Used to communicate with Wii's USB module */
 	int host_fd;
 	u32 dev_id;

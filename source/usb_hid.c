@@ -81,15 +81,6 @@ struct usb_hid_v4_transfer {
 	void* data; // virtual pointer, not physical!
 } ATTRIBUTE_PACKED; // 32 bytes
 
-struct usb_endpoint_descriptor {
-	u8 bLength; // Length of this descriptor.
-	u8 bDescriptorType; // ENDPOINT descriptor type (USB_DESCRIPTOR_ENDPOINT).
-	u8 bEndpointAddress; // Endpoint address. Bit 7 indicates direction (0=OUT, 1=IN).
-	u8 bmAttributes; // Endpoint transfer type.
-	u16 wMaxPacketSize; // Maximum packet size.
-	u8 bInterval; // Polling interval in frames.
-} ATTRIBUTE_PACKED;
-
 static_assert(sizeof(struct usb_hid_v5_transfer) == 64);
 static_assert(sizeof(struct usb_hid_v4_transfer) == 32);
 
@@ -602,6 +593,8 @@ static void handle_v4_device_change_reply(int host_fd, areply *reply)
 	u16 vid, pid;
 	u32 vid_pid;
 	u32 dev_id;
+	u16 packet_size = 128;
+	u8 endpoint_address = 0;
 	bool found;
 
 	DEBUG("Device change, #Attached devices: %d\n", reply->result);
@@ -640,20 +633,22 @@ static void handle_v4_device_change_reply(int host_fd, areply *reply)
 		vid = (vid_pid >> 16) & 0xFFFF;
 		pid = vid_pid & 0xFFFF;
 		DEBUG("[%d] VID: 0x%04x, PID: 0x%04x, dev_id: 0x%x\n", i, vid, pid, dev_id);
-		// u32 total_len = device_change_devices[i] / 4;
-		// int j = 0;
-		// while (j < total_len) {
-		// 	struct usb_endpoint_descriptor* desc = (struct usb_endpoint_descriptor*)(device_change_devices + i);
-		// 	if (desc->bDescriptorType == 5) {
-		// 		int in = (desc->bEndpointAddress & USB_ENDPOINT_IN);
-		// 		if (in) {
-		// 			endpoint_address = desc->bEndpointAddress;
-		// 			packet_size = desc->wMaxPacketSize;
-		// 			break;
-		// 		}
-		// 	}
-		// 	j += desc->bLength;
-		// }
+		u32 total_len = device_change_v4_devices[i] / 4;
+		int j = 2;
+		while (j < total_len) {
+			u8 len = (device_change_v4_devices[i+j] >> 24) & 0xFF;
+			u8 type = (device_change_v4_devices[i+j] >> 16) & 0xFF;
+			if (type == 5) {
+				u8 addr = (device_change_v4_devices[i+j] >> 8) & 0xFF;
+				int in = (addr & USB_ENDPOINT_IN);
+				if (in) {
+					packet_size = (device_change_v4_devices[i+j+1] >> 16) & 0xFFFF;
+					endpoint_address = addr;
+					break;
+				}
+			}
+			j += (len / 4) + 1;
+		}
 		
 		/* Find if we have a driver for that VID/PID */
 		driver = get_usb_device_driver_for(vid, pid);
@@ -678,8 +673,10 @@ static void handle_v4_device_change_reply(int host_fd, areply *reply)
 		device->vid = vid;
 		device->pid = pid;
 		device->host_fd = host_fd;
+		device->max_packet_len = packet_size;
 		device->dev_id = dev_id;
 		device->driver = driver;
+		device->endpoint_address = endpoint_address;
 		/* We will get a fake Wiimote assigneed at the init() callback */
 		device->wiimote = NULL;
 		device->suspended = false;

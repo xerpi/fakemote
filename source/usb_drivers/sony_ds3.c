@@ -630,6 +630,7 @@ static inline void turntable_get_analog_axis(const struct turntable_input_report
 
 static int ds3_set_operational(usb_input_device_t *device)
 {
+	return 0;
 	u8 buf[17] ATTRIBUTE_ALIGN(32);
 	return usb_device_driver_issue_ctrl_transfer(device,
 						     USB_REQTYPE_INTERFACE_GET,
@@ -640,16 +641,20 @@ static int ds3_set_operational(usb_input_device_t *device)
 
 static inline int ds3_request_data(usb_input_device_t *device)
 {
-	return usb_device_driver_issue_ctrl_transfer_async(device,
-							   USB_REQTYPE_INTERFACE_GET,
-							   USB_REQ_GETREPORT,
-							   (USB_REPTYPE_INPUT << 8) | 0x01, 0,
-							   device->usb_async_resp,
-							   32);
+	return usb_device_driver_issue_intr_transfer_async(device, device->endpoint_address, device->usb_async_resp,
+							   device->max_packet_len);
+
+	// return usb_device_driver_issue_ctrl_transfer_async(device,
+	// 						   USB_REQTYPE_INTERFACE_GET,
+	// 						   USB_REQ_GETREPORT,
+	// 						   (USB_REPTYPE_INPUT << 8) | 0x01, 0,
+	// 						   device->usb_async_resp,
+	// 						   device->max_packet_len);
 }
 
 static int ds3_set_leds_rumble(usb_input_device_t *device, u8 leds, const struct ds3_rumble *rumble)
 {
+	return 0;
 	u8 buf[] ATTRIBUTE_ALIGN(32) = {
 		0x00,                         /* Padding */
 		0x00, 0x00, 0x00, 0x00,       /* Rumble (r, r, l, l) */
