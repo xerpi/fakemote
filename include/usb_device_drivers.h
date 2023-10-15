@@ -31,5 +31,8 @@ static inline bool usb_driver_is_comaptible(u16 vid, u16 pid, const struct devic
 
 extern const usb_device_driver_t ds3_usb_device_driver;
 extern const usb_device_driver_t ds4_usb_device_driver;
+extern const usb_device_driver_t gh_guitar_usb_device_driver;
+extern const usb_device_driver_t gh_drum_usb_device_driver;
+extern const usb_device_driver_t turntable_usb_device_driver;
 
 #endif

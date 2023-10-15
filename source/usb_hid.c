@@ -87,6 +87,11 @@ static_assert(sizeof(struct usb_hid_v4_transfer) == 32);
 static const usb_device_driver_t *usb_device_drivers[] = {
 	&ds3_usb_device_driver,
 	&ds4_usb_device_driver,
+	&gh_guitar_usb_device_driver,
+	&gh_drum_usb_device_driver,
+	&turntable_usb_device_driver
+
+
 };
 
 static usb_input_device_t usb_devices[MAX_FAKE_WIIMOTES];
@@ -574,6 +579,9 @@ static void handle_v5_device_change_reply(int host_fd, areply *reply)
 		device->host_fd = host_fd;
 		device->dev_id = dev_id;
 		device->driver = driver;
+		/* With HIDv5, we don't need to specify these values explicitly */
+		device->max_packet_len = 128;
+		device->endpoint_address = 0;
 		/* We will get a fake Wiimote assigneed at the init() callback */
 		device->wiimote = NULL;
 		device->suspended = false;

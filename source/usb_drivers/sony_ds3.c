@@ -72,112 +72,6 @@ struct ds3_input_report {
 	u16 z_gyro;
 } ATTRIBUTE_PACKED;
 
-struct guitar_input_report {
-	u8 			: 2;
-	u8 pedal	: 1;
-	u8 orange	: 1;
-	u8 blue		: 1;
-	u8 red		: 1;
-	u8 green 	: 1;
-	u8 yellow	: 1;
-
-	u8			: 3;
-	u8 ps		: 1;
-	u8			: 2;
-	u8 start	: 1;
-	u8 select	: 1;
-
-	u8 hat;
-
-	u8 unused0;
-	u8 unused1;
-	u8 whammy_bar;
-	u8 tap_bar;
-
-	u8 pressure_dpadRight_yellow;
-	u8 pressure_dpadLeft;
-	u8 pressure_dpadUp_green;
-	u8 pressure_dpadDown_orange;
-	u8 pressure_blue;
-	u8 pressure_red;
-	u8 unused2[6];
-
-	// Reminder that these values are 10-bit in range
-	u16 acc_x;
-	u16 acc_z;
-	u16 acc_y;
-	u16 z_gyro;
-
-} ATTRIBUTE_PACKED;
-struct drum_input_report {
-	u8			: 2;
-	u8 kick		: 1;
-	u8 orange	: 1;
-	u8 yellow	: 1;
-	u8 red		: 1;
-	u8 green	: 1;
-	u8 blue		: 1;
-
-	u8			: 3;
-	u8 ps		: 1;
-	u8			: 2;
-	u8 start	: 1;
-	u8 select	: 1;
-
-	u8 hat;
-	u8 unused;
-	u8 unused2;
-	u8 whammy_bar;
-	u8 tap_bar;
-	u8 pressure_yellow;
-	u8 pressure_red;
-	u8 pressure_green;
-	u8 pressure_blue;
-	u8 pressure_kick;
-	u8 pressure_orange;
-	u8 unused3[2];
-	u16 unused4[4];
-
-} ATTRIBUTE_PACKED;
-struct turntable_input_report {
-	u8			: 4;
-	u8 triangle_euphoria : 1;
-	u8 circle	: 1;
-	u8 cross	: 1;
-	u8 square	: 1;
-
-	u8			: 3;
-	u8 ps		: 1;
-	u8			: 2;
-	u8 start	: 1;
-	u8 select	: 1;
-
-	u8 hat;
-	u8 unused;
-	u8 unused2;
-	u8 left_turn_table_velocity;
-	u8 right_turn_table_velocity;
-	u8 pressure_yellow;
-	u8 pressure_red;
-	u8 pressure_green;
-	u8 pressure_blue;
-	u8 pressure_kick;
-	u8 pressure_orange;
-	u8 unused3[2];
-	u16 effects_knob;
-	u16 cross_fader;
-	u16 right_green : 1;
-	u16 right_red : 1;
-	u16 right_blue : 1;
-	u16 left_green : 1;
-	u16 left_red : 1;
-	u16 left_blue : 1;
-	u16 : 3;
-	u16 table_neutral : 1;
-	u16 : 6;
-	u16 : 16;
-
-} ATTRIBUTE_PACKED;
 struct ds3_rumble {
 	u8 duration_right;
 	u8 power_right;
@@ -206,61 +100,6 @@ enum ds3_buttons_e {
 	DS3_BUTTON__NUM
 };
 
-enum guitar_buttons_e {
-	GUITAR_BUTTON_YELLOW,
-	GUITAR_BUTTON_GREEN,
-	GUITAR_BUTTON_RED,
-	GUITAR_BUTTON_BLUE,
-	GUITAR_BUTTON_ORANGE,
-	GUITAR_BUTTON_UP,
-	GUITAR_BUTTON_DOWN,
-	GUITAR_BUTTON_LEFT,
-	GUITAR_BUTTON_RIGHT,
-	GUITAR_BUTTON_SP_PEDAL,
-	GUITAR_BUTTON_SELECT,
-	GUITAR_BUTTON_START,
-	GUITAR_BUTTON_PS,
-	GUITAR_BUTTON__NUM
-};
-
-enum turntable_buttons_e {
-	TURNTABLE_BUTTON_SQUARE,
-	TURNTABLE_BUTTON_CROSS,
-	TURNTABLE_BUTTON_CIRCLE,
-	TURNTABLE_BUTTON_TRIANGLE_EUPHORIA,
-	TURNTABLE_BUTTON_SELECT,
-	TURNTABLE_BUTTON_START,
-	TURNTABLE_BUTTON_LEFT_GREEN,
-	TURNTABLE_BUTTON_LEFT_RED,
-	TURNTABLE_BUTTON_LEFT_BLUE,
-	TURNTABLE_BUTTON_RIGHT_GREEN,
-	TURNTABLE_BUTTON_RIGHT_RED,
-	TURNTABLE_BUTTON_RIGHT_BLUE,
-	TURNTABLE_BUTTON_UP,
-	TURNTABLE_BUTTON_DOWN,
-	TURNTABLE_BUTTON_LEFT,
-	TURNTABLE_BUTTON_RIGHT,
-	TURNTABLE_BUTTON_PS,
-	TURNTABLE_BUTTON__NUM
-};
-
-enum drum_buttons_e {
-	DRUM_BUTTON_YELLOW,
-	DRUM_BUTTON_GREEN,
-	DRUM_BUTTON_RED,
-	DRUM_BUTTON_BLUE,
-	DRUM_BUTTON_ORANGE,
-	DRUM_BUTTON_UP,
-	DRUM_BUTTON_DOWN,
-	DRUM_BUTTON_LEFT,
-	DRUM_BUTTON_RIGHT,
-	DRUM_BUTTON_KICK,
-	DRUM_BUTTON_SELECT,
-	DRUM_BUTTON_START,
-	DRUM_BUTTON_PS,
-	DRUM_BUTTON__NUM
-};
-
 enum ds3_analog_axis_e {
 	DS3_ANALOG_AXIS_LEFT_X,
 	DS3_ANALOG_AXIS_LEFT_Y,
@@ -269,31 +108,7 @@ enum ds3_analog_axis_e {
 	DS3_ANALOG_AXIS__NUM
 };
 
-enum guitar_analog_axis_e {
-	GUITAR_ANALOG_AXIS_TAP_BAR,
-	GUITAR_ANALOG_AXIS_WHAMMY_BAR,
-	GUITAR_ANALOG_AXIS__NUM
-};
-
-enum drum_analog_axis_e {
-	DRUM_ANALOG_AXIS_GREEN,
-	DRUM_ANALOG_AXIS_RED,
-	DRUM_ANALOG_AXIS_YELLOW,
-	DRUM_ANALOG_AXIS_BLUE,
-	DRUM_ANALOG_AXIS_ORANGE,
-	DRUM_ANALOG_AXIS_KICK,
-	DRUM_ANALOG_AXIS__NUM
-};
-
-enum turntable_analog_axis_e {
-	TURNTABLE_ANALOG_AXIS_LEFT_VELOCITY,
-	TURNTABLE_ANALOG_AXIS_RIGHT_VELOCITY,
-	TURNTABLE_ANALOG_AXIS_CROSS_FADER,
-	TURNTABLE_ANALOG_AXIS_EFFECTS_KNOB,
-	TURNTABLE_ANALOG_AXIS__NUM
-};
-
-#define MAX_ANALOG_AXIS DRUM_ANALOG_AXIS__NUM
+#define MAX_ANALOG_AXIS DS3_ANALOG_AXIS__NUM
 
 struct ds3_private_data_t {
 	struct {
@@ -375,82 +190,6 @@ static const struct {
 	},
 };
 
-static const struct {
-	u16 wiimote_button_map[TURNTABLE_BUTTON__NUM];
-	u16 turntable_button_map[TURNTABLE_BUTTON__NUM];
-	u8 turntable_analog_axis_map[TURNTABLE_ANALOG_AXIS__NUM];
-} turntable_mapping =
-	{
-		.wiimote_button_map = {
-			[TURNTABLE_BUTTON_PS] = WIIMOTE_BUTTON_HOME,
-		},
-		.turntable_analog_axis_map = {
-			[TURNTABLE_ANALOG_AXIS_LEFT_VELOCITY] = BM_TURNTABLE_ANALOG_LEFT_TURNTABLE_VELOCITY,
-			[TURNTABLE_ANALOG_AXIS_RIGHT_VELOCITY] = BM_TURNTABLE_ANALOG_RIGHT_TURNTABLE_VELOCITY,
-			[TURNTABLE_ANALOG_AXIS_CROSS_FADER] = BM_TURNTABLE_ANALOG_CROSS_FADER,
-			[TURNTABLE_ANALOG_AXIS_EFFECTS_KNOB] = BM_TURNTABLE_ANALOG_EFFECTS_DIAL,
-		},
-		.turntable_button_map = {
-			[TURNTABLE_BUTTON_LEFT_GREEN] = TURNTABLE_CTRL_BUTTON_LEFT_GREEN,
-			[TURNTABLE_BUTTON_LEFT_RED] = TURNTABLE_CTRL_BUTTON_LEFT_RED,
-			[TURNTABLE_BUTTON_LEFT_BLUE] = TURNTABLE_CTRL_BUTTON_LEFT_BLUE,
-			[TURNTABLE_BUTTON_RIGHT_GREEN] = TURNTABLE_CTRL_BUTTON_RIGHT_GREEN,
-			[TURNTABLE_BUTTON_RIGHT_RED] = TURNTABLE_CTRL_BUTTON_RIGHT_RED,
-			[TURNTABLE_BUTTON_RIGHT_BLUE] = TURNTABLE_CTRL_BUTTON_RIGHT_BLUE,
-			[TURNTABLE_BUTTON_CROSS] = TURNTABLE_CTRL_BUTTON_LEFT_GREEN | TURNTABLE_CTRL_BUTTON_RIGHT_GREEN,
-			[TURNTABLE_BUTTON_CIRCLE] = TURNTABLE_CTRL_BUTTON_LEFT_RED | TURNTABLE_CTRL_BUTTON_RIGHT_RED,
-			[TURNTABLE_BUTTON_SQUARE] = TURNTABLE_CTRL_BUTTON_LEFT_BLUE | TURNTABLE_CTRL_BUTTON_RIGHT_BLUE,
-			[TURNTABLE_BUTTON_START] = TURNTABLE_CTRL_BUTTON_PLUS,
-			[TURNTABLE_BUTTON_SELECT] = TURNTABLE_CTRL_BUTTON_MINUS,
-		}};
-
-static const struct {
-	u16 wiimote_button_map[GUITAR_BUTTON__NUM];
-	u16 guitar_button_map[GUITAR_BUTTON__NUM];
-	u8 guitar_analog_axis_map[GUITAR_ANALOG_AXIS__NUM];
-} guitar_mapping =
-	{
-		.wiimote_button_map = {
-			[GUITAR_BUTTON_PS] = WIIMOTE_BUTTON_HOME,
-		},
-		.guitar_analog_axis_map = {
-			[GUITAR_ANALOG_AXIS_TAP_BAR] = BM_GUITAR_ANALOG_AXIS_TAP_BAR,
-			[GUITAR_ANALOG_AXIS_WHAMMY_BAR] = BM_GUITAR_ANALOG_AXIS_WHAMMY_BAR,
-		},
-		.guitar_button_map = {
-			[GUITAR_BUTTON_YELLOW] = GUITAR_CTRL_BUTTON_YELLOW,
-			[GUITAR_BUTTON_RED] = GUITAR_CTRL_BUTTON_RED,
-			[GUITAR_BUTTON_GREEN] = GUITAR_CTRL_BUTTON_GREEN,
-			[GUITAR_BUTTON_BLUE] = GUITAR_CTRL_BUTTON_BLUE,
-			[GUITAR_BUTTON_ORANGE] = GUITAR_CTRL_BUTTON_ORANGE,
-			[GUITAR_BUTTON_UP] = GUITAR_CTRL_BUTTON_STRUM_UP,
-			[GUITAR_BUTTON_DOWN] = GUITAR_CTRL_BUTTON_STRUM_DOWN,
-			[GUITAR_BUTTON_START] = GUITAR_CTRL_BUTTON_PLUS,
-			[GUITAR_BUTTON_SELECT] = GUITAR_CTRL_BUTTON_MINUS,
-		}};
-
-static const struct {
-	u16 wiimote_button_map[DRUM_BUTTON__NUM];
-	u16 drum_button_map[DRUM_BUTTON__NUM];
-} drum_mapping =
-	{
-		.wiimote_button_map = {
-			[DRUM_BUTTON_PS] = WIIMOTE_BUTTON_HOME,
-		},
-		.drum_button_map = {
-			[DRUM_BUTTON_YELLOW] = DRUM_CTRL_BUTTON_YELLOW,
-			[DRUM_BUTTON_RED] = DRUM_CTRL_BUTTON_RED,
-			[DRUM_BUTTON_GREEN] = DRUM_CTRL_BUTTON_GREEN,
-			[DRUM_BUTTON_BLUE] = DRUM_CTRL_BUTTON_BLUE,
-			[DRUM_BUTTON_ORANGE] = DRUM_CTRL_BUTTON_ORANGE,
-			[DRUM_BUTTON_UP] = DRUM_CTRL_BUTTON_UP,
-			[DRUM_BUTTON_DOWN] = DRUM_CTRL_BUTTON_DOWN,
-			[DRUM_BUTTON_LEFT] = DRUM_CTRL_BUTTON_LEFT,
-			[DRUM_BUTTON_RIGHT] = DRUM_CTRL_BUTTON_RIGHT,
-			[DRUM_BUTTON_START] = DRUM_CTRL_BUTTON_PLUS,
-			[DRUM_BUTTON_SELECT] = DRUM_CTRL_BUTTON_MINUS,
-		}};
-
 static const u8 ir_analog_axis_map[DS3_ANALOG_AXIS__NUM] = {
 	[DS3_ANALOG_AXIS_RIGHT_X] = BM_IR_AXIS_X,
 	[DS3_ANALOG_AXIS_RIGHT_Y] = BM_IR_AXIS_Y,
@@ -492,109 +231,6 @@ static inline void ds3_get_buttons(const struct ds3_input_report *report, u32 *b
 	*buttons = mask;
 }
 
-static inline void guitar_get_buttons(const struct guitar_input_report *report, u32 *buttons) {
-	u32 mask = 0;
-
-#define MAP(field, button) \
-	if (report->field)	 \
-		mask |= BIT(button);
-
-	MAP(green, GUITAR_BUTTON_GREEN)
-	MAP(red, GUITAR_BUTTON_RED)
-	MAP(yellow, GUITAR_BUTTON_YELLOW)
-	MAP(blue, GUITAR_BUTTON_BLUE)
-	MAP(orange, GUITAR_BUTTON_ORANGE)
-	MAP(start, GUITAR_BUTTON_START)
-	MAP(select, GUITAR_BUTTON_SELECT)
-	MAP(pedal, GUITAR_BUTTON_SP_PEDAL)
-	MAP(ps, GUITAR_BUTTON_PS)
-#undef MAP
-	if (report->hat == 0 || report->hat == 1 || report->hat == 7) {
-		mask |= BIT(GUITAR_BUTTON_UP);
-	}
-	if (report->hat == 1 || report->hat == 2 || report->hat == 3) {
-		mask |= BIT(GUITAR_BUTTON_LEFT);
-	}
-	if (report->hat == 3 || report->hat == 4 || report->hat == 5) {
-		mask |= BIT(GUITAR_BUTTON_DOWN);
-	}
-	if (report->hat == 5 || report->hat == 6 || report->hat == 7) {
-		mask |= BIT(GUITAR_BUTTON_RIGHT);
-	}
-
-	*buttons = mask;
-}
-
-static inline void drum_get_buttons(const struct drum_input_report *report, u32 *buttons) {
-	u32 mask = 0;
-
-#define MAP(field, button) \
-	if (report->field)	 \
-		mask |= BIT(button);
-
-	MAP(green, DRUM_BUTTON_GREEN)
-	MAP(red, DRUM_BUTTON_RED)
-	MAP(yellow, DRUM_BUTTON_YELLOW)
-	MAP(blue, DRUM_BUTTON_BLUE)
-	MAP(orange, DRUM_BUTTON_ORANGE)
-	MAP(start, DRUM_BUTTON_START)
-	MAP(select, DRUM_BUTTON_SELECT)
-	MAP(kick, DRUM_BUTTON_KICK)
-	MAP(ps, DRUM_BUTTON_PS)
-#undef MAP
-	if (report->hat == 0 || report->hat == 1 || report->hat == 7) {
-		mask |= BIT(DRUM_BUTTON_UP);
-	}
-	if (report->hat == 1 || report->hat == 2 || report->hat == 3) {
-		mask |= BIT(DRUM_BUTTON_LEFT);
-	}
-	if (report->hat == 3 || report->hat == 4 || report->hat == 5) {
-		mask |= BIT(DRUM_BUTTON_DOWN);
-	}
-	if (report->hat == 5 || report->hat == 6 || report->hat == 7) {
-		mask |= BIT(DRUM_BUTTON_RIGHT);
-	}
-
-	*buttons = mask;
-}
-
-static inline void turntable_get_buttons(const struct turntable_input_report *report, u32 *buttons) {
-	u32 mask = 0;
-
-#define MAP(field, button) \
-	if (report->field)	 \
-		mask |= BIT(button);
-
-	MAP(left_green, TURNTABLE_BUTTON_LEFT_GREEN)
-	MAP(left_red, TURNTABLE_BUTTON_LEFT_RED)
-	MAP(left_blue, TURNTABLE_BUTTON_LEFT_BLUE)
-	MAP(right_green, TURNTABLE_BUTTON_RIGHT_GREEN)
-	MAP(right_red, TURNTABLE_BUTTON_RIGHT_RED)
-	MAP(right_blue, TURNTABLE_BUTTON_RIGHT_BLUE)
-	MAP(cross, TURNTABLE_BUTTON_CROSS)
-	MAP(circle, TURNTABLE_BUTTON_CIRCLE)
-	MAP(square, TURNTABLE_BUTTON_SQUARE)
-	MAP(triangle_euphoria, TURNTABLE_BUTTON_TRIANGLE_EUPHORIA)
-	MAP(select, TURNTABLE_BUTTON_SELECT)
-	MAP(ps, TURNTABLE_BUTTON_PS)
-#undef MAP
-	if (report->hat == 0 || report->hat == 1 || report->hat == 7) {
-		mask |= BIT(TURNTABLE_BUTTON_UP);
-	}
-	if (report->hat == 1 || report->hat == 2 || report->hat == 3) {
-		mask |= BIT(TURNTABLE_BUTTON_LEFT);
-	}
-	if (report->hat == 3 || report->hat == 4 || report->hat == 5) {
-		mask |= BIT(TURNTABLE_BUTTON_DOWN);
-	}
-	if (report->hat == 5 || report->hat == 6 || report->hat == 7) {
-		mask |= BIT(TURNTABLE_BUTTON_RIGHT);
-	}
-
-	*buttons = mask;
-}
-
-
 static inline void ds3_get_analog_axis(const struct ds3_input_report *report,
 				       u8 analog_axis[static DS3_ANALOG_AXIS__NUM])
 {
@@ -604,33 +240,8 @@ static inline void ds3_get_analog_axis(const struct ds3_input_report *report,
 	analog_axis[DS3_ANALOG_AXIS_RIGHT_Y] = 255 - report->right_y;
 }
 
-static inline void guitar_get_analog_axis(const struct guitar_input_report *report,
-										  u8 analog_axis[static MAX_ANALOG_AXIS]) {
-	analog_axis[GUITAR_ANALOG_AXIS_TAP_BAR] = report->tap_bar;
-	analog_axis[GUITAR_ANALOG_AXIS_WHAMMY_BAR] = report->whammy_bar;
-}
-
-static inline void drum_get_analog_axis(const struct drum_input_report *report,
-										u8 analog_axis[static MAX_ANALOG_AXIS]) {
-	analog_axis[DRUM_ANALOG_AXIS_GREEN] = report->pressure_green;
-	analog_axis[DRUM_ANALOG_AXIS_RED] = report->pressure_red;
-	analog_axis[DRUM_ANALOG_AXIS_YELLOW] = report->pressure_yellow;
-	analog_axis[DRUM_ANALOG_AXIS_BLUE] = report->pressure_blue;
-	analog_axis[DRUM_ANALOG_AXIS_ORANGE] = report->pressure_orange;
-	analog_axis[DRUM_ANALOG_AXIS_KICK] = report->pressure_kick;
-}
-
-static inline void turntable_get_analog_axis(const struct turntable_input_report *report,
-										u8 analog_axis[static MAX_ANALOG_AXIS]) {
-	analog_axis[TURNTABLE_ANALOG_AXIS_CROSS_FADER] = report->cross_fader;
-	analog_axis[TURNTABLE_ANALOG_AXIS_EFFECTS_KNOB] = report->effects_knob;
-	analog_axis[TURNTABLE_ANALOG_AXIS_LEFT_VELOCITY] = report->left_turn_table_velocity;
-	analog_axis[TURNTABLE_ANALOG_AXIS_RIGHT_VELOCITY] = report->right_turn_table_velocity;
-}
-
 static int ds3_set_operational(usb_input_device_t *device)
 {
-	return 0;
 	u8 buf[17] ATTRIBUTE_ALIGN(32);
 	return usb_device_driver_issue_ctrl_transfer(device,
 						     USB_REQTYPE_INTERFACE_GET,
@@ -641,15 +252,12 @@ static int ds3_set_operational(usb_input_device_t *device)
 
 static inline int ds3_request_data(usb_input_device_t *device)
 {
-	return usb_device_driver_issue_intr_transfer_async(device, device->endpoint_address, device->usb_async_resp,
+	return usb_device_driver_issue_ctrl_transfer_async(device,
+							   USB_REQTYPE_INTERFACE_GET,
+							   USB_REQ_GETREPORT,
+							   (USB_REPTYPE_INPUT << 8) | 0x01, 0,
+							   device->usb_async_resp,
 							   device->max_packet_len);
-
-	// return usb_device_driver_issue_ctrl_transfer_async(device,
-	// 						   USB_REQTYPE_INTERFACE_GET,
-	// 						   USB_REQ_GETREPORT,
-	// 						   (USB_REPTYPE_INPUT << 8) | 0x01, 0,
-	// 						   device->usb_async_resp,
-	// 						   device->max_packet_len);
 }
 
 static int ds3_set_leds_rumble(usb_input_device_t *device, u8 leds, const struct ds3_rumble *rumble)
@@ -702,10 +310,6 @@ bool ds3_driver_ops_probe(u16 vid, u16 pid)
 {
 	static const struct device_id_t compatible[] = {
 		{SONY_VID, 0x0268},
-		{SONY_INST_VID, GH_GUITAR_PID},
-		{SONY_INST_VID, GH_DRUM_PID},
-		{SONY_INST_VID, DJ_TURNTABLE_PID},
-		{SANTROLLER_VID, SANTROLLER_PID},
 	};
 
 	return usb_driver_is_comaptible(vid, pid, compatible, ARRAY_SIZE(compatible));
@@ -777,122 +381,10 @@ int ds3_driver_ops_set_rumble(usb_input_device_t *device, bool rumble_on)
 	return ds3_driver_update_leds_rumble(device);
 }
 
-bool guitar_report_input(usb_input_device_t *device) {
-	struct ds3_private_data_t *priv = (void *)device->private_data;
-	u16 wiimote_buttons = 0;
-	u16 acc_x, acc_y, acc_z;
-	union wiimote_extension_data_t extension_data;
-
-	bm_map_wiimote(GUITAR_BUTTON__NUM, priv->input.buttons,
-				   guitar_mapping.wiimote_button_map,
-				   &wiimote_buttons);
-	/* Normalize to accelerometer calibration configuration */
-	acc_x = ACCEL_ZERO_G - ((s32)priv->input.acc_x * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS3_ACC_RES_PER_G;
-	acc_y = ACCEL_ZERO_G + ((s32)priv->input.acc_y * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS3_ACC_RES_PER_G;
-	acc_z = ACCEL_ZERO_G + ((s32)priv->input.acc_z * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS3_ACC_RES_PER_G;
-
-	fake_wiimote_report_accelerometer(device->wiimote, acc_x, acc_y, acc_z);
-
-	bm_map_guitar(GUITAR_BUTTON__NUM, priv->input.buttons,
-				  GUITAR_ANALOG_AXIS__NUM, priv->input.analog_axis,
-				  guitar_mapping.guitar_button_map,
-				  guitar_mapping.guitar_analog_axis_map,
-				  &extension_data.guitar);
-	fake_wiimote_report_input_ext(device->wiimote, wiimote_buttons,
-								  &extension_data, sizeof(extension_data.guitar));
-
-	return true;
-}
-
-bool drum_report_input(usb_input_device_t *device) {
-	struct ds3_private_data_t *priv = (void *)device->private_data;
-	u16 wiimote_buttons = 0;
-	u16 acc_x, acc_y, acc_z;
-	union wiimote_extension_data_t extension_data;
-
-	bm_map_wiimote(DRUM_BUTTON__NUM, priv->input.buttons,
-				   drum_mapping.wiimote_button_map,
-				   &wiimote_buttons);
-
-	/* Normalize to accelerometer calibration configuration */
-	acc_x = ACCEL_ZERO_G;
-	acc_y = ACCEL_ZERO_G;
-	acc_z = ACCEL_ZERO_G;
-
-	fake_wiimote_report_accelerometer(device->wiimote, acc_x, acc_y, acc_z);
-
-	u8 drum_analog_axis[BM_DRUM_ANALOG_AXIS__NUM] = {0};
-	drum_analog_axis[BM_DRUM_ANALOG_AXIS_STICK_X - 1] = 128;
-	drum_analog_axis[BM_DRUM_ANALOG_AXIS_STICK_Y - 1] = 128;
-	// Manually handle velocity here, as its pretty different between the wii and ps3 formats
-	if (priv->input.analog_axis[DRUM_ANALOG_AXIS_GREEN]) {
-		drum_analog_axis[BM_DRUM_ANALOG_AXIS_VELOCITY_SELECTOR - 1] = 0b10010;
-		drum_analog_axis[BM_DRUM_ANALOG_AXIS_VELOCITY - 1] = priv->input.analog_axis[DRUM_ANALOG_AXIS_GREEN];
-	} else if (priv->input.analog_axis[DRUM_ANALOG_AXIS_RED]) {
-		drum_analog_axis[BM_DRUM_ANALOG_AXIS_VELOCITY_SELECTOR - 1] = 0b11001;
-		drum_analog_axis[BM_DRUM_ANALOG_AXIS_VELOCITY - 1] = priv->input.analog_axis[DRUM_ANALOG_AXIS_RED];
-	} else if (priv->input.analog_axis[DRUM_ANALOG_AXIS_YELLOW]) {
-		drum_analog_axis[BM_DRUM_ANALOG_AXIS_VELOCITY_SELECTOR - 1] = 0b10001;
-		drum_analog_axis[BM_DRUM_ANALOG_AXIS_VELOCITY - 1] = priv->input.analog_axis[DRUM_ANALOG_AXIS_YELLOW];
-	} else if (priv->input.analog_axis[DRUM_ANALOG_AXIS_BLUE]) {
-		drum_analog_axis[BM_DRUM_ANALOG_AXIS_VELOCITY_SELECTOR - 1] = 0b01111;
-		drum_analog_axis[BM_DRUM_ANALOG_AXIS_VELOCITY - 1] = priv->input.analog_axis[DRUM_ANALOG_AXIS_BLUE];
-	} else if (priv->input.analog_axis[DRUM_ANALOG_AXIS_ORANGE]) {
-		drum_analog_axis[BM_DRUM_ANALOG_AXIS_VELOCITY_SELECTOR - 1] = 0b01110;
-		drum_analog_axis[BM_DRUM_ANALOG_AXIS_VELOCITY - 1] = priv->input.analog_axis[DRUM_ANALOG_AXIS_ORANGE];
-	} else if (priv->input.analog_axis[DRUM_ANALOG_AXIS_KICK]) {
-		drum_analog_axis[BM_DRUM_ANALOG_AXIS_VELOCITY_SELECTOR - 1] = 0b11011;
-		drum_analog_axis[BM_DRUM_ANALOG_AXIS_VELOCITY - 1] = priv->input.analog_axis[DRUM_ANALOG_AXIS_KICK];
-	}
-
-	bm_map_drum(DRUM_BUTTON__NUM, priv->input.buttons,
-				BM_GUITAR_ANALOG_AXIS__NUM, drum_analog_axis,
-				drum_mapping.drum_button_map,
-				&extension_data.drum);
-	fake_wiimote_report_input_ext(device->wiimote, wiimote_buttons,
-								  &extension_data, sizeof(extension_data.drum));
-
-	return true;
-}
-
-bool turntable_report_input(usb_input_device_t *device) {
-	struct ds3_private_data_t *priv = (void *)device->private_data;
-	u16 wiimote_buttons = 0;
-	u16 acc_x, acc_y, acc_z;
-	union wiimote_extension_data_t extension_data;
-
-	bm_map_wiimote(TURNTABLE_BUTTON__NUM, priv->input.buttons,
-				   guitar_mapping.wiimote_button_map,
-				   &wiimote_buttons);
-	acc_x = ACCEL_ZERO_G;
-	acc_y = ACCEL_ZERO_G;
-	acc_z = ACCEL_ZERO_G;
-
-	fake_wiimote_report_accelerometer(device->wiimote, acc_x, acc_y, acc_z);
-
-	bm_map_turntable(TURNTABLE_BUTTON__NUM, priv->input.buttons,
-				  TURNTABLE_ANALOG_AXIS__NUM, priv->input.analog_axis,
-				  turntable_mapping.turntable_button_map,
-				  turntable_mapping.turntable_analog_axis_map,
-				  &extension_data.turntable);
-	fake_wiimote_report_input_ext(device->wiimote, wiimote_buttons,
-								  &extension_data, sizeof(extension_data.turntable));
-
-	return true;
-}
-
 bool ds3_report_input(usb_input_device_t *device)
 {
-	if (device->vid == SONY_INST_VID && device->pid == GH_GUITAR_PID) {
-		return guitar_report_input(device);
-	}
-	if (device->vid == SONY_INST_VID && device->pid == GH_DRUM_PID) {
-		return drum_report_input(device);
-	}
-	if (device->vid == SONY_INST_VID && device->pid == DJ_TURNTABLE_PID) {
-		return turntable_report_input(device);
-	}
-		struct ds3_private_data_t *priv = (void *)device->private_data;
+	
+	struct ds3_private_data_t *priv = (void *)device->private_data;
 	u16 wiimote_buttons = 0;
 	u16 acc_x, acc_y, acc_z;
 	union wiimote_extension_data_t extension_data;
@@ -957,31 +449,13 @@ bool ds3_report_input(usb_input_device_t *device)
 int ds3_driver_ops_usb_async_resp(usb_input_device_t *device)
 {
 	struct ds3_private_data_t *priv = (void *)device->private_data;
-	if (device->vid == SONY_INST_VID && device->pid == GH_GUITAR_PID) {
-		struct guitar_input_report *report = (void *)device->usb_async_resp;
-		guitar_get_buttons(report, &priv->input.buttons);
-		guitar_get_analog_axis(report, priv->input.analog_axis);
+	struct ds3_input_report *report = (void *)device->usb_async_resp;
+	ds3_get_buttons(report, &priv->input.buttons);
+	ds3_get_analog_axis(report, priv->input.analog_axis);
 
-		priv->input.acc_x = (s16)report->acc_x - 511;
-		priv->input.acc_y = 511 - (s16)report->acc_y;
-		priv->input.acc_z = 511 - (s16)report->acc_z;
-	} else if (device->vid == SONY_INST_VID && device->pid == GH_DRUM_PID) {
-		struct drum_input_report *report = (void *)device->usb_async_resp;
-		drum_get_buttons(report, &priv->input.buttons);
-		drum_get_analog_axis(report, priv->input.analog_axis);
-	} else if (device->vid == SONY_INST_VID && device->pid == DJ_TURNTABLE_PID) {
-		struct turntable_input_report *report = (void *)device->usb_async_resp;
-		turntable_get_buttons(report, &priv->input.buttons);
-		turntable_get_analog_axis(report, priv->input.analog_axis);
-	} else {
-		struct ds3_input_report *report = (void *)device->usb_async_resp;
-		ds3_get_buttons(report, &priv->input.buttons);
-		ds3_get_analog_axis(report, priv->input.analog_axis);
-
-		priv->input.acc_x = (s16)report->acc_x - 511;
-		priv->input.acc_y = 511 - (s16)report->acc_y;
-		priv->input.acc_z = 511 - (s16)report->acc_z;
-	}
+	priv->input.acc_x = (s16)report->acc_x - 511;
+	priv->input.acc_y = 511 - (s16)report->acc_y;
+	priv->input.acc_z = 511 - (s16)report->acc_z;
 
 	return ds3_request_data(device);
 }
