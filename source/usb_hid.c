@@ -26,8 +26,19 @@
 #define USBV5_IOCTL_ISOMSG                      20 /* Not available in USB_HID */
 #define USBV5_IOCTL_BULKMSG                     21 /* Not available in USB_HID */
 
+#define USBV4_IOCTL_GETDEVICECHANGE				0
+#define USBV4_IOCTL_SETSUSPEND					1
+#define USBV4_IOCTL_CONTROLMESSAGE				2
+#define USBV4_IOCTL_INTERRUPTMESSAGEIN			3
+#define USBV4_IOCTL_INTERRUPTMESSAGEOUT			4
+#define USBV4_IOCTL_GETUSSTRING					5
+#define USBV4_IOCTL_GETVERSION					6
+#define USBV4_IOCTL_SHUTDOWN					7
+#define USBV4_IOCTL_CANCELINTERRUPT				8
+
 /* Constants */
 #define USB_MAX_DEVICES		32
+#define DEV_USB_HID4_DEVICE_CHANGE_SIZE 0x180
 
 /* USBv5 HID message structure */
 struct usb_hid_v5_transfer {
@@ -49,7 +60,38 @@ struct usb_hid_v5_transfer {
 		u32 data[14];
 	};
 } ATTRIBUTE_PACKED;
+
+
+struct usb_hid_v4_transfer {
+	u8 padding[16]; // anything you want can go here
+	s32 dev_id;
+	union {
+		struct {
+			u8 bmRequestType;
+			u8 bmRequest;
+			u16 wValue;
+			u16 wIndex;
+			u16 wLength;
+		} ctrl;
+		struct {
+			u32 out;
+			u32 dLength;
+		} intr;
+	};
+	void* data; // virtual pointer, not physical!
+} ATTRIBUTE_PACKED; // 32 bytes
+
+struct usb_endpoint_descriptor {
+	u8 bLength; // Length of this descriptor.
+	u8 bDescriptorType; // ENDPOINT descriptor type (USB_DESCRIPTOR_ENDPOINT).
+	u8 bEndpointAddress; // Endpoint address. Bit 7 indicates direction (0=OUT, 1=IN).
+	u8 bmAttributes; // Endpoint transfer type.
+	u16 wMaxPacketSize; // Maximum packet size.
+	u8 bInterval; // Polling interval in frames.
+} ATTRIBUTE_PACKED;
+
 static_assert(sizeof(struct usb_hid_v5_transfer) == 64);
+static_assert(sizeof(struct usb_hid_v4_transfer) == 32);
 
 static const usb_device_driver_t *usb_device_drivers[] = {
 	&ds3_usb_device_driver,
@@ -58,10 +100,13 @@ static const usb_device_driver_t *usb_device_drivers[] = {
 
 static usb_input_device_t usb_devices[MAX_FAKE_WIIMOTES];
 static usb_device_entry device_change_devices[USB_MAX_DEVICES] ATTRIBUTE_ALIGN(32);
+static uint32_t device_change_v4_devices[DEV_USB_HID4_DEVICE_CHANGE_SIZE] ATTRIBUTE_ALIGN(32);
 static int host_fd = -1;
 static u8 worker_thread_stack[1024] ATTRIBUTE_ALIGN(32);
 static u32 queue_data[32] ATTRIBUTE_ALIGN(32);
 static int queue_id = -1;
+static bool using_v4_api = false;
+static u8 v4_data[128] ATTRIBUTE_ALIGN(32);
 
 /* Async notification messages */
 static areply notification_messages[2] = {0};
@@ -116,7 +161,7 @@ static int usb_hid_v5_get_descriptors(int host_fd, u32 dev_id, usb_devdesc *udd)
 	return os_ioctl(host_fd, USBV5_IOCTL_GETDEVPARAMS, inbuf, sizeof(inbuf), outbuf, sizeof(outbuf));
 }
 
-static inline void build_ctrl_transfer(struct usb_hid_v5_transfer *transfer, int dev_id,
+static inline void build_v5_ctrl_transfer(struct usb_hid_v5_transfer *transfer, int dev_id,
 				       u8 bmRequestType, u8 bmRequest, u16 wValue, u16 wIndex)
 {
 	memset(transfer, 0, sizeof(*transfer));
@@ -127,7 +172,7 @@ static inline void build_ctrl_transfer(struct usb_hid_v5_transfer *transfer, int
 	transfer->ctrl.wIndex = wIndex;
 }
 
-static inline void build_intr_transfer(struct usb_hid_v5_transfer *transfer, int dev_id, int out)
+static inline void build_v5_intr_transfer(struct usb_hid_v5_transfer *transfer, int dev_id, int out)
 {
 	memset(transfer, 0, sizeof(*transfer));
 	transfer->dev_id = dev_id;
@@ -141,7 +186,7 @@ static inline int usb_hid_v5_ctrl_transfer(int host_fd, int dev_id, u8 bmRequest
 	ioctlv vectors[2];
 	int out = !(bmRequestType & USB_ENDPOINT_IN);
 
-	build_ctrl_transfer(&transfer, dev_id, bmRequestType, bmRequest, wValue, wIndex);
+	build_v5_ctrl_transfer(&transfer, dev_id, bmRequestType, bmRequest, wValue, wIndex);
 
 	vectors[0].data = &transfer;
 	vectors[0].len  = sizeof(transfer);
@@ -159,7 +204,7 @@ static inline int usb_hid_v5_ctrl_transfer_async(int host_fd, int dev_id, u8 bmR
 	ioctlv vectors[2];
 	int out = !(bmRequestType & USB_ENDPOINT_IN);
 
-	build_ctrl_transfer(&transfer, dev_id, bmRequestType, bmRequest, wValue, wIndex);
+	build_v5_ctrl_transfer(&transfer, dev_id, bmRequestType, bmRequest, wValue, wIndex);
 
 	vectors[0].data = &transfer;
 	vectors[0].len  = sizeof(transfer);
@@ -175,7 +220,7 @@ static inline int usb_hid_v5_intr_transfer(int host_fd, int dev_id, int out, u16
 	struct usb_hid_v5_transfer transfer ATTRIBUTE_ALIGN(32);
 	ioctlv vectors[2];
 
-	build_intr_transfer(&transfer, dev_id, out);
+	build_v5_intr_transfer(&transfer, dev_id, out);
 
 	vectors[0].data = &transfer;
 	vectors[0].len  = sizeof(transfer);
@@ -191,7 +236,7 @@ static inline int usb_hid_v5_intr_transfer_async(int host_fd, int dev_id, int ou
 	struct usb_hid_v5_transfer transfer ATTRIBUTE_ALIGN(32);
 	ioctlv vectors[2];
 
-	build_intr_transfer(&transfer, dev_id, out);
+	build_v5_intr_transfer(&transfer, dev_id, out);
 
 	vectors[0].data = &transfer;
 	vectors[0].len  = sizeof(transfer);
@@ -234,22 +279,112 @@ static int usb_hid_v5_suspend_resume(int host_fd, int dev_id, int resumed, u32 u
 	return os_ioctl(host_fd, USBV5_IOCTL_SUSPEND_RESUME, buf, sizeof(buf), NULL, 0);
 }
 
+static inline void build_v4_ctrl_transfer(struct usb_hid_v4_transfer *transfer, int dev_id,
+				       u8 bmRequestType, u8 bmRequest, u16 wValue, u16 wIndex, u16 wLength, void *rpData)
+{
+	memset(transfer, 0, sizeof(*transfer));
+	transfer->dev_id = dev_id;
+	transfer->ctrl.bmRequestType = bmRequestType;
+	transfer->ctrl.bmRequest = bmRequest;
+	transfer->ctrl.wValue = wValue;
+	transfer->ctrl.wIndex = wIndex;
+	transfer->ctrl.wLength = wLength;
+	transfer->data = v4_data;
+	memcpy(v4_data, rpData, wLength);
+}
+
+static inline void build_v4_intr_transfer(struct usb_hid_v4_transfer *transfer, int dev_id, int out, int dLength, void *rpData)
+{
+	memset(transfer, 0, sizeof(*transfer));
+	transfer->dev_id = dev_id;
+	transfer->intr.out = out;
+	transfer->intr.dLength = dLength;
+	transfer->data = v4_data;
+	memcpy(v4_data, rpData, dLength);
+}
+
+static inline int usb_hid_v4_ctrl_transfer(int host_fd, int dev_id, u8 bmRequestType, u8 bmRequest,
+					   u16 wValue, u16 wIndex, u16 wLength, void *rpData)
+{
+	struct usb_hid_v4_transfer transfer ATTRIBUTE_ALIGN(32);
+
+	build_v4_ctrl_transfer(&transfer, dev_id, bmRequestType, bmRequest, wValue, wIndex, wLength, rpData);
+	return os_ioctl(host_fd, USBV4_IOCTL_CONTROLMESSAGE, &transfer, sizeof(transfer), NULL, 0);
+	
+}
+
+static inline int usb_hid_v4_ctrl_transfer_async(int host_fd, int dev_id, u8 bmRequestType,
+				                 u8 bmRequest, u16 wValue, u16 wIndex, u16 wLength,
+				                 void *rpData, int queue_id, void *message)
+{
+	struct usb_hid_v4_transfer transfer ATTRIBUTE_ALIGN(32);
+
+	build_v4_ctrl_transfer(&transfer, dev_id, bmRequestType, bmRequest, wValue, wIndex, wLength, rpData);
+
+	return os_ioctl_async(host_fd, USBV4_IOCTL_CONTROLMESSAGE, &transfer, sizeof(transfer), NULL, 0,
+			       queue_id, message);
+}
+
+static inline int usb_hid_v4_intr_transfer(int host_fd, int dev_id, int out, u16 wLength, void *rpData)
+{
+	struct usb_hid_v4_transfer transfer ATTRIBUTE_ALIGN(32);
+
+
+	int is_out = !(out & USB_ENDPOINT_IN);
+
+	build_v4_intr_transfer(&transfer, dev_id, out, wLength, rpData);
+	
+	if (is_out) {
+		return os_ioctl(host_fd, USBV4_IOCTL_INTERRUPTMESSAGEOUT,  &transfer, sizeof(transfer), NULL, 0);
+	}
+	return os_ioctl(host_fd, USBV4_IOCTL_INTERRUPTMESSAGEIN,  &transfer, sizeof(transfer), NULL, 0);
+}
+
+static inline int usb_hid_v4_intr_transfer_async(int host_fd, int dev_id, int out, u16 wLength,
+						 void *rpData, int queue_id, void *message)
+{
+	struct usb_hid_v4_transfer transfer ATTRIBUTE_ALIGN(32);
+
+	int is_out = !(out & USB_ENDPOINT_IN);
+	build_v4_intr_transfer(&transfer, dev_id, out, wLength, rpData);
+	
+	if (is_out) {
+		return os_ioctl_async(host_fd, USBV4_IOCTL_INTERRUPTMESSAGEOUT, &transfer, sizeof(transfer), NULL, 0,
+			       queue_id, message);
+	}
+	return os_ioctl_async(host_fd, USBV4_IOCTL_INTERRUPTMESSAGEIN, &transfer, sizeof(transfer), NULL, 0,
+			       queue_id, message);
+}
+
 /* API exposed to USB device drivers */
 int usb_device_driver_issue_ctrl_transfer(usb_input_device_t *device, u8 requesttype, u8 request,
 					  u16 value, u16 index, void *data, u16 length)
 {
+	if (using_v4_api) {
+		return usb_hid_v4_ctrl_transfer(device->host_fd, device->dev_id, requesttype, request,
+					value, index, length, data);
+
+	}
 	return usb_hid_v5_ctrl_transfer(device->host_fd, device->dev_id, requesttype, request,
 					value, index, length, data);
 }
 
 int usb_device_driver_issue_intr_transfer(usb_input_device_t *device, int out, void *data, u16 length)
 {
+	if (using_v4_api) {
+		return usb_hid_v4_intr_transfer(device->host_fd, device->dev_id, out, length, data);
+	}
 	return usb_hid_v5_intr_transfer(device->host_fd, device->dev_id, out, length, data);
 }
 
 int usb_device_driver_issue_ctrl_transfer_async(usb_input_device_t *device, u8 requesttype,
 						u8 request, u16 value, u16 index, void *data, u16 length)
 {
+	if (using_v4_api) {
+		return usb_hid_v4_ctrl_transfer_async(device->host_fd, device->dev_id, requesttype, request,
+					      value, index, length, data, queue_id,
+					      &device->usb_async_resp_msg);
+	}
 	return usb_hid_v5_ctrl_transfer_async(device->host_fd, device->dev_id, requesttype, request,
 					      value, index, length, data, queue_id,
 					      &device->usb_async_resp_msg);
@@ -257,6 +392,10 @@ int usb_device_driver_issue_ctrl_transfer_async(usb_input_device_t *device, u8 r
 
 int usb_device_driver_issue_intr_transfer_async(usb_input_device_t *device, int out, void *data, u16 length)
 {
+	if (using_v4_api) {
+		return usb_hid_v4_intr_transfer_async(device->host_fd, device->dev_id, out, length, data,
+					      queue_id, &device->usb_async_resp_msg);
+	}
 	return usb_hid_v5_intr_transfer_async(device->host_fd, device->dev_id, out, length, data,
 					      queue_id, &device->usb_async_resp_msg);
 }
@@ -349,7 +488,7 @@ static const input_device_ops_t input_device_usb_ops = {
 	.report_input	= usb_device_ops_report_input,
 };
 
-static void handle_device_change_reply(int host_fd, areply *reply)
+static void handle_v5_device_change_reply(int host_fd, areply *reply)
 {
 	usb_devdesc udd;
 	usb_input_device_t *device;
@@ -456,6 +595,103 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 	DEBUG("ioctl(ATTACHFINISH): %d\n", ret);
 }
 
+static void handle_v4_device_change_reply(int host_fd, areply *reply)
+{
+	usb_input_device_t *device;
+	const usb_device_driver_t *driver;
+	u16 vid, pid;
+	u32 vid_pid;
+	u32 dev_id;
+	bool found;
+
+	DEBUG("Device change, #Attached devices: %d\n", reply->result);
+
+	if (reply->result < 0)
+		return;
+	
+	/* First look for disconnections */
+	for (int i = 0; i < ARRAY_SIZE(usb_devices); i++) {
+		device = &usb_devices[i];
+		if (!device->valid)
+			continue;
+
+		found = false;
+		for (int i = 0; i < DEV_USB_HID4_DEVICE_CHANGE_SIZE && device_change_v4_devices[i] < sizeof(device_change_v4_devices); i += device_change_v4_devices[i] / 4) {
+			dev_id = device_change_v4_devices[i + 1];
+			if (device->dev_id == dev_id) {
+				found = true;
+				break;
+			}
+		}
+
+		/* Oops, it got disconnected */
+		if (!found) {
+			if (device->driver->disconnect)
+				device->driver->disconnect(device);
+			/* Tell the fake Wiimote manager we got an input device removal */
+			input_devices_remove(device->input_device);
+			/* Set this device as not valid */
+			device->valid = false;
+		}
+	}
+	for (int i = 0; i < DEV_USB_HID4_DEVICE_CHANGE_SIZE && device_change_v4_devices[i] < sizeof(device_change_v4_devices); i += device_change_v4_devices[i] / 4) {
+		dev_id = device_change_v4_devices[i + 1];
+		vid_pid = device_change_v4_devices[i + 4];
+		vid = (vid_pid >> 16) & 0xFFFF;
+		pid = vid_pid & 0xFFFF;
+		DEBUG("[%d] VID: 0x%04x, PID: 0x%04x, dev_id: 0x%x\n", i, vid, pid, dev_id);
+		// u32 total_len = device_change_devices[i] / 4;
+		// int j = 0;
+		// while (j < total_len) {
+		// 	struct usb_endpoint_descriptor* desc = (struct usb_endpoint_descriptor*)(device_change_devices + i);
+		// 	if (desc->bDescriptorType == 5) {
+		// 		int in = (desc->bEndpointAddress & USB_ENDPOINT_IN);
+		// 		if (in) {
+		// 			endpoint_address = desc->bEndpointAddress;
+		// 			packet_size = desc->wMaxPacketSize;
+		// 			break;
+		// 		}
+		// 	}
+		// 	j += desc->bLength;
+		// }
+		
+		/* Find if we have a driver for that VID/PID */
+		driver = get_usb_device_driver_for(vid, pid);
+		if (!driver)
+			continue;
+
+		/* Check if we already have that device (same dev_id) connected */
+		if (is_usb_device_connected(dev_id))
+			continue;
+
+		/* Get an empty device slot */
+		device = get_free_usb_device_slot();
+		if (!device)
+			break;
+
+		/* Get a fake Wiimote from the manager */
+		if (!input_devices_add(device, &input_device_usb_ops, &device->input_device)) {
+			continue;
+		}
+
+		/* We have ownership, populate the device info */
+		device->vid = vid;
+		device->pid = pid;
+		device->host_fd = host_fd;
+		device->dev_id = dev_id;
+		device->driver = driver;
+		/* We will get a fake Wiimote assigneed at the init() callback */
+		device->wiimote = NULL;
+		device->suspended = false;
+		device->valid = true;
+
+	}
+
+	os_ioctl_async(host_fd, USBV4_IOCTL_GETDEVICECHANGE, NULL, 0,
+					device_change_v4_devices, sizeof(device_change_v4_devices),
+					queue_id, MESSAGE_DEVCHANGE);
+}
+
 static int usb_hid_worker(void *arg)
 {
 	u32 ver[8] ATTRIBUTE_ALIGN(32);
@@ -473,16 +709,25 @@ static int usb_hid_worker(void *arg)
 		return ret;
 	host_fd = ret;
 
-	ret = os_ioctl(host_fd, USBV5_IOCTL_GETVERSION, NULL, 0, ver, sizeof(ver));
-	if (ret < 0)
-		return ret;
+	ret = os_ioctl(host_fd, USBV4_IOCTL_GETVERSION, NULL, 0, NULL, 0);
+	if (ret == 0x40001) {
+		using_v4_api = true;
+		os_ioctl_async(host_fd, USBV4_IOCTL_GETDEVICECHANGE, NULL, 0,
+					device_change_v4_devices, sizeof(device_change_v4_devices),
+					queue_id, MESSAGE_DEVCHANGE);
+	} else {
+		ret = os_ioctl(host_fd, USBV5_IOCTL_GETVERSION, NULL, 0, ver, sizeof(ver));
+		if (ret < 0)
+			return ret;
 
-	/* We only support USBv5 for now */
-	if (ver[0] != 0x50001)
-		return IOS_EINVAL;
+		if (ver[0] != 0x50001)
+			return IOS_EINVAL;
 
-	ret = os_ioctl_async(host_fd, USBV5_IOCTL_GETDEVICECHANGE, NULL, 0, device_change_devices,
+		using_v4_api = false;
+		ret = os_ioctl_async(host_fd, USBV5_IOCTL_GETDEVICECHANGE, NULL, 0, device_change_devices,
 			     sizeof(device_change_devices), queue_id, MESSAGE_DEVCHANGE);
+	}
+
 
 	while (1) {
 		areply *message;
@@ -493,7 +738,11 @@ static int usb_hid_worker(void *arg)
 			continue;
 
 		if (message == MESSAGE_DEVCHANGE) {
-			handle_device_change_reply(host_fd, message);
+			if (using_v4_api) {
+				handle_v4_device_change_reply(host_fd, message);
+			} else {
+				handle_v5_device_change_reply(host_fd, message);
+			}
 		} else if (message == MESSAGE_ATTACHFINISH) {
 			ret = os_ioctl_async(host_fd, USBV5_IOCTL_GETDEVICECHANGE, NULL, 0,
 					     device_change_devices, sizeof(device_change_devices),
@@ -503,8 +752,12 @@ static int usb_hid_worker(void *arg)
 			for (int i = 0; i < ARRAY_SIZE(usb_devices); i++) {
 				device = &usb_devices[i];
 				if (device->valid && (message == &device->usb_async_resp_msg)) {
-					if (device->driver->usb_async_resp)
+					if (device->driver->usb_async_resp) {
+						if (using_v4_api) {
+							memcpy(device->usb_async_resp, v4_data, sizeof(v4_data));
+						}
 						device->driver->usb_async_resp(device);
+					}
 				}
 			}
 		}

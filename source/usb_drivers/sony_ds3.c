@@ -645,7 +645,7 @@ static inline int ds3_request_data(usb_input_device_t *device)
 							   USB_REQ_GETREPORT,
 							   (USB_REPTYPE_INPUT << 8) | 0x01, 0,
 							   device->usb_async_resp,
-							   sizeof(device->usb_async_resp));
+							   32);
 }
 
 static int ds3_set_leds_rumble(usb_input_device_t *device, u8 leds, const struct ds3_rumble *rumble)
