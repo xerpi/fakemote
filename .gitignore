@@ -51,5 +51,15 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
+# VS Code
+.vscode
+.devcontainer
+
 # Other
-*.zip
+*.txt
+*.lst
+*.jpg
+
+# CMake
+build*
+!CMakeLists.txt

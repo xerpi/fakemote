@@ -38,8 +38,8 @@ _A Wii cIOS module that fakes Wiimotes from the input of USB game controllers._
 4) Run d2x cIOS Installer and install the cIOS
 
 ## Usage
-- You can install [Priiloader](https://wii.guide/priiloader.html) and change the IOS slot to use when running System Menu and disc games
-
+- You can install [Priiloader](https://wii.guide/priiloader.html) and change the IOS slot to use when running System Menu and disc games:
+   - [Enter Priiloader Menu](https://wii.guide/priiloader.html#section-iii---entering-priiloader) > Settings > Use System Menu IOS (off) > IOS to use for SM (System Menu)
 - You can configure your USB loader to specify the IOS slot to use when running the loader and/or games
 
 ## Notes
@@ -48,18 +48,31 @@ _A Wii cIOS module that fakes Wiimotes from the input of USB game controllers._
 - This is still in beta-stage, therefore it might not work as expected
 
 ## Compilation
-1) Download and install [devkitARM](https://devkitpro.org/wiki/Getting_Started)
-2) Install `stripios`:
-   1) Download `stripios`'s source code from [Leseratte's d2xl cIOS](https://github.com/Leseratte10/d2xl-cios/tree/master/stripios)
-   2) Compile it:
+
+##### 1) Install `devkitARM`
+- Download and install [devkitARM](https://devkitpro.org/wiki/Getting_Started)
+   - Make sure to install the `devkitarm-cmake` package when using `pacman`
+
+##### 2) Install `stripios`
+1) Download `stripios`'s source code from [Leseratte's d2xl cIOS](https://github.com/Leseratte10/d2xl-cios/tree/master/stripios)
+2) Compile it:
    ```bash
    g++ main.cpp -o stripios
    ```
-   4) Install it:
+3) Install it:
    ```bash
    cp stripios $DEVKITPRO/tools/bin
    ```
-3) Run `make` to compile `FAKEMOTE.app`
+
+##### 3) Build `FAKEMOTE.app`
+1. `mkdir build && cd build`
+2. Configure it with CMake. Two options:\
+  &ensp;a. `arm-none-eabi-cmake ..`\
+  &ensp;b. `cmake -DCMAKE_TOOLCHAIN_FILE:FILEPATH=$DEVKITPRO/cmake/devkitARM.cmake ..`
+3. `make` (or `ninja` if configured with `-G Ninja`)
+4. `FAKEMOTE.app` will be generated
+
+I recommend passing `-DCMAKE_COLOR_DIAGNOSTICS:BOOL=TRUE`, especially when using Ninja.
 
 ## Credits
 - [Dolphin emulator](https://dolphin-emu.org/) developers

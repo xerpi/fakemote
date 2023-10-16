@@ -583,7 +583,7 @@ int main(void)
 		  TOSTRING(FAKEMOTE_MAJOR) "."
 		  TOSTRING(FAKEMOTE_MINOR) "."
 		  TOSTRING(FAKEMOTE_PATCH) "-"
-		  FAKEMOTE_HASH " $\n");
+		  TOSTRING(FAKEMOTE_HASH) " $\n");
 
 	/* Read SYSCONF */
 	ret = read_conf(conf_buffer);
