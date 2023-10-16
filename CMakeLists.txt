@@ -44,8 +44,8 @@ add_executable(fakemote
     source/wiimote_crypto.c
     source/conf.c
     source/usb_hid.c
-    source/usb_driver_ds3.c
-    source/usb_driver_ds4.c
+    source/usb_drivers/sony_ds3.c
+    source/usb_drivers/sony_ds4.c
 )
 
 target_include_directories(fakemote PRIVATE

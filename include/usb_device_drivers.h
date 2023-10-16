@@ -3,6 +3,7 @@
 
 #include "usb_hid.h"
 
+/* List of Vendor IDs */
 #define SONY_VID	0x054c
 
 struct device_id_t {
