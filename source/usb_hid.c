@@ -380,6 +380,9 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 
 		/* Oops, it got disconnected */
 		if (!found) {
+			DEBUG("Device with VID: 0x%04x, PID: 0x%04x, dev_id: 0x%x got disconnected\n",
+				device->vid, device->pid, device->dev_id);
+
 			if (device->driver->disconnect)
 				ret = device->driver->disconnect(device);
 			/* Tell the fake Wiimote manager we got an input device removal */
@@ -396,13 +399,13 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 		dev_id = device_change_devices[i].device_id;
 		DEBUG("[%d] VID: 0x%04x, PID: 0x%04x, dev_id: 0x%x\n", i, vid, pid, dev_id);
 
+		/* Check if we already have that device (same dev_id) connected */
+		if (is_usb_device_connected(dev_id))
+			continue;
+
 		/* Find if we have a driver for that VID/PID */
 		driver = get_usb_device_driver_for(vid, pid);
 		if (!driver)
-			continue;
-
-		/* Check if we already have that device (same dev_id) connected */
-		if (is_usb_device_connected(dev_id))
 			continue;
 
 		/* Get an empty device slot */
@@ -529,34 +532,3 @@ int usb_hid_init(void)
 
 	return 0;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
