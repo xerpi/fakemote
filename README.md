@@ -17,20 +17,20 @@ _A Wii cIOS module that fakes Wiimotes from the input of USB game controllers._
 
 ## Installation
 1) Download [d2x cIOS Installer for regular Wii](https://wii.guide/cios.html)/[d2x cIOS Installer for vWii](https://wiiu.hacks.guide/#/vwii-modding) and extract it to the SD card
-2) Copy `FAKEMOTE.app` to the d2x cIOS Installer directory that contains the modules of the cIOS version you want to install.  
+2) Copy `FAKEMOTE.app` to the d2x cIOS Installer directory that contains the modules of the cIOS version you want to install.
    For example, for `d2x-v10-beta52` copy `FAKEMOTE.app` to `sd:/apps/d2x-cIOS-Installer-Wii/v10/beta52/d2x-v10-beta52`
 3) Open d2x cIOS Installer's `ciosmaps.xml` (located at `sd:/apps/d2x-cIOS-Installer-Wii/ciosmaps.xml`) and do the following:
-   1) Locate the line containing the base IOS version you want to install. It starts with `<base ios=`.  
+   1) Locate the line containing the base IOS version you want to install. It starts with `<base ios=`.
       For base IOS 57:
       ```xml
       <base ios="57" version="5918" contentscount="26" modulescount="7">
       ```
-   3) Increase `modulescount` and `contentscount` by 1.  
+   3) Increase `modulescount` and `contentscount` by 1.
       For base IOS 57:
       ```xml
       <base ios="57" version="5918" contentscount="27" modulescount="8">
       ```
-   3) Add a `<content>` entry for `FAKEMOTE`after the last `<content module>`.  
+   3) Add a `<content>` entry for `FAKEMOTE`after the last `<content module>`.
       For base IOS 57:
       ```xml
       <content id="0x24" module="FAKEMOTE" tmdmoduleid="-1"/>
@@ -38,7 +38,8 @@ _A Wii cIOS module that fakes Wiimotes from the input of USB game controllers._
 4) Run d2x cIOS Installer and install the cIOS
 
 ## Usage
-- If you have a **regular Wii**, **not a Wii U (vWii)**, you can install [Priiloader](https://wii.guide/priiloader.html) and change the IOS slot to use when running System Menu and disc games
+- You can install [Priiloader](https://wii.guide/priiloader.html) and change the IOS slot to use when running System Menu and disc games
+
 - You can configure your USB loader to specify the IOS slot to use when running the loader and/or games
 
 ## Notes
