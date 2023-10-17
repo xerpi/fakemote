@@ -205,6 +205,12 @@ static inline void fake_wiimote_reset_extension_state(fake_wiimote_t *wiimote)
 	case WIIMOTE_EXT_GUITAR:
 		id_code = EXP_ID_CODE_GUITAR;
 		break;
+	case WIIMOTE_EXT_DRUM:
+		id_code = EXP_ID_CODE_DRUM;
+		break;
+	case WIIMOTE_EXT_TURNTABLE:
+		id_code = EXP_ID_CODE_TURNTABLE;
+		break;
 	case WIIMOTE_EXT_MOTION_PLUS:
 		id_code = EXP_ID_CODE_MOTION_PLUS;
 		break;

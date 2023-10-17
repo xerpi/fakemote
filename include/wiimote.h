@@ -121,6 +121,44 @@
 #define CLASSIC_CTRL_BUTTON_RIGHT	0x8000
 #define CLASSIC_CTRL_BUTTON_ALL		0xFEFF
 
+/* Guitar button codes */
+#define GUITAR_CTRL_BUTTON_STRUM_UP	0x0001
+#define GUITAR_CTRL_BUTTON_YELLOW	0x0008
+#define GUITAR_CTRL_BUTTON_GREEN	0x0010
+#define GUITAR_CTRL_BUTTON_BLUE		0x0020
+#define GUITAR_CTRL_BUTTON_RED		0x0040
+#define GUITAR_CTRL_BUTTON_ORANGE	0x0080
+#define GUITAR_CTRL_BUTTON_PLUS		0x0400
+#define GUITAR_CTRL_BUTTON_MINUS	0x1000
+#define GUITAR_CTRL_BUTTON_STRUM_DOWN	0x4000
+#define GUITAR_CTRL_BUTTON_ALL		0xFEFF
+
+/* Drum button codes */
+#define DRUM_CTRL_BUTTON_UP			0x0001
+#define DRUM_CTRL_BUTTON_LEFT		0x0002
+#define DRUM_CTRL_BUTTON_YELLOW		0x0008
+#define DRUM_CTRL_BUTTON_GREEN		0x0010
+#define DRUM_CTRL_BUTTON_BLUE		0x0020
+#define DRUM_CTRL_BUTTON_RED		0x0040
+#define DRUM_CTRL_BUTTON_ORANGE		0x0080
+#define DRUM_CTRL_BUTTON_PLUS		0x0400
+#define DRUM_CTRL_BUTTON_MINUS		0x1000
+#define DRUM_CTRL_BUTTON_DOWN		0x4000
+#define DRUM_CTRL_BUTTON_RIGHT		0x8000
+#define DRUM_CTRL_BUTTON_ALL		0xFEFF
+
+/* Turntable button codes */
+#define TURNTABLE_CTRL_BUTTON_LEFT_GREEN	0x0008
+#define TURNTABLE_CTRL_BUTTON_LEFT_RED		0x2000
+#define TURNTABLE_CTRL_BUTTON_LEFT_BLUE		0x0080
+#define TURNTABLE_CTRL_BUTTON_RIGHT_GREEN	0x0020
+#define TURNTABLE_CTRL_BUTTON_RIGHT_RED		0x0200
+#define TURNTABLE_CTRL_BUTTON_RIGHT_BLUE	0x0004
+#define TURNTABLE_CTRL_BUTTON_EUPHORIA		0x0010
+#define TURNTABLE_CTRL_BUTTON_PLUS			0x0400
+#define TURNTABLE_CTRL_BUTTON_MINUS			0x1000
+#define TURNTABLE_CTRL_BUTTON_ALL			0xFEFF
+
 /* Acceleromter configuration */
 #define ACCEL_ZERO_G	(0x80 << 2)
 #define ACCEL_ONE_G	(0x9A << 2)
@@ -152,6 +190,8 @@ enum wiimote_ext_e {
 	WIIMOTE_EXT_CLASSIC,
 	WIIMOTE_EXT_CLASSIC_WIIU_PRO,
 	WIIMOTE_EXT_GUITAR,
+	WIIMOTE_EXT_DRUM,
+	WIIMOTE_EXT_TURNTABLE,
 	WIIMOTE_EXT_MOTION_PLUS,
 };
 
@@ -334,9 +374,126 @@ struct wiimote_extension_data_format_classic_t {
 	} bt;
 };
 
+struct wiimote_extension_data_format_turntable_t {
+	u8 rtt3 : 2;  // byte 0
+	u8 sx : 6;
+
+	u8 rtt2 : 2;  // byte 1
+	u8 sy : 6;
+
+	u8 rtt1 : 1;
+	u8 effects1 : 2;
+	u8 crossfade : 4;
+	u8 rtt5 : 1;
+
+	u8 effects2 : 3;
+	u8 ltt1 : 5;
+
+	union {  // byte 4, 5
+		u16 hex;
+		struct {
+			u8 : 1;
+			u8 : 1;
+			u8 left_red : 1;
+			u8 minus : 1;
+			u8 : 1;
+			u8 plus : 1;
+			u8 right_red : 1;
+			u8 ltt5 : 1;
+
+			u8 left_blue : 1;
+			u8  : 1;
+			u8 right_green : 1;
+			u8 euphoria : 1;
+			u8 left_green : 1;
+			u8 right_blue : 1;
+			u8 : 1;
+			u8 : 1;
+		};
+	} bt;
+};
+
+struct wiimote_extension_data_format_guitar_t {
+	u8 : 2;  // byte 0
+	u8 sx : 6;
+
+	u8 : 2; 
+	u8 sy : 6; // byte 1
+
+	u8 : 3;	// byte 2
+	u8 tb : 5; 
+
+	u8 : 3;	   // byte 3
+	u8 wb : 5;
+
+	union {  // byte 4, 5
+		u16 hex;
+		struct {
+			u8 : 1;
+			u8 strum_down : 1;
+			u8 : 1;
+			u8 minus : 1;
+			u8 : 1;
+			u8 plus : 1;
+			u8 : 1;
+			u8 : 1;
+
+			u8 orange : 1;
+			u8 red : 1;
+			u8 blue : 1;
+			u8 green : 1;
+			u8 yellow : 1;
+			u8 : 1;
+			u8 : 1;
+			u8 strum_up : 1;
+		};
+	} bt;
+};
+
+struct wiimote_extension_data_format_drum_t {
+	bool : 1;  // byte 0
+	bool : 1;
+	u8 sx : 6;
+
+	bool : 1;  // byte 1
+	bool : 1;
+	u8 sy : 6;
+
+	bool hhp : 1;  // byte 2
+	bool has_velocity : 1;
+	u8 velocity_type : 5;
+	u8 : 1;
+
+	u8 velocity : 3;  // byte 3
+	u8 extra : 4; // needs to be set to 0b0110
+	u8 : 1;
+
+	union {  // byte 4, 5
+		u16 hex;
+		struct {
+			u8 : 3;
+			u8 minus : 1;
+			u8 : 1;
+			u8 plus : 1;
+			u8 : 2;
+
+			u8 orange : 1;
+			u8 red : 1;
+			u8 blue : 1;
+			u8 green : 1;
+			u8 yellow : 1;
+			u8 kick : 1;
+			u8 : 2;
+		};
+	} bt;
+};
+
 union wiimote_extension_data_t {
 	struct wiimote_extension_data_format_nunchuk_t nunchuk;
 	struct wiimote_extension_data_format_classic_t classic;
+	struct wiimote_extension_data_format_guitar_t guitar;
+	struct wiimote_extension_data_format_drum_t drum;
+	struct wiimote_extension_data_format_turntable_t turntable;
 };
 static_assert(sizeof(union wiimote_extension_data_t) <= CONTROLLER_DATA_BYTES);
 
@@ -373,6 +530,8 @@ static const u8 EXT_ID_CODE_NUNCHUNK[6] 		= {0x00, 0x00, 0xa4, 0x20, 0x00, 0x00}
 static const u8 EXP_ID_CODE_CLASSIC_CONTROLLER[6]	= {0x00, 0x00, 0xa4, 0x20, 0x01, 0x01};
 static const u8 EXP_ID_CODE_CLASSIC_WIIU_PRO[6]		= {0x00, 0x00, 0xa4, 0x20, 0x01, 0x20};
 static const u8 EXP_ID_CODE_GUITAR[6]			= {0x00, 0x00, 0xa4, 0x20, 0x01, 0x03};
+static const u8 EXP_ID_CODE_DRUM[6] = {0x01, 0x00, 0xa4, 0x20, 0x01, 0x03};
+static const u8 EXP_ID_CODE_TURNTABLE[6] = {0x03, 0x00, 0xa4, 0x20, 0x01, 0x03};
 static const u8 EXP_ID_CODE_MOTION_PLUS[6]		= {0x00, 0x00, 0xA6, 0x20, 0x00, 0x05};
 
 /* EEPROM */

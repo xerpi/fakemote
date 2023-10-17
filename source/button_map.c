@@ -71,6 +71,80 @@ void bm_map_classic(
 	bm_classic_format(classic, classic_buttons, classic_analog_axis);
 }
 
+void bm_map_guitar(
+	/* Inputs */
+	int num_buttons, u32 buttons,
+	int num_analog_axis, const u8 *analog_axis,
+	/* Mapping tables */
+	const u16 *guitar_button_map,
+	const u8 *guitar_analog_axis_map,
+	/* Outputs */
+	struct wiimote_extension_data_format_guitar_t *guitar)
+{
+	u16 guitar_buttons = 0;
+	u8 guitar_analog_axis[BM_GUITAR_ANALOG_AXIS__NUM] = {0};
+
+	for (int i = 0; i < num_buttons; i++) {
+		if (buttons & 1)
+			guitar_buttons |= guitar_button_map[i];
+		buttons >>= 1;
+	}
+
+	for (int i = 0; i < num_analog_axis; i++) {
+		if (guitar_analog_axis_map[i])
+			guitar_analog_axis[guitar_analog_axis_map[i] - 1] = analog_axis[i];
+	}
+
+	bm_guitar_format(guitar, guitar_buttons, guitar_analog_axis);
+}
+
+void bm_map_turntable(
+	/* Inputs */
+	int num_buttons, u32 buttons,
+	int num_analog_axis, const u8 *analog_axis,
+	/* Mapping tables */
+	const u16 *turntable_button_map,
+	const u8 *turntable_analog_axis_map,
+	/* Outputs */
+	struct wiimote_extension_data_format_turntable_t *turntable)
+{
+	u16 turntable_buttons = 0;
+	u8 turntable_analog_axis[BM_TURNTABLE_ANALOG_AXIS__NUM] = {0};
+
+	for (int i = 0; i < num_buttons; i++) {
+		if (buttons & 1)
+			turntable_buttons |= turntable_button_map[i];
+		buttons >>= 1;
+	}
+
+	for (int i = 0; i < num_analog_axis; i++) {
+		if (turntable_analog_axis_map[i])
+			turntable_analog_axis[turntable_analog_axis_map[i] - 1] = analog_axis[i];
+	}
+
+	bm_turntable_format(turntable, turntable_buttons, turntable_analog_axis);
+}
+
+void bm_map_drum(
+	/* Inputs */
+	int num_buttons, u32 buttons,
+	int num_analog_axis, const u8 *analog_axis,
+	/* Mapping tables */
+	const u16 *drum_button_map,
+	/* Outputs */
+	struct wiimote_extension_data_format_drum_t *guitar)
+{
+	u16 drum_buttons = 0;
+
+	for (int i = 0; i < num_buttons; i++) {
+		if (buttons & 1)
+			drum_buttons |= drum_button_map[i];
+		buttons >>= 1;
+	}
+
+	bm_drum_format(guitar, drum_buttons, analog_axis);
+}
+
 static inline void map_ir_dot(struct ir_dot_t ir_dots[static IR_MAX_DOTS], const struct ir_dot_t *dot)
 {
 	s16 vert_offset = g_sensor_bar_position_top ? IR_VERTICAL_OFFSET : -IR_VERTICAL_OFFSET;

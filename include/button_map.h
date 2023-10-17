@@ -22,6 +22,35 @@ enum bm_classic_analog_axis_e {
 	BM_CLASSIC_ANALOG_AXIS__NUM = BM_CLASSIC_ANALOG_AXIS_RIGHT_Y
 };
 
+/* Guitar controller */
+enum bm_guitar_analog_axis_e {
+	BM_GUITAR_ANALOG_AXIS_STICK_X = 1,
+	BM_GUITAR_ANALOG_AXIS_STICK_Y,
+	BM_GUITAR_ANALOG_AXIS_TAP_BAR,
+	BM_GUITAR_ANALOG_AXIS_WHAMMY_BAR,
+	BM_GUITAR_ANALOG_AXIS__NUM = BM_GUITAR_ANALOG_AXIS_WHAMMY_BAR
+};
+
+/* Turntable controller */
+enum bm_turntable_analog_axis_e {
+	BM_TURNTABLE_ANALOG_AXIS_STICK_X = 1,
+	BM_TURNTABLE_ANALOG_AXIS_STICK_Y,
+	BM_TURNTABLE_ANALOG_LEFT_TURNTABLE_VELOCITY,
+	BM_TURNTABLE_ANALOG_RIGHT_TURNTABLE_VELOCITY,
+	BM_TURNTABLE_ANALOG_CROSS_FADER,
+	BM_TURNTABLE_ANALOG_EFFECTS_DIAL,
+	BM_TURNTABLE_ANALOG_AXIS__NUM = BM_TURNTABLE_ANALOG_EFFECTS_DIAL
+};
+
+/* Drum controller */
+enum bm_drum_analog_axis_e {
+	BM_DRUM_ANALOG_AXIS_STICK_X = 1,
+	BM_DRUM_ANALOG_AXIS_STICK_Y,
+	BM_DRUM_ANALOG_AXIS_VELOCITY_SELECTOR,
+	BM_DRUM_ANALOG_AXIS_VELOCITY,
+	BM_DRUM_ANALOG_AXIS__NUM = BM_DRUM_ANALOG_AXIS_VELOCITY
+};
+
 /* IR pointer emulation */
 enum bm_ir_emulation_mode_e {
 	BM_IR_EMULATION_MODE_NONE,
@@ -70,6 +99,35 @@ void bm_map_classic(
 	/* Outputs */
 	struct wiimote_extension_data_format_classic_t *classic);
 
+void bm_map_guitar(
+	/* Inputs */
+	int num_buttons, u32 buttons,
+	int num_analog_axis, const u8 *analog_axis,
+	/* Mapping tables */
+	const u16 *guitar_button_map,
+	const u8 *guitar_analog_axis_map,
+	/* Outputs */
+	struct wiimote_extension_data_format_guitar_t *guitar);
+
+void bm_map_turntable(
+	/* Inputs */
+	int num_buttons, u32 buttons,
+	int num_analog_axis, const u8 *analog_axis,
+	/* Mapping tables */
+	const u16 *turntable_button_map,
+	const u8 *turntable_analog_axis_map,
+	/* Outputs */
+	struct wiimote_extension_data_format_turntable_t *guitar);
+
+void bm_map_drum(
+	/* Inputs */
+	int num_buttons, u32 buttons,
+	int num_analog_axis, const u8 *analog_axis,
+	/* Mapping tables */
+	const u16 *drum_button_map,
+	/* Outputs */
+	struct wiimote_extension_data_format_drum_t *drum);
+
 void bm_map_ir_direct(
 	/* Inputs */
 	int num_coordinates, const u16 *x, const u16 *y,
@@ -99,8 +157,8 @@ static inline bool bm_check_switch_mapping(u32 buttons, bool *switch_mapping, u3
 }
 
 static inline void bm_nunchuk_format(struct wiimote_extension_data_format_nunchuk_t *out,
-				     u8 buttons, u8 analog_axis[static BM_NUNCHUK_ANALOG_AXIS__NUM],
-				     u16 ax, u16 ay, u16 az)
+					 u8 buttons, u8 analog_axis[static BM_NUNCHUK_ANALOG_AXIS__NUM],
+					 u16 ax, u16 ay, u16 az)
 {
 	out->jx = analog_axis[BM_NUNCHUK_ANALOG_AXIS_X - 1];
 	out->jy = analog_axis[BM_NUNCHUK_ANALOG_AXIS_Y - 1];
@@ -115,7 +173,7 @@ static inline void bm_nunchuk_format(struct wiimote_extension_data_format_nunchu
 }
 
 static inline void bm_classic_format(struct wiimote_extension_data_format_classic_t *out,
-				     u16 buttons, u8 analog_axis[static BM_CLASSIC_ANALOG_AXIS__NUM])
+					 u16 buttons, u8 analog_axis[static BM_CLASSIC_ANALOG_AXIS__NUM])
 {
 	u8 lx = analog_axis[BM_CLASSIC_ANALOG_AXIS_LEFT_X - 1] >> 2;
 	u8 ly = analog_axis[BM_CLASSIC_ANALOG_AXIS_LEFT_Y - 1] >> 2;
@@ -134,6 +192,61 @@ static inline void bm_classic_format(struct wiimote_extension_data_format_classi
 	out->lt1 = lt & 0x7;
 	out->rt = rt & 0x1F;
 	out->bt.hex = (~buttons) & CLASSIC_CTRL_BUTTON_ALL;
+}
+
+
+
+static inline void bm_turntable_format(struct wiimote_extension_data_format_turntable_t *out,
+					 u16 buttons, u8 analog_axis[static BM_TURNTABLE_ANALOG_AXIS__NUM])
+{
+	u8 sx = analog_axis[BM_TURNTABLE_ANALOG_AXIS_STICK_X - 1] >> 2;
+	u8 sy = analog_axis[BM_TURNTABLE_ANALOG_AXIS_STICK_Y - 1] >> 2;
+	u8 ltt = analog_axis[BM_TURNTABLE_ANALOG_LEFT_TURNTABLE_VELOCITY - 1] >> 3;
+	u8 rtt = analog_axis[BM_TURNTABLE_ANALOG_RIGHT_TURNTABLE_VELOCITY - 1] >> 3;
+	u8 cross_fader = analog_axis[BM_TURNTABLE_ANALOG_CROSS_FADER - 1] >> 4;
+	u8 effects_dial = analog_axis[BM_TURNTABLE_ANALOG_EFFECTS_DIAL - 1] >> 3;
+
+	out->sx = sx & 0x3F;
+	out->sy = sy & 0x3F;
+	out->rtt1 = rtt & 1;
+	out->rtt2 = (rtt >> 1) & 3;
+	out->rtt3 = (rtt >> 3) & 3;
+	out->rtt5 = rtt & (1<<5);
+	out->effects2 = (effects_dial >> 3) & 3;
+	out->effects1 = effects_dial & 0x7;
+	out->ltt1 = ltt & 0x20;
+	out->crossfade = cross_fader;
+	out->bt.hex = (~buttons) & TURNTABLE_CTRL_BUTTON_ALL;
+	out->bt.ltt5 = ltt & (1<<5);
+}
+
+static inline void bm_guitar_format(struct wiimote_extension_data_format_guitar_t *out,
+					 u16 buttons, const u8 analog_axis[static BM_GUITAR_ANALOG_AXIS__NUM])
+{
+	u8 sx = analog_axis[BM_GUITAR_ANALOG_AXIS_STICK_X - 1] >> 2;
+	u8 sy = analog_axis[BM_GUITAR_ANALOG_AXIS_STICK_Y - 1] >> 2;
+	u8 tb = analog_axis[BM_GUITAR_ANALOG_AXIS_TAP_BAR - 1] >> 3;
+	u8 wb = analog_axis[BM_GUITAR_ANALOG_AXIS_WHAMMY_BAR - 1] >> 3;
+	out->sx = sx & 0x3F;
+	out->sy = sy & 0x3F;
+	out->tb = tb & 0x1F;
+	out->wb = wb & 0x1F;
+	out->bt.hex = (~buttons) & GUITAR_CTRL_BUTTON_ALL;
+}
+
+static inline void bm_drum_format(struct wiimote_extension_data_format_drum_t *out,
+					 u16 buttons, const u8 analog_axis[static BM_DRUM_ANALOG_AXIS__NUM])
+{
+	u8 sx = analog_axis[BM_DRUM_ANALOG_AXIS_STICK_X - 1] >> 2;
+	u8 sy = analog_axis[BM_DRUM_ANALOG_AXIS_STICK_Y - 1] >> 2;
+	u8 type = analog_axis[BM_DRUM_ANALOG_AXIS_VELOCITY_SELECTOR - 1];
+	u8 velocity = analog_axis[BM_DRUM_ANALOG_AXIS_VELOCITY - 1] >> 5;
+	out->sx = sx & 0x3F;
+	out->sy = sy & 0x3F;
+	out->velocity_type = type & 0x1f;
+	out->velocity = velocity & 0x07;
+	out->bt.hex = (~buttons) & DRUM_CTRL_BUTTON_ALL;
+	out->extra = 0b0110;
 }
 
 static inline void bm_ir_emulation_state_reset(struct bm_ir_emulation_state_t *state)
