@@ -46,6 +46,9 @@ add_executable(fakemote
     source/usb_hid.c
     source/usb_drivers/sony_ds3.c
     source/usb_drivers/sony_ds4.c
+    source/usb_drivers/dj_hero_turntable.c
+    source/usb_drivers/guitar_hero_drums.c
+    source/usb_drivers/guitar_hero_guitar.c
 )
 
 target_include_directories(fakemote PRIVATE

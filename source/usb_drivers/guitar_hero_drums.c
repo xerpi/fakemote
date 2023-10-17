@@ -165,8 +165,7 @@ bool gh_drum_driver_ops_probe(u16 vid, u16 pid)
 int gh_drum_driver_ops_init(usb_input_device_t *device, u16 vid, u16 pid)
 {
 	int ret;
-	struct gh_drum_private_data_t *priv = (void *)device->private_data;
-
+	
 	fake_wiimote_set_extension(device->wiimote, WIIMOTE_EXT_DRUM);
 
 	ret = gh_drum_request_data(device);
