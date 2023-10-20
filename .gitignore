@@ -61,5 +61,4 @@ dkms.conf
 *.jpg
 
 # CMake
-build*
 !CMakeLists.txt

@@ -1,0 +1,37 @@
+name: C/C++ CI
+
+on: [push, pull_request]
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitarm:latest
+
+    steps:
+    - uses: actions/checkout@v3.5.2
+
+    - name: Install g++
+      run: sudo apt-get update -y && sudo apt-get install g++ -y
+
+    - name: Install stripios
+      run : |
+        wget https://raw.githubusercontent.com/Leseratte10/d2xl-cios/master/stripios/main.cpp
+        g++ main.cpp -o stripios
+        mv stripios ${DEVKITPRO}/tools/bin
+        rm -f main.cpp
+
+    - name: Configure CMake
+      run: ${DEVKITARM}/bin/arm-none-eabi-cmake -B build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+
+    - name: Build
+      run: cmake --build build --config ${{env.BUILD_TYPE}}
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: FAKEMOTE
+        if-no-files-found: error
+        path: build/FAKEMOTE.app
