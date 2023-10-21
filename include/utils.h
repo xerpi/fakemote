@@ -28,8 +28,12 @@
 #endif
 #define assert(exp) ( (exp) ? (void)0 : my_assert_func(__FILE__, __LINE__, __FUNCTION__, #exp))
 
-//#define DEBUG(...) printf(__VA_ARGS__)
-#define DEBUG(...) (void)0
+#define LOG_INFO(...) printf(__VA_ARGS__)
+#if DEBUG
+#define LOG_DEBUG(...) printf(__VA_ARGS__)
+#else
+#define LOG_DEBUG(...) (void)0
+#endif
 
 extern void my_assert_func(const char *file, int line, const char *func, const char *failedexpr);
 

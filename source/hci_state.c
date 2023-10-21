@@ -112,7 +112,7 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 	u16 virt, phys = 0;
 	bool success;
 
-	DEBUG("H > C HCI CMD: opcode: 0x%04x\n", opcode);
+	LOG_DEBUG("H > C HCI CMD: opcode: 0x%04x\n", opcode);
 
 	/* If the request targets a "fake wiimote", we don't have to hand it down to OH1.
 	 * Otherwise, we just have to patch the HCI connection handle from virtual to physical.
@@ -174,7 +174,7 @@ void hci_state_handle_hci_cmd_from_host(void *data, u32 length, bool *fwd_to_usb
 	TRANSLATE_CON_HANDLE(HCI_CMD_FLOW_SPECIFICATION, hci_flow_specification_cp)
 	TRANSLATE_CON_HANDLE(HCI_CMD_SNIFF_SUBRATING, hci_sniff_subrating_cp)
 	case HCI_CMD_RESET:
-		DEBUG("HCI_CMD_RESET\n");
+		LOG_DEBUG("HCI_CMD_RESET\n");
 		hci_state_reset();
 		break;
 	TRANSLATE_CON_HANDLE(HCI_CMD_FLUSH, hci_flush_cp)
@@ -216,7 +216,7 @@ void hci_state_handle_hci_event_from_controller(void *data, u32 length)
 	/* Here we just have to patch the HCI connection handles from physical to virtual,
 	 * and check for connection/disconnection events to create/remove the mappings.  */
 
-	DEBUG("C > H HCI EVT: event: 0x%02x, len: 0x%x\n", hdr->event, hdr->length);
+	LOG_DEBUG("C > H HCI EVT: event: 0x%02x, len: 0x%x\n", hdr->event, hdr->length);
 
 #define TRANSLATE_CON_HANDLE(event, type) \
 	case event: { \
@@ -234,7 +234,7 @@ void hci_state_handle_hci_event_from_controller(void *data, u32 length)
 		hci_con_compl_ep *ep = payload;
 		/* The BT controller sent us the *physical* HCI handle for the new connection.
 		 * Allocate a new virtual HCI handle and map it. */
-		DEBUG("HCI_EVENT_CON_COMPL: status: 0x%x, handle: 0x%x\n",
+		LOG_DEBUG("HCI_EVENT_CON_COMPL: status: 0x%x, handle: 0x%x\n",
 			ep->status, le16toh(ep->con_handle));
 		if (ep->status == 0) {
 			/* Allocate a new virtual connection handle */
@@ -242,7 +242,7 @@ void hci_state_handle_hci_event_from_controller(void *data, u32 length)
 			/* Create the new connection handle mapping */
 			ret = hci_virt_con_handle_map(le16toh(ep->con_handle), virt);
 			assert(ret);
-			DEBUG("New HCI connection. Mapping: p 0x%x -> v 0x%x\n",
+			LOG_DEBUG("New HCI connection. Mapping: p 0x%x -> v 0x%x\n",
 				le16toh(ep->con_handle), virt);
 			ep->con_handle = htole16(virt);
 			os_sync_after_write(&ep->con_handle, sizeof(ep->con_handle));
@@ -253,7 +253,7 @@ void hci_state_handle_hci_event_from_controller(void *data, u32 length)
 		hci_discon_compl_ep *ep = payload;
 		/* The BT controller sent us the *physical* HCI handle for the disconnection.
 		 * Unmap the virtual HCI handle associated to it. */
-		DEBUG("HCI_EVENT_DISCON_COMPL: status: 0x%x, handle: 0x%x, reason: 0x%x\n",
+		LOG_DEBUG("HCI_EVENT_DISCON_COMPL: status: 0x%x, handle: 0x%x, reason: 0x%x\n",
 			ep->status, le16toh(ep->con_handle), ep->reason);
 		if (ep->status == 0) {
 			ret = hci_virt_con_handle_get_virt(le16toh(ep->con_handle), &virt);
@@ -332,13 +332,13 @@ void hci_state_handle_acl_data_in_response_from_controller(void *data, u32 lengt
 	u16 pc = HCI_BC_FLAG(handle_pb_bc);
 	UNUSED(payload_len);
 
-	DEBUG("H < C ACL  IN: pcon_handle: 0x%x, len: 0x%x\n", phys, payload_len);
+	LOG_DEBUG("H < C ACL  IN: pcon_handle: 0x%x, len: 0x%x\n", phys, payload_len);
 
 	ret = hci_virt_con_handle_get_virt(phys, &virt);
 	assert(ret);
 	hdr->con_handle = htole16(HCI_MK_CON_HANDLE(virt, pb, pc));
 
-	DEBUG("    p 0x%x -> v 0x%x\n", phys, virt);
+	LOG_DEBUG("    p 0x%x -> v 0x%x\n", phys, virt);
 
 	/* Flush modified data */
 	os_sync_after_write(&hdr->con_handle, sizeof(hdr->con_handle));
@@ -356,7 +356,7 @@ void hci_state_handle_acl_data_out_request_from_host(void *data, u32 length, boo
 	u16 pc = HCI_BC_FLAG(handle_pb_bc);
 	UNUSED(payload_len);
 
-	DEBUG("H > C ACL OUT: vcon_handle: 0x%x, len: 0x%x\n", virt, payload_len);
+	LOG_DEBUG("H > C ACL OUT: vcon_handle: 0x%x, len: 0x%x\n", virt, payload_len);
 
 	/* First check if the virtual connection handle corresponds to a fake wiimote */
 	if (fake_wiimote_mgr_handle_acl_data_out_request_from_host(virt, hdr)) {
@@ -368,7 +368,7 @@ void hci_state_handle_acl_data_out_request_from_host(void *data, u32 length, boo
 	assert(ret);
 	hdr->con_handle = htole16(HCI_MK_CON_HANDLE(phys, pb, pc));
 
-	DEBUG("    v 0x%x -> p 0x%x\n", virt, phys);
+	LOG_DEBUG("    v 0x%x -> p 0x%x\n", virt, phys);
 
 	/* Flush modified data */
 	os_sync_after_write(&hdr->con_handle, sizeof(hdr->con_handle));

@@ -211,7 +211,7 @@ static int handle_oh1_dev_ioctlv(ipcmessage *recv_msg, ipcmessage **ret_msg, u32
 	}
 	default:
 		/* Unhandled/unknown ioctls are forwarded to the OH1 module */
-		DEBUG("Unhandled IOCTL: 0x%x\n", cmd);
+		LOG_DEBUG("Unhandled IOCTL: 0x%x\n", cmd);
 		break;
 	}
 
@@ -328,7 +328,7 @@ static int OH1_IOS_ReceiveMessage_hook(int queueid, ipcmessage **ret_msg, u32 fl
 	while (1) {
 		ret = os_message_queue_receive(queueid, &recv_data, flags);
 		if (ret != IOS_OK) {
-			DEBUG("Message queue recv err: %d\n", ret);
+			LOG_DEBUG("Message queue recv err: %d\n", ret);
 			break;
 		} else if (recv_data == 0xcafef00d) {
 			*ret_msg = (ipcmessage *)0xcafef00d;
@@ -529,21 +529,21 @@ static int patch_conf_bt_dinf(u8 conf_buffer[static CONF_SIZE])
 
 	/* Get paired Wiimote configuration */
 	ret = conf_get(conf_buffer, "BT.DINF", &conf_pads, sizeof(conf_pads));
-	DEBUG("conf_get(): %d\n", ret);
+	LOG_DEBUG("conf_get(): %d\n", ret);
 	if (ret != sizeof(conf_pads))
 		return IOS_EINVAL;
-	DEBUG("  num_registered: %d\n", conf_pads.num_registered);
+	LOG_DEBUG("  num_registered: %d\n", conf_pads.num_registered);
 
 	/* Check how many "Fake Wiimotes" are paired */
 	paired_count = 0;
 	for (int i = 0; i < conf_pads.num_registered; i++) {
-		DEBUG("  registered[%d]: \"%s\"\n", i, conf_pads.registered[i].name);
+		LOG_DEBUG("  registered[%d]: \"%s\"\n", i, conf_pads.registered[i].name);
 		/* Check if the bdaddr matches */
 		baswap(&bdaddr, &conf_pads.registered[i].bdaddr);
 		if (bacmp(&bdaddr, &FAKE_WIIMOTE_BDADDR(paired_count)) == 0)
 			paired_count++;
 	}
-	DEBUG("Found %d paired \"Fake Wiimotes\"\n", paired_count);
+	LOG_DEBUG("Found %d paired \"Fake Wiimotes\"\n", paired_count);
 
 	/* Give at least the last two entries (out of 10) for fake Wiimotes */
 	if (paired_count >= 2)
@@ -608,7 +608,7 @@ int main(void)
 
 	/* Initialize plugin with patchers */
 	ret = IOS_InitSystem(patchers, sizeof(patchers));
-	DEBUG("IOS_InitSystem(): %d\n", ret);
+	LOG_DEBUG("IOS_InitSystem(): %d\n", ret);
 
 	return ret;
 }

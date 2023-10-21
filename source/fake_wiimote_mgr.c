@@ -123,7 +123,7 @@ static bool fake_wiimote_mgr_handle_hci_cmd_reject_con(const bdaddr_t *bdaddr, u
 	if (does_bdaddr_belong_to_fake_wiimote(bdaddr, &i)) {
 		/* TODO: Send inject_hci_event_command_status(HCI_CMD_REJECT_CON) ? */
 		/* Connection rejected to our fake wiimote. Disconnect */
-		DEBUG("Connection to fake Wiimote %d rejected!\n", i);
+		LOG_DEBUG("Connection to fake Wiimote %d rejected!\n", i);
 		fake_wiimote_disconnect(&fake_wiimotes[i]);
 		return true;
 	}
@@ -136,7 +136,7 @@ static bool fake_wiimote_mgr_handle_hci_cmd_disconnect(u16 hci_con_handle, u8 re
 	int ret;
 	fake_wiimote_t *wiimote;
 
-	DEBUG("Handle HCI_CMD_DISCONNECT: con handle: 0x%x\n", hci_con_handle);
+	LOG_DEBUG("Handle HCI_CMD_DISCONNECT: con handle: 0x%x\n", hci_con_handle);
 
 	wiimote = get_fake_wiimote_for_hci_con_handle(hci_con_handle);
 	if (!wiimote)
@@ -146,7 +146,7 @@ static bool fake_wiimote_mgr_handle_hci_cmd_disconnect(u16 hci_con_handle, u8 re
 	assert(ret == IOS_OK);
 
 	/* Host wants disconnection to our fake wiimote. Disconnect */
-	DEBUG("Host requested disconnection of fake Wiimote\n");
+	LOG_DEBUG("Host requested disconnection of fake Wiimote\n");
 	fake_wiimote_disconnect(wiimote);
 
 	return true;

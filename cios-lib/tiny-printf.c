@@ -177,7 +177,7 @@ static void pointer(struct printf_info *info, const char *fmt,
 		switch (fmt[1]) {
 		case 'p':
 		default:
-			num = *(phys_addr_t *)ptr;
+			num = *(uintptr_t *)ptr;
 			break;
 		}
 		break;
@@ -419,4 +419,3 @@ int snprintf(char *buf, size_t size, const char *fmt, ...)
 
 	return ret;
 }
-

@@ -265,7 +265,7 @@ static int usb_device_ops_resume(void *usrdata, fake_wiimote_t *wiimote)
 {
 	usb_input_device_t *device = usrdata;
 
-	DEBUG("usb_device_ops_resume\n");
+	LOG_DEBUG("usb_device_ops_resume\n");
 
 	if (device->suspended) {
 		/* FIXME: Doesn't work properly with DS3.
@@ -291,7 +291,7 @@ static int usb_device_ops_suspend(void *usrdata)
 	int ret = 0;
 	usb_input_device_t *device = usrdata;
 
-	DEBUG("usb_device_ops_suspend\n");
+	LOG_DEBUG("usb_device_ops_suspend\n");
 
 	if (device->driver->disconnect)
 		ret = device->driver->disconnect(device);
@@ -310,7 +310,7 @@ static int usb_device_ops_set_leds(void *usrdata, int leds)
 	int slot;
 	usb_input_device_t *device = usrdata;
 
-	DEBUG("usb_device_ops_set_leds\n");
+	LOG_DEBUG("usb_device_ops_set_leds\n");
 
 	if (device->driver->slot_changed) {
 		slot = __builtin_ffs(leds);
@@ -324,7 +324,7 @@ static int usb_device_ops_set_rumble(void *usrdata, bool rumble_on)
 {
 	usb_input_device_t *device = usrdata;
 
-	DEBUG("usb_device_ops_set_rumble\n");
+	LOG_DEBUG("usb_device_ops_set_rumble\n");
 
 	if (device->driver->set_rumble)
 		return device->driver->set_rumble(device, rumble_on);
@@ -336,7 +336,7 @@ static bool usb_device_ops_report_input(void *usrdata)
 {
 	usb_input_device_t *device = usrdata;
 
-	//DEBUG("usb_device_ops_report_input\n");
+	//LOG_DEBUG("usb_device_ops_report_input\n");
 
 	return device->driver->report_input(device);
 }
@@ -359,7 +359,7 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 	int ret;
 	bool found;
 
-	DEBUG("Device change, #Attached devices: %d\n", reply->result);
+	LOG_DEBUG("Device change, #Attached devices: %d\n", reply->result);
 
 	if (reply->result < 0)
 		return;
@@ -380,7 +380,7 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 
 		/* Oops, it got disconnected */
 		if (!found) {
-			DEBUG("Device with VID: 0x%04x, PID: 0x%04x, dev_id: 0x%x got disconnected\n",
+			LOG_DEBUG("Device with VID: 0x%04x, PID: 0x%04x, dev_id: 0x%x got disconnected\n",
 				device->vid, device->pid, device->dev_id);
 
 			if (device->driver->disconnect)
@@ -397,7 +397,7 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 		vid = device_change_devices[i].vid;
 		pid = device_change_devices[i].pid;
 		dev_id = device_change_devices[i].device_id;
-		DEBUG("[%d] VID: 0x%04x, PID: 0x%04x, dev_id: 0x%x\n", i, vid, pid, dev_id);
+		LOG_DEBUG("[%d] VID: 0x%04x, PID: 0x%04x, dev_id: 0x%x\n", i, vid, pid, dev_id);
 
 		/* Check if we already have that device (same dev_id) connected */
 		if (is_usb_device_connected(dev_id))
@@ -453,7 +453,7 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 
 	ret = os_ioctl_async(host_fd, USBV5_IOCTL_ATTACHFINISH, NULL, 0, NULL, 0,
 			     queue_id, MESSAGE_ATTACHFINISH);
-	DEBUG("ioctl(ATTACHFINISH): %d\n", ret);
+	LOG_DEBUG("ioctl(ATTACHFINISH): %d\n", ret);
 }
 
 static int usb_hid_worker(void *arg)
@@ -462,7 +462,7 @@ static int usb_hid_worker(void *arg)
 	usb_input_device_t *device;
 	int ret;
 
-	DEBUG("usb_hid_worker thread started\n");
+	LOG_DEBUG("usb_hid_worker thread started\n");
 
 	for (int i = 0; i < ARRAY_SIZE(usb_devices); i++)
 		usb_devices[i].valid = false;

@@ -271,7 +271,7 @@ void fake_wiimote_handle_hci_cmd_accept_con(fake_wiimote_t *wiimote, u8 role)
 	int ret;
 
 	/* Connection accepted to our fake wiimote */
-	DEBUG("Connection accepted to a Fake Wiimote!\n");
+	LOG_DEBUG("Connection accepted to a Fake Wiimote!\n");
 
 	/* The Accept_Connection_Request command will cause the Command Status
 	   event to be sent from the Host Controller when the Host Controller
@@ -281,7 +281,7 @@ void fake_wiimote_handle_hci_cmd_accept_con(fake_wiimote_t *wiimote, u8 role)
 
 	wiimote->baseband_state = BASEBAND_STATE_COMPLETE;
 	wiimote->hci_con_handle = hci_con_handle_virt_alloc();
-	DEBUG("Fake Wiimote got HCI con_handle: 0x%x\n",  wiimote->hci_con_handle);
+	LOG_DEBUG("Fake Wiimote got HCI con_handle: 0x%x\n",  wiimote->hci_con_handle);
 
 	/* We can start the ACL (L2CAP) linking now */
 	wiimote->acl_state = ACL_STATE_LINKING;
@@ -297,7 +297,7 @@ void fake_wiimote_handle_hci_cmd_accept_con(fake_wiimote_t *wiimote, u8 role)
 	ret = inject_hci_event_con_compl(&wiimote->bdaddr, wiimote->hci_con_handle, 0);
 	assert(ret == IOS_OK);
 
-	DEBUG("Connection complete sent, starting ACL linking!\n");
+	LOG_DEBUG("Connection complete sent, starting ACL linking!\n");
 }
 
 void fake_wiimote_release_input_device(fake_wiimote_t *wiimote)
@@ -711,14 +711,14 @@ void fake_wiimote_tick(fake_wiimote_t *wiimote)
 							       local_cid);
 				assert(ret == IOS_OK);
 				l2cap_channel_info_setup(&wiimote->psm_hid_cntl_chn, L2CAP_PSM_HID_CNTL, local_cid);
-				DEBUG("Generated local CID for HID CNTL: 0x%x\n", local_cid);
+				LOG_DEBUG("Generated local CID for HID CNTL: 0x%x\n", local_cid);
 			} else if (hid_cntl_chn_complete && !wiimote->psm_hid_intr_chn.valid) {
 				u16 local_cid = generate_l2cap_channel_id();
 				ret = inject_l2cap_connect_req(wiimote->hci_con_handle, L2CAP_PSM_HID_INTR,
 							       local_cid);
 				assert(ret == IOS_OK);
 				l2cap_channel_info_setup(&wiimote->psm_hid_intr_chn, L2CAP_PSM_HID_INTR, local_cid);
-				DEBUG("Generated local CID for HID INTR: 0x%x\n", local_cid);
+				LOG_DEBUG("Generated local CID for HID INTR: 0x%x\n", local_cid);
 			} else if (hid_cntl_chn_complete &&
 				   l2cap_channel_is_complete(&wiimote->psm_hid_intr_chn)) {
 				wiimote->acl_state = ACL_STATE_INACTIVE;
@@ -773,15 +773,15 @@ static void handle_l2cap_config_req(fake_wiimote_t *wiimote, u8 ident, u16 dcid,
 		case L2CAP_OPT_MTU:
 			assert(opt->length == L2CAP_OPT_MTU_SIZE);
 			remote_mtu = le16toh(val->mtu);
-			DEBUG("      MTU configured to: 0x%x\n", remote_mtu);
+			LOG_DEBUG("      MTU configured to: 0x%x\n", remote_mtu);
 			break;
 		/* We don't care what the flush timeout is. Our packets are not dropped. */
 		case L2CAP_OPT_FLUSH_TIMO:
 			assert(opt->length == L2CAP_OPT_FLUSH_TIMO_SIZE);
-			DEBUG("      Flush timeout configured to 0x%x\n", val->flush_timo);
+			LOG_DEBUG("      Flush timeout configured to 0x%x\n", val->flush_timo);
 			break;
 		default:
-			DEBUG("      Unknown Option: 0x%02x", opt->type);
+			LOG_DEBUG("      Unknown Option: 0x%02x", opt->type);
 			break;
 		}
 
@@ -800,7 +800,7 @@ static void handle_l2cap_signal_channel(fake_wiimote_t *wiimote, u8 code, u8 ide
 {
 	l2cap_channel_info_t *info;
 
-	DEBUG("  signal channel: code: 0x%x, ident: 0x%x\n", code, ident);
+	LOG_DEBUG("  signal channel: code: 0x%x, ident: 0x%x\n", code, ident);
 
 	switch (code) {
 	case L2CAP_CONNECT_REQ: {
@@ -809,7 +809,7 @@ static void handle_l2cap_signal_channel(fake_wiimote_t *wiimote, u8 code, u8 ide
 		u16 scid = le16toh(req->scid);
 		UNUSED(psm);
 		UNUSED(scid);
-		DEBUG("  L2CAP_CONNECT_REQ: psm: 0x%x, scid: 0x%x\n", psm, scid);
+		LOG_DEBUG("  L2CAP_CONNECT_REQ: psm: 0x%x, scid: 0x%x\n", psm, scid);
 		/* TODO */
 		break;
 	}
@@ -819,7 +819,7 @@ static void handle_l2cap_signal_channel(fake_wiimote_t *wiimote, u8 code, u8 ide
 		u16 scid = le16toh(rsp->scid);
 		u16 result = le16toh(rsp->result);
 		u16 status = le16toh(rsp->status);
-		DEBUG("  L2CAP_CONNECT_RSP: dcid: 0x%x, scid: 0x%x, result: 0x%x, status: 0x%x\n",
+		LOG_DEBUG("  L2CAP_CONNECT_RSP: dcid: 0x%x, scid: 0x%x, result: 0x%x, status: 0x%x\n",
 			dcid, scid, result, status);
 
 		/* libogc/master/lwbt/l2cap.c#L318 sets it to the "dcid" and not to
@@ -845,7 +845,7 @@ static void handle_l2cap_signal_channel(fake_wiimote_t *wiimote, u8 code, u8 ide
 		const void *options = (const void *)((u8 *)rsp + sizeof(l2cap_cfg_req_cp));
 		UNUSED(flags);
 
-		DEBUG("  L2CAP_CONFIG_REQ: dcid: 0x%x, flags: 0x%x\n", dcid, flags);
+		LOG_DEBUG("  L2CAP_CONFIG_REQ: dcid: 0x%x, flags: 0x%x\n", dcid, flags);
 		handle_l2cap_config_req(wiimote, ident, dcid, flags, options,
 					size - sizeof(l2cap_cfg_req_cp));
 		break;
@@ -856,7 +856,7 @@ static void handle_l2cap_signal_channel(fake_wiimote_t *wiimote, u8 code, u8 ide
 		u16 flags = le16toh(rsp->flags);
 		u16 result = le16toh(rsp->result);
 		UNUSED(flags);
-		DEBUG("  L2CAP_CONFIG_RSP: scid: 0x%x, flags: 0x%x, result: 0x%x\n",
+		LOG_DEBUG("  L2CAP_CONFIG_RSP: scid: 0x%x, flags: 0x%x, result: 0x%x\n",
 			scid, flags, result);
 
 		assert(result == L2CAP_SUCCESS);
@@ -871,7 +871,7 @@ static void handle_l2cap_signal_channel(fake_wiimote_t *wiimote, u8 code, u8 ide
 		const l2cap_discon_req_cp *req = payload;
 		u16 dcid = le16toh(req->dcid);
 		u16 scid = le16toh(req->scid);
-		DEBUG("  L2CAP_DISCONNECT_REQ: dcid: 0x%x, scid: 0x%x\n", dcid, scid);
+		LOG_DEBUG("  L2CAP_DISCONNECT_REQ: dcid: 0x%x, scid: 0x%x\n", dcid, scid);
 
 		info = get_channel_info(wiimote, dcid);
 		assert(info);
@@ -905,7 +905,7 @@ static void handle_l2cap_signal_channel_request(fake_wiimote_t *wiimote, const v
 
 static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data, u16 size)
 {
-	DEBUG("handle_hid_intr_data_output: size: 0x%x, 0x%x\n", size, *(u32 *)(data-1));
+	LOG_DEBUG("handle_hid_intr_data_output: size: 0x%x, 0x%x\n", size, *(u32 *)(data-1));
 
 	if (size == 0)
 		return;
@@ -929,7 +929,7 @@ static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data,
 	}
 	case OUTPUT_REPORT_ID_REPORT_MODE: {
 		struct wiimote_output_report_mode_t *mode = (void *)&data[1];
-		DEBUG("  Report mode: 0x%02x, cont: %d, rumble: %d, ack: %d\n",
+		LOG_DEBUG("  Report mode: 0x%02x, cont: %d, rumble: %d, ack: %d\n",
 			mode->mode, mode->continuous, mode->rumble, mode->ack);
 		wiimote->reporting_mode = mode->mode;
 		wiimote->reporting_continuous = mode->continuous;
@@ -956,7 +956,7 @@ static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data,
 		break;
 	case OUTPUT_REPORT_ID_WRITE_DATA: {
 		struct wiimote_output_report_write_data_t *write = (void *)&data[1];
-		DEBUG("  Write data to slave 0x%02x, address: 0x%x, size: 0x%x 0x%x\n",
+		LOG_DEBUG("  Write data to slave 0x%02x, address: 0x%x, size: 0x%x 0x%x\n",
 			write->slave_address, write->address, write->size, write->data[0]);
 
 		fake_wiimote_process_write_request(wiimote, write);
@@ -964,7 +964,7 @@ static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data,
 	}
 	case OUTPUT_REPORT_ID_READ_DATA: {
 		struct wiimote_output_report_read_data_t *read = (void *)&data[1];
-		DEBUG("  Read data from slave 0x%02x, addrspace: %d, address: 0x%x, size: 0x%x\n",
+		LOG_DEBUG("  Read data from slave 0x%02x, addrspace: %d, address: 0x%x, size: 0x%x\n",
 			read->slave_address, read->space, read->address, read->size);
 
 		/* There is already an active read being processed */
@@ -1001,7 +1001,7 @@ static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data,
 		break;
 	}
 	default:
-		DEBUG("Unhandled output report: 0x%x\n", data[0]);
+		LOG_DEBUG("Unhandled output report: 0x%x\n", data[0]);
 		assert(0);
 		break;
 	}
@@ -1023,7 +1023,7 @@ void fake_wiimote_handle_acl_data_out_request_from_host(fake_wiimote_t *wiimote,
 	dcid    = le16toh(header->dcid);
 	payload = (u8 *)header + sizeof(l2cap_hdr_t);
 
-	DEBUG(" Fake Wiimote ACL OUT: dcid: 0x%x, len: 0x%x\n", dcid, length);
+	LOG_DEBUG(" Fake Wiimote ACL OUT: dcid: 0x%x, len: 0x%x\n", dcid, length);
 
 	if (dcid == L2CAP_SIGNAL_CID) {
 		handle_l2cap_signal_channel_request(wiimote, payload, length);
@@ -1033,11 +1033,11 @@ void fake_wiimote_handle_acl_data_out_request_from_host(fake_wiimote_t *wiimote,
 			switch (info->psm) {
 			case L2CAP_PSM_SDP:
 				/* TODO */
-				DEBUG("  PSM HID SDP\n");
+				LOG_DEBUG("  PSM HID SDP\n");
 				break;
 			case L2CAP_PSM_HID_CNTL:
 				/* TODO */
-				DEBUG("  PSM HID CNTL\n");
+				LOG_DEBUG("  PSM HID CNTL\n");
 				break;
 			case L2CAP_PSM_HID_INTR:
 				if (payload[0] == ((HID_TYPE_DATA << 4) | HID_PARAM_OUTPUT))
@@ -1045,8 +1045,7 @@ void fake_wiimote_handle_acl_data_out_request_from_host(fake_wiimote_t *wiimote,
 				break;
 			}
 		} else {
-			DEBUG("Received L2CAP packet to unknown channel: 0x%x\n", dcid);
+			LOG_DEBUG("Received L2CAP packet to unknown channel: 0x%x\n", dcid);
 		}
 	}
 }
-
