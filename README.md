@@ -16,7 +16,7 @@ _A Wii cIOS module that fakes Wiimotes from the input of USB game controllers._
 - Three IR pointer emulation modes: direct (touchpad, only for DS4), analog axis relative (move the pointer with the right analog) and analog axis absolute (the pointer is moved proportionally to the right analog starting from the center). Press R1+R3 to switch between them
 
 ## Installation
-1) Download [d2x cIOS Installer for regular Wii](https://wii.guide/cios.html)/[d2x cIOS Installer for vWii](https://wiiu.hacks.guide/#/vwii-modding) and extract it to the SD card
+1) Download [d2x cIOS Installer for regular Wii](https://wii.hacks.guide/cios.html)/[d2x cIOS Installer for vWii](https://wiiu.hacks.guide/#/vwii-modding) and extract it to the SD card
 2) Copy `FAKEMOTE.app` to the d2x cIOS Installer directory that contains the modules of the cIOS version you want to install.
    For example, for `d2x-v10-beta52` copy `FAKEMOTE.app` to `sd:/apps/d2x-cIOS-Installer-Wii/v10/beta52/d2x-v10-beta52`
 3) Open d2x cIOS Installer's `ciosmaps.xml` (located at `sd:/apps/d2x-cIOS-Installer-Wii/ciosmaps.xml`) and do the following:
@@ -38,8 +38,8 @@ _A Wii cIOS module that fakes Wiimotes from the input of USB game controllers._
 4) Run d2x cIOS Installer and install the cIOS
 
 ## Usage
-- You can install [Priiloader](https://wii.guide/priiloader.html) and change the IOS slot to use when running System Menu and disc games:
-   - [Enter Priiloader Menu](https://wii.guide/priiloader.html#section-iii---entering-priiloader) > Settings > Use System Menu IOS (off) > IOS to use for SM (System Menu)
+- You can install [Priiloader](https://wii.hacks.guide/priiloader.html) and change the IOS slot to use when running System Menu and disc games:
+   - [Enter Priiloader Menu](https://wii.hacks.guide/priiloader.html#section-iii---entering-priiloader) > Settings > Use System Menu IOS (off) > IOS to use for SM (System Menu)
 - You can configure your USB loader to specify the IOS slot to use when running the loader and/or games
 
 ## Notes
