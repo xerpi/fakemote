@@ -11,7 +11,7 @@ struct device_id_t {
 	u16 pid;
 };
 
-static inline bool usb_driver_is_comaptible(u16 vid, u16 pid, const struct device_id_t *ids, int num)
+static inline bool usb_driver_is_compatible(u16 vid, u16 pid, const struct device_id_t *ids, int num)
 {
 	for (int i = 0; i < num; i++) {
 		if (ids[i].vid == vid && ids[i].pid == pid)
