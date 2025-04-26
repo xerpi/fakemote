@@ -56,7 +56,7 @@ static const usb_device_driver_t *usb_device_drivers[] = {
 	&ds4_usb_device_driver,
 };
 
-static usb_input_device_t usb_devices[MAX_FAKE_WIIMOTES];
+static usb_input_device_t usb_devices[MAX_FAKE_WIIMOTES] ATTRIBUTE_ALIGN(32);
 static usb_device_entry device_change_devices[USB_MAX_DEVICES] ATTRIBUTE_ALIGN(32);
 static int host_fd = -1;
 static u8 worker_thread_stack[1024] ATTRIBUTE_ALIGN(32);
@@ -109,6 +109,7 @@ static int usb_hid_v5_get_descriptors(int host_fd, u32 dev_id, usb_devdesc *udd)
 	u8 outbuf[96] ATTRIBUTE_ALIGN(32);
 
 	/* Setup buffer */
+	memset(inbuf, 0, sizeof(inbuf));
 	inbuf[0] = dev_id;
 	inbuf[2] = 0;
 
@@ -228,8 +229,7 @@ static int usb_hid_v5_suspend_resume(int host_fd, int dev_id, int resumed, u32 u
 
 	memset(buf, 0, sizeof(buf));
 	buf[0] = dev_id;
-	buf[2] = unk;
-	*(u8 *)((u8 *)buf + 0xb) = resumed;
+	buf[2] = resumed;
 
 	return os_ioctl(host_fd, USBV5_IOCTL_SUSPEND_RESUME, buf, sizeof(buf), NULL, 0);
 }
