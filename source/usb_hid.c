@@ -261,6 +261,19 @@ int usb_device_driver_issue_intr_transfer_async(usb_input_device_t *device, int 
 					      queue_id, &device->usb_async_resp_msg);
 }
 
+int usb_device_driver_set_timer(usb_input_device_t *device, int time_us, int repeat_time_us)
+{
+	int rc;
+	if (device->timer_id > 0) {
+		os_stop_timer(device->timer_id);
+		rc = os_restart_timer(device->timer_id, time_us, repeat_time_us);
+	} else {
+		device->timer_id = os_create_timer(time_us, repeat_time_us, queue_id, (s32)&device->timer_id);
+		rc = device->timer_id;
+	}
+	return rc;
+}
+
 static int usb_device_ops_resume(void *usrdata, fake_wiimote_t *wiimote)
 {
 	usb_input_device_t *device = usrdata;
@@ -448,7 +461,7 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 		device->wiimote = NULL;
 		device->suspended = false;
 		device->valid = true;
-
+		device->timer_id = -1;
 	}
 
 	ret = os_ioctl_async(host_fd, USBV5_IOCTL_ATTACHFINISH, NULL, 0, NULL, 0,
@@ -499,12 +512,22 @@ static int usb_hid_worker(void *arg)
 					     device_change_devices, sizeof(device_change_devices),
 					     queue_id, MESSAGE_DEVCHANGE);
 		} else {
-			/* Find if this is the reply to a USB async req issued by a device driver */
+			/* Find if this is a timer or the reply to a USB async
+			 * req issued by a device driver */
 			for (int i = 0; i < ARRAY_SIZE(usb_devices); i++) {
 				device = &usb_devices[i];
-				if (device->valid && (message == &device->usb_async_resp_msg)) {
-					if (device->driver->usb_async_resp)
-						device->driver->usb_async_resp(device);
+				if (!device->valid)
+					continue;
+				if (message == &device->usb_async_resp_msg &&
+				    device->driver->usb_async_resp) {
+					device->driver->usb_async_resp(device);
+				} else if (message == (areply*)&device->timer_id &&
+					   device->driver->timer) {
+					bool keep = device->driver->timer(device);
+					if (!keep) {
+						os_destroy_timer(device->timer_id);
+						device->timer_id = -1;
+					}
 				}
 			}
 		}
