@@ -54,9 +54,10 @@ static_assert(sizeof(struct usb_hid_v5_transfer) == 64);
 static const usb_device_driver_t *usb_device_drivers[] = {
 	&ds3_usb_device_driver,
 	&ds4_usb_device_driver,
+	&dr_usb_device_driver,
 };
 
-static usb_input_device_t usb_devices[MAX_FAKE_WIIMOTES];
+static usb_input_device_t usb_devices[MAX_FAKE_WIIMOTES] ATTRIBUTE_ALIGN(32);
 static usb_device_entry device_change_devices[USB_MAX_DEVICES] ATTRIBUTE_ALIGN(32);
 static int host_fd = -1;
 static u8 worker_thread_stack[1024] ATTRIBUTE_ALIGN(32);
@@ -109,6 +110,7 @@ static int usb_hid_v5_get_descriptors(int host_fd, u32 dev_id, usb_devdesc *udd)
 	u8 outbuf[96] ATTRIBUTE_ALIGN(32);
 
 	/* Setup buffer */
+	memset(inbuf, 0, sizeof(inbuf));
 	inbuf[0] = dev_id;
 	inbuf[2] = 0;
 
@@ -228,8 +230,7 @@ static int usb_hid_v5_suspend_resume(int host_fd, int dev_id, int resumed, u32 u
 
 	memset(buf, 0, sizeof(buf));
 	buf[0] = dev_id;
-	buf[2] = unk;
-	*(u8 *)((u8 *)buf + 0xb) = resumed;
+	buf[2] = resumed;
 
 	return os_ioctl(host_fd, USBV5_IOCTL_SUSPEND_RESUME, buf, sizeof(buf), NULL, 0);
 }
@@ -259,6 +260,19 @@ int usb_device_driver_issue_intr_transfer_async(usb_input_device_t *device, int 
 {
 	return usb_hid_v5_intr_transfer_async(device->host_fd, device->dev_id, out, length, data,
 					      queue_id, &device->usb_async_resp_msg);
+}
+
+int usb_device_driver_set_timer(usb_input_device_t *device, int time_us, int repeat_time_us)
+{
+	int rc;
+	if (device->timer_id > 0) {
+		os_stop_timer(device->timer_id);
+		rc = os_restart_timer(device->timer_id, time_us, repeat_time_us);
+	} else {
+		device->timer_id = os_create_timer(time_us, repeat_time_us, queue_id, (s32)&device->timer_id);
+		rc = device->timer_id;
+	}
+	return rc;
 }
 
 static int usb_device_ops_resume(void *usrdata, fake_wiimote_t *wiimote)
@@ -448,7 +462,7 @@ static void handle_device_change_reply(int host_fd, areply *reply)
 		device->wiimote = NULL;
 		device->suspended = false;
 		device->valid = true;
-
+		device->timer_id = -1;
 	}
 
 	ret = os_ioctl_async(host_fd, USBV5_IOCTL_ATTACHFINISH, NULL, 0, NULL, 0,
@@ -499,12 +513,22 @@ static int usb_hid_worker(void *arg)
 					     device_change_devices, sizeof(device_change_devices),
 					     queue_id, MESSAGE_DEVCHANGE);
 		} else {
-			/* Find if this is the reply to a USB async req issued by a device driver */
+			/* Find if this is a timer or the reply to a USB async
+			 * req issued by a device driver */
 			for (int i = 0; i < ARRAY_SIZE(usb_devices); i++) {
 				device = &usb_devices[i];
-				if (device->valid && (message == &device->usb_async_resp_msg)) {
-					if (device->driver->usb_async_resp)
-						device->driver->usb_async_resp(device);
+				if (!device->valid)
+					continue;
+				if (message == &device->usb_async_resp_msg &&
+				    device->driver->usb_async_resp) {
+					device->driver->usb_async_resp(device);
+				} else if (message == (areply*)&device->timer_id &&
+					   device->driver->timer) {
+					bool keep = device->driver->timer(device);
+					if (!keep) {
+						os_destroy_timer(device->timer_id);
+						device->timer_id = -1;
+					}
 				}
 			}
 		}
