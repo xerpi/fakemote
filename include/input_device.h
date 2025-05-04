@@ -7,11 +7,11 @@ typedef struct fake_wiimote_t fake_wiimote_t;
 typedef struct input_device_t input_device_t;
 
 typedef struct input_device_ops_t {
-	int (*resume)(void *usrdata, fake_wiimote_t *wiimote);
-	int (*suspend)(void *usrdata);
-	int (*set_leds)(void *usrdata, int leds);
-	int (*set_rumble)(void *usrdata, bool rumble_on);
-	bool (*report_input)(void *usrdata);
+    int (*resume)(void *usrdata, fake_wiimote_t *wiimote);
+    int (*suspend)(void *usrdata);
+    int (*set_leds)(void *usrdata, int leds);
+    int (*set_rumble)(void *usrdata, bool rumble_on);
+    bool (*report_input)(void *usrdata);
 } input_device_ops_t;
 
 void input_devices_init(void);
@@ -20,7 +20,7 @@ void input_devices_tick(void);
 /** Used by input devices **/
 
 bool input_devices_add(void *usrdata, const input_device_ops_t *ops,
-		       input_device_t **assigned_input_device);
+                       input_device_t **assigned_input_device);
 void input_devices_remove(input_device_t *input_device);
 
 /** Used by fake Wiimotes and fake Wiimote manager **/

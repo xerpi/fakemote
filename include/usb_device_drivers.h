@@ -4,21 +4,22 @@
 #include "usb_hid.h"
 
 /* List of Vendor IDs */
-#define SONY_VID	0x054c
+#define SONY_VID 0x054c
 
 struct device_id_t {
-	u16 vid;
-	u16 pid;
+    u16 vid;
+    u16 pid;
 };
 
-static inline bool usb_driver_is_compatible(u16 vid, u16 pid, const struct device_id_t *ids, int num)
+static inline bool usb_driver_is_compatible(u16 vid, u16 pid, const struct device_id_t *ids,
+                                            int num)
 {
-	for (int i = 0; i < num; i++) {
-		if (ids[i].vid == vid && ids[i].pid == pid)
-			return true;
-	}
+    for (int i = 0; i < num; i++) {
+        if (ids[i].vid == vid && ids[i].pid == pid)
+            return true;
+    }
 
-	return false;
+    return false;
 }
 
 extern const usb_device_driver_t ds3_usb_device_driver;
