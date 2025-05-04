@@ -311,7 +311,7 @@ bool ds4_driver_ops_probe(u16 vid, u16 pid)
 		{SONY_VID, 0x09cc},
 	};
 
-	return usb_driver_is_comaptible(vid, pid, compatible, ARRAY_SIZE(compatible));
+	return usb_driver_is_compatible(vid, pid, compatible, ARRAY_SIZE(compatible));
 }
 
 int ds4_driver_ops_init(usb_input_device_t *device, u16 vid, u16 pid)
