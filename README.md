@@ -23,17 +23,20 @@ _A Wii cIOS module that fakes Wiimotes from the input of USB game controllers._
    1) Locate the line containing the base IOS version you want to install. It starts with `<base ios=`.
       For base IOS 57:
       ```xml
-      <base ios="57" version="5918" contentscount="26" modulescount="7">
+      <base ios="57" version="5918" contentscount="25" modulescount="6">
       ```
    3) Increase `modulescount` and `contentscount` by 1.
       For base IOS 57:
       ```xml
-      <base ios="57" version="5918" contentscount="27" modulescount="8">
+      <base ios="57" version="5918" contentscount="26" modulescount="7">
       ```
-   3) Add a `<content>` entry for `FAKEMOTE`after the last `<content module>`.
+   3) Add a `<content>` entry for `FAKEMOTE` after the last `<content module>`.
+      Note that the `id` attribute must be set to the highest number among the
+      existing content entries within the chosen IOS base, plus 1 (in
+      hexadecimal format).
       For base IOS 57:
       ```xml
-      <content id="0x24" module="FAKEMOTE" tmdmoduleid="-1"/>
+      <content id="0x23" module="FAKEMOTE" tmdmoduleid="-1"/>
       ```
 4) Run d2x cIOS Installer and install the cIOS
 
