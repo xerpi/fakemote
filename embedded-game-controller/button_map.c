@@ -1,5 +1,6 @@
 #include "button_map.h"
-#include "globals.h"
+
+#include "internals.h"
 
 void bm_map_wiimote(
     /* Inputs */
@@ -70,7 +71,7 @@ void bm_map_classic(
 static inline void map_ir_dot(struct ir_dot_t ir_dots[static IR_MAX_DOTS],
                               const struct ir_dot_t *dot)
 {
-    s16 vert_offset = g_sensor_bar_position_top ? IR_VERTICAL_OFFSET : -IR_VERTICAL_OFFSET;
+    s16 vert_offset = _egc_sensor_bar_position_top ? IR_VERTICAL_OFFSET : -IR_VERTICAL_OFFSET;
 
     ir_dots[0].x = (IR_DOT_CENTER_MIN_X + (IR_DOT_CENTER_MAX_X - dot->x)) - IR_HORIZONTAL_OFFSET;
     ir_dots[0].y = dot->y + vert_offset;

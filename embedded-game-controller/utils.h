@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "hci.h"
+#include "types.h"
 
 #define le16toh(x) __builtin_bswap16(x)
 #define htole16(x) __builtin_bswap16(x)
@@ -57,9 +57,5 @@ static inline void reverse_memcpy(void *restrict dst, const void *restrict src, 
     for (int i = 0; i < size; i++)
         d[i] = s[size - 1 - i];
 }
-
-/* Message injection helpers */
-int inject_msg_to_usb_intr_ready_queue(void *msg);
-int inject_msg_to_usb_bulk_in_ready_queue(void *msg);
 
 #endif
