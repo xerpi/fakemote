@@ -1,11 +1,14 @@
 #ifndef USB_HID_H
 #define USB_HID_H
 
-#include "fake_wiimote_mgr.h"
 #include "ipc.h"
 #include "types.h"
+#include "wiimote.h"
 
 #define USB_INPUT_DEVICE_PRIVATE_DATA_SIZE 64
+
+typedef struct fake_wiimote_t fake_wiimote_t;
+typedef struct input_device_t input_device_t;
 
 typedef struct usb_device_driver_t usb_device_driver_t;
 

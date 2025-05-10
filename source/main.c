@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "conf.h"
+#include "client.h"
 #include "fake_wiimote_mgr.h"
 #include "globals.h"
 #include "hci.h"
@@ -582,10 +583,12 @@ int main(void)
         return IOS_EINVAL;
 
     /* Read IR sensor bar position */
-    ret = conf_get(conf_buffer, "BT.BAR", &g_sensor_bar_position_top,
-                   sizeof(g_sensor_bar_position_top));
+    u8 sensor_bar_position_top;
+    ret = conf_get(conf_buffer, "BT.BAR", &sensor_bar_position_top,
+                   sizeof(sensor_bar_position_top));
     if (ret != sizeof(g_sensor_bar_position_top))
         return IOS_EINVAL;
+    ogc_usb_hid_set_sensor_bar_position_top(sensor_bar_position_top);
 
     /* Patch SYSCONF's BT.DINF */
     ret = patch_conf_bt_dinf(conf_buffer);

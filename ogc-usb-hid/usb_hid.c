@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "fake_wiimote_mgr.h"
+#include "client.h"
 #include "input_device.h"
 #include "ipc.h"
 #include "syscalls.h"
