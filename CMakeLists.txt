@@ -33,7 +33,6 @@ add_compile_options(
 
 add_executable(fakemote
     source/start.s
-    source/button_map.c
     source/main.c
     source/hci_state.c
     source/injmessage.c
@@ -43,10 +42,6 @@ add_executable(fakemote
     source/libc.c
     source/wiimote_crypto.c
     source/conf.c
-    source/usb_hid.c
-    source/usb_drivers/dragonrise.c
-    source/usb_drivers/sony_ds3.c
-    source/usb_drivers/sony_ds4.c
 )
 
 target_include_directories(fakemote PRIVATE
@@ -61,10 +56,12 @@ target_compile_definitions(fakemote PRIVATE
 )
 
 add_subdirectory(cios-lib)
+add_subdirectory(embedded-game-controller)
 
 target_link_libraries(fakemote PRIVATE
     cios-lib
     gcc
+    embedded-game-controller
 )
 
 target_link_options(fakemote PRIVATE

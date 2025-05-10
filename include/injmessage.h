@@ -45,4 +45,8 @@ int inject_l2cap_config_req(u16 hci_con_handle, u16 remote_cid, u16 mtu, u16 flu
 int inject_l2cap_config_rsp(u16 hci_con_handle, u16 remote_cid, u8 ident, const u8 *options,
                             u32 options_len);
 
+/* Message injection helpers */
+int inject_msg_to_usb_intr_ready_queue(void *msg);
+int inject_msg_to_usb_bulk_in_ready_queue(void *msg);
+
 #endif
