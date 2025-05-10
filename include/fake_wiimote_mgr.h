@@ -1,10 +1,9 @@
 #ifndef FAKE_WIIMOTE_MGR_H
 #define FAKE_WIIMOTE_MGR_H
 
+#include "client.h"
 #include "fake_wiimote.h"
 #include "hci.h"
-
-#define MAX_FAKE_WIIMOTES 2
 
 #define FAKE_WIIMOTE_BDADDR(i)                                                                     \
     ((bdaddr_t){                                                                                   \
