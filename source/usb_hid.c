@@ -152,7 +152,7 @@ static inline int usb_hid_v5_ctrl_transfer(int host_fd, int dev_id, u8 bmRequest
     vectors[1].data = rpData;
     vectors[1].len = wLength;
 
-    return os_ioctlv(host_fd, USBV5_IOCTL_CTRLMSG, 1 - out, 1 + out, vectors);
+    return os_ioctlv(host_fd, USBV5_IOCTL_CTRLMSG, 1 + out, 1 - out, vectors);
 }
 
 static inline int usb_hid_v5_ctrl_transfer_async(int host_fd, int dev_id, u8 bmRequestType,
@@ -170,7 +170,7 @@ static inline int usb_hid_v5_ctrl_transfer_async(int host_fd, int dev_id, u8 bmR
     vectors[1].data = rpData;
     vectors[1].len = wLength;
 
-    return os_ioctlv_async(host_fd, USBV5_IOCTL_CTRLMSG, 1 - out, 1 + out, vectors, queue_id,
+    return os_ioctlv_async(host_fd, USBV5_IOCTL_CTRLMSG, 1 + out, 1 - out, vectors, queue_id,
                            message);
 }
 
@@ -187,7 +187,7 @@ static inline int usb_hid_v5_intr_transfer(int host_fd, int dev_id, int out, u16
     vectors[1].data = rpData;
     vectors[1].len = wLength;
 
-    return os_ioctlv(host_fd, USBV5_IOCTL_INTRMSG, 1 - out, 1 + out, vectors);
+    return os_ioctlv(host_fd, USBV5_IOCTL_INTRMSG, 1 + out, 1 - out, vectors);
 }
 
 static inline int usb_hid_v5_intr_transfer_async(int host_fd, int dev_id, int out, u16 wLength,
@@ -203,7 +203,7 @@ static inline int usb_hid_v5_intr_transfer_async(int host_fd, int dev_id, int ou
     vectors[1].data = rpData;
     vectors[1].len = wLength;
 
-    return os_ioctlv_async(host_fd, USBV5_IOCTL_INTRMSG, 1 - out, 1 + out, vectors, queue_id,
+    return os_ioctlv_async(host_fd, USBV5_IOCTL_INTRMSG, 1 + out, 1 - out, vectors, queue_id,
                            message);
 }
 
