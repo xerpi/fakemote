@@ -1,4 +1,5 @@
 add_library(embedded-game-controller STATIC
+    backends/ogc.c
     button_map.c
     client.c
     usb_hid.c
