@@ -127,6 +127,8 @@ static const enum bm_ir_emulation_mode_e ir_emu_modes[] = {
     BM_IR_EMULATION_MODE_ABSOLUTE_ANALOG_AXIS,
 };
 
+static int dr_request_data(usb_input_device_t *device);
+
 static inline u8 dpad_to_buttons(u8 dpad)
 {
     switch (dpad) {
@@ -167,13 +169,28 @@ static inline void dr_get_analog_axis(const struct dr_input_report *report,
     analog_axis[DR_ANALOG_AXIS_RIGHT_Y] = 255 - report->right_y;
 }
 
-static int dr_request_data(usb_input_device_t *device)
+static void intr_transfer_cb(egc_usb_transfer_t *transfer)
 {
-    return usb_device_driver_issue_intr_transfer_async(device, 0, device->usb_async_resp,
-                                                       sizeof(device->usb_async_resp));
+    usb_input_device_t *device = egc_input_device_from_usb(transfer->device);
+    struct dr_private_data_t *priv = (void *)device->private_data;
+    struct dr_input_report *report = (void *)transfer->data;
+
+    if (transfer->status == EGC_USB_TRANSFER_STATUS_COMPLETED) {
+        dr_get_buttons(report, &priv->input.buttons);
+        dr_get_analog_axis(report, priv->input.analog_axis);
+    }
+
+    dr_request_data(device);
 }
 
-bool dr_driver_ops_probe(u16 vid, u16 pid)
+static int dr_request_data(usb_input_device_t *device)
+{
+    const egc_usb_transfer_t *transfer = usb_device_driver_issue_intr_transfer_async(
+        device, EGC_USB_ENDPOINT_IN, NULL, 0, intr_transfer_cb);
+    return transfer != NULL ? 0 : -1;
+}
+
+static bool dr_driver_ops_probe(u16 vid, u16 pid)
 {
     static const struct device_id_t compatible[] = {
         { 0x0079, 0x0006 }, /* DragonRise Inc. | PC TWIN SHOCK Gamepad */
@@ -182,7 +199,7 @@ bool dr_driver_ops_probe(u16 vid, u16 pid)
     return usb_driver_is_compatible(vid, pid, compatible, ARRAY_SIZE(compatible));
 }
 
-int dr_driver_ops_init(usb_input_device_t *device, u16 vid, u16 pid)
+static int dr_driver_ops_init(usb_input_device_t *device, u16 vid, u16 pid)
 {
     struct dr_private_data_t *priv = (void *)device->private_data;
 
@@ -253,18 +270,7 @@ bool dr_report_input(usb_input_device_t *device)
     return true;
 }
 
-int dr_driver_ops_usb_async_resp(usb_input_device_t *device)
-{
-    struct dr_private_data_t *priv = (void *)device->private_data;
-    struct dr_input_report *report = (void *)device->usb_async_resp;
-
-    dr_get_buttons(report, &priv->input.buttons);
-    dr_get_analog_axis(report, priv->input.analog_axis);
-
-    return dr_request_data(device);
-}
-
-bool dr_driver_ops_timer(usb_input_device_t *device)
+static bool dr_driver_ops_timer(usb_input_device_t *device)
 {
     dr_request_data(device);
     /* Return false to destroy the timer */
@@ -275,6 +281,5 @@ const usb_device_driver_t dr_usb_device_driver = {
     .probe = dr_driver_ops_probe,
     .init = dr_driver_ops_init,
     .report_input = dr_report_input,
-    .usb_async_resp = dr_driver_ops_usb_async_resp,
     .timer = dr_driver_ops_timer,
 };
