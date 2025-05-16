@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "conf.h"
+#include "client.h"
 #include "fake_wiimote_mgr.h"
 #include "globals.h"
 #include "hci.h"
@@ -56,9 +57,6 @@
 /* The Real Wiimmote sends report every ~5ms (200 Hz). */
 #define PERIODC_TIMER_PERIOD    5 * 1000
 #define HAND_DOWN_MSG_DATA_SIZE 4096
-
-/* Global variables */
-u8 g_sensor_bar_position_top;
 
 /* Required by cios-lib... */
 char *moduleName = "TST";
@@ -582,10 +580,12 @@ int main(void)
         return IOS_EINVAL;
 
     /* Read IR sensor bar position */
-    ret = conf_get(conf_buffer, "BT.BAR", &g_sensor_bar_position_top,
-                   sizeof(g_sensor_bar_position_top));
-    if (ret != sizeof(g_sensor_bar_position_top))
+    u8 sensor_bar_position_top;
+    ret = conf_get(conf_buffer, "BT.BAR", &sensor_bar_position_top,
+                   sizeof(sensor_bar_position_top));
+    if (ret != sizeof(sensor_bar_position_top))
         return IOS_EINVAL;
+    egc_set_sensor_bar_position_top(sensor_bar_position_top);
 
     /* Patch SYSCONF's BT.DINF */
     ret = patch_conf_bt_dinf(conf_buffer);

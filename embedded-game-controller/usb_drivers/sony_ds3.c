@@ -1,5 +1,4 @@
 #include "button_map.h"
-#include "usb.h"
 #include "usb_device_drivers.h"
 #include "utils.h"
 #include "wiimote.h"
@@ -199,6 +198,8 @@ static const enum bm_ir_emulation_mode_e ir_emu_modes[] = {
     BM_IR_EMULATION_MODE_NONE,
 };
 
+static int ds3_request_data(usb_input_device_t *device);
+
 static inline void ds3_get_buttons(const struct ds3_input_report *report, u32 *buttons)
 {
     u32 mask = 0;
@@ -238,24 +239,49 @@ static inline void ds3_get_analog_axis(const struct ds3_input_report *report,
     analog_axis[DS3_ANALOG_AXIS_RIGHT_Y] = 255 - report->right_y;
 }
 
-static int ds3_set_operational(usb_input_device_t *device)
+static void ds3_get_report_cb(egc_usb_transfer_t *transfer)
 {
-    u8 buf[17] ATTRIBUTE_ALIGN(32);
-    return usb_device_driver_issue_ctrl_transfer(
-        device, USB_REQTYPE_INTERFACE_GET, USB_REQ_GETREPORT, (USB_REPTYPE_FEATURE << 8) | 0xf2, 0,
-        buf, sizeof(buf));
+    usb_input_device_t *device = egc_input_device_from_usb(transfer->device);
+    struct ds3_private_data_t *priv = (void *)device->private_data;
+    struct ds3_input_report *report = (void *)transfer->data;
+
+    if (transfer->status == EGC_USB_TRANSFER_STATUS_COMPLETED) {
+        ds3_get_buttons(report, &priv->input.buttons);
+        ds3_get_analog_axis(report, priv->input.analog_axis);
+
+        priv->input.acc_x = (s16)report->acc_x - 511;
+        priv->input.acc_y = 511 - (s16)report->acc_y;
+        priv->input.acc_z = 511 - (s16)report->acc_z;
+    }
+
+    ds3_request_data(device);
 }
 
-static inline int ds3_request_data(usb_input_device_t *device)
+static int ds3_request_data(usb_input_device_t *device)
 {
-    return usb_device_driver_issue_ctrl_transfer_async(
-        device, USB_REQTYPE_INTERFACE_GET, USB_REQ_GETREPORT, (USB_REPTYPE_INPUT << 8) | 0x01, 0,
-        device->usb_async_resp, sizeof(device->usb_async_resp));
+    const egc_usb_transfer_t *transfer = usb_device_driver_issue_ctrl_transfer_async(
+        device, EGC_USB_REQTYPE_INTERFACE_GET, EGC_USB_REQ_GETREPORT,
+        (EGC_USB_REPTYPE_INPUT << 8) | 0x01, 0, NULL, 0, ds3_get_report_cb);
+    return transfer != NULL ? 0 : -1;
+}
+
+static void ds3_set_operational_cb(egc_usb_transfer_t *transfer)
+{
+    usb_input_device_t *device = egc_input_device_from_usb(transfer->device);
+    ds3_request_data(device);
+}
+
+static int ds3_set_operational(usb_input_device_t *device)
+{
+    const egc_usb_transfer_t *transfer = usb_device_driver_issue_ctrl_transfer_async(
+        device, EGC_USB_REQTYPE_INTERFACE_GET, EGC_USB_REQ_GETREPORT,
+        (EGC_USB_REPTYPE_FEATURE << 8) | 0xf2, 0, NULL, 0, ds3_set_operational_cb);
+    return transfer != NULL ? 0 : -1;
 }
 
 static int ds3_set_leds_rumble(usb_input_device_t *device, u8 leds, const struct ds3_rumble *rumble)
 {
-    u8 buf[] ATTRIBUTE_ALIGN(32) = {
+    u8 buf[] = {
         0x00,                         /* Padding */
         0x00, 0x00, 0x00, 0x00,       /* Rumble (r, r, l, l) */
         0x00, 0x00, 0x00, 0x00,       /* Padding */
@@ -273,9 +299,10 @@ static int ds3_set_leds_rumble(usb_input_device_t *device, u8 leds, const struct
     buf[4] = rumble->power_left;
     buf[9] = leds;
 
-    return usb_device_driver_issue_ctrl_transfer(
-        device, USB_REQTYPE_INTERFACE_SET, USB_REQ_SETREPORT, (USB_REPTYPE_OUTPUT << 8) | 0x01, 0,
-        buf, sizeof(buf));
+    const egc_usb_transfer_t *transfer = usb_device_driver_issue_ctrl_transfer_async(
+        device, EGC_USB_REQTYPE_INTERFACE_SET, EGC_USB_REQ_SETREPORT,
+        (EGC_USB_REPTYPE_OUTPUT << 8) | 0x01, 0, buf, sizeof(buf), NULL);
+    return transfer != NULL ? 0 : -1;
 }
 
 static int ds3_driver_update_leds_rumble(usb_input_device_t *device)
@@ -310,10 +337,6 @@ int ds3_driver_ops_init(usb_input_device_t *device, u16 vid, u16 pid)
     int ret;
     struct ds3_private_data_t *priv = (void *)device->private_data;
 
-    ret = ds3_set_operational(device);
-    if (ret < 0)
-        return ret;
-
     /* Init private state */
     priv->ir_emu_mode_idx = 0;
     bm_ir_emulation_state_reset(&priv->ir_emu_state);
@@ -326,7 +349,7 @@ int ds3_driver_ops_init(usb_input_device_t *device, u16 vid, u16 pid)
     /* Set initial extension */
     fake_wiimote_set_extension(device->wiimote, input_mappings[priv->mapping].extension);
 
-    ret = ds3_request_data(device);
+    ret = ds3_set_operational(device);
     if (ret < 0)
         return ret;
 
@@ -424,21 +447,6 @@ bool ds3_report_input(usb_input_device_t *device)
     return true;
 }
 
-int ds3_driver_ops_usb_async_resp(usb_input_device_t *device)
-{
-    struct ds3_private_data_t *priv = (void *)device->private_data;
-    struct ds3_input_report *report = (void *)device->usb_async_resp;
-
-    ds3_get_buttons(report, &priv->input.buttons);
-    ds3_get_analog_axis(report, priv->input.analog_axis);
-
-    priv->input.acc_x = (s16)report->acc_x - 511;
-    priv->input.acc_y = 511 - (s16)report->acc_y;
-    priv->input.acc_z = 511 - (s16)report->acc_z;
-
-    return ds3_request_data(device);
-}
-
 const usb_device_driver_t ds3_usb_device_driver = {
     .probe = ds3_driver_ops_probe,
     .init = ds3_driver_ops_init,
@@ -446,5 +454,4 @@ const usb_device_driver_t ds3_usb_device_driver = {
     .slot_changed = ds3_driver_ops_slot_changed,
     .set_rumble = ds3_driver_ops_set_rumble,
     .report_input = ds3_report_input,
-    .usb_async_resp = ds3_driver_ops_usb_async_resp,
 };

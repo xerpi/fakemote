@@ -214,6 +214,8 @@ static const enum bm_ir_emulation_mode_e ir_emu_modes[] = {
     BM_IR_EMULATION_MODE_ABSOLUTE_ANALOG_AXIS,
 };
 
+static inline int ds4_request_data(usb_input_device_t *device);
+
 static inline void ds4_get_buttons(const struct ds4_input_report *report, u32 *buttons)
 {
     u32 mask = 0;
@@ -263,7 +265,7 @@ static inline void ds4_get_analog_axis(const struct ds4_input_report *report,
 static inline int ds4_set_leds_rumble(usb_input_device_t *device, u8 r, u8 g, u8 b, u8 rumble_small,
                                       u8 rumble_large)
 {
-    u8 buf[] ATTRIBUTE_ALIGN(32) = {
+    u8 buf[] = {
         0x05, // Report ID
         0x03,
         0x00,
@@ -277,13 +279,48 @@ static inline int ds4_set_leds_rumble(usb_input_device_t *device, u8 r, u8 g, u8
         0x00  // LED off duration
     };
 
-    return usb_device_driver_issue_intr_transfer(device, 1, buf, sizeof(buf));
+    const egc_usb_transfer_t *transfer =
+        usb_device_driver_issue_intr_transfer_async(device, 1, buf, sizeof(buf), NULL);
+    return transfer != NULL ? 0 : -1;
+}
+
+static void ds4_request_data_cb(egc_usb_transfer_t *transfer)
+{
+    usb_input_device_t *device = egc_input_device_from_usb(transfer->device);
+    struct ds4_private_data_t *priv = (void *)device->private_data;
+    struct ds4_input_report *report = (void *)transfer->data;
+
+    if (transfer->status == EGC_USB_TRANSFER_STATUS_COMPLETED && report->report_id == 0x01) {
+        ds4_get_buttons(report, &priv->input.buttons);
+        ds4_get_analog_axis(report, priv->input.analog_axis);
+
+        priv->input.acc_x = (s16)le16toh(report->accel_x);
+        priv->input.acc_y = (s16)le16toh(report->accel_y);
+        priv->input.acc_z = (s16)le16toh(report->accel_z);
+
+        priv->input.num_fingers = 0;
+
+        if (!report->finger1_nactive) {
+            priv->input.fingers[0].x = report->finger1_x_lo | ((u16)report->finger1_x_hi << 8);
+            priv->input.fingers[0].y = report->finger1_y_lo | ((u16)report->finger1_y_hi << 4);
+            priv->input.num_fingers++;
+        }
+
+        if (!report->finger2_nactive) {
+            priv->input.fingers[1].x = report->finger2_x_lo | ((u16)report->finger2_x_hi << 8);
+            priv->input.fingers[1].y = report->finger2_y_lo | ((u16)report->finger2_y_hi << 4);
+            priv->input.num_fingers++;
+        }
+    }
+
+    ds4_request_data(device);
 }
 
 static inline int ds4_request_data(usb_input_device_t *device)
 {
-    return usb_device_driver_issue_intr_transfer_async(device, 0, device->usb_async_resp,
-                                                       sizeof(device->usb_async_resp));
+    const egc_usb_transfer_t *transfer = usb_device_driver_issue_intr_transfer_async(
+        device, EGC_USB_ENDPOINT_IN, NULL, 0, ds4_request_data_cb);
+    return transfer != NULL ? 0 : -1;
 }
 
 static int ds4_driver_update_leds_rumble(usb_input_device_t *device)
@@ -432,37 +469,6 @@ bool ds4_report_input(usb_input_device_t *device)
     return true;
 }
 
-int ds4_driver_ops_usb_async_resp(usb_input_device_t *device)
-{
-    struct ds4_private_data_t *priv = (void *)device->private_data;
-    struct ds4_input_report *report = (void *)device->usb_async_resp;
-
-    if (report->report_id == 0x01) {
-        ds4_get_buttons(report, &priv->input.buttons);
-        ds4_get_analog_axis(report, priv->input.analog_axis);
-
-        priv->input.acc_x = (s16)le16toh(report->accel_x);
-        priv->input.acc_y = (s16)le16toh(report->accel_y);
-        priv->input.acc_z = (s16)le16toh(report->accel_z);
-
-        priv->input.num_fingers = 0;
-
-        if (!report->finger1_nactive) {
-            priv->input.fingers[0].x = report->finger1_x_lo | ((u16)report->finger1_x_hi << 8);
-            priv->input.fingers[0].y = report->finger1_y_lo | ((u16)report->finger1_y_hi << 4);
-            priv->input.num_fingers++;
-        }
-
-        if (!report->finger2_nactive) {
-            priv->input.fingers[1].x = report->finger2_x_lo | ((u16)report->finger2_x_hi << 8);
-            priv->input.fingers[1].y = report->finger2_y_lo | ((u16)report->finger2_y_hi << 4);
-            priv->input.num_fingers++;
-        }
-    }
-
-    return ds4_request_data(device);
-}
-
 const usb_device_driver_t ds4_usb_device_driver = {
     .probe = ds4_driver_ops_probe,
     .init = ds4_driver_ops_init,
@@ -470,5 +476,4 @@ const usb_device_driver_t ds4_usb_device_driver = {
     .slot_changed = ds4_driver_ops_slot_changed,
     .set_rumble = ds4_driver_ops_set_rumble,
     .report_input = ds4_report_input,
-    .usb_async_resp = ds4_driver_ops_usb_async_resp,
 };
