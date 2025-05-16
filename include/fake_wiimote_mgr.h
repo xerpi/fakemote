@@ -1,7 +1,6 @@
 #ifndef FAKE_WIIMOTE_MGR_H
 #define FAKE_WIIMOTE_MGR_H
 
-#include "client.h"
 #include "fake_wiimote.h"
 #include "hci.h"
 

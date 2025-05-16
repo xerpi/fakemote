@@ -37,6 +37,7 @@ add_executable(fakemote
     source/hci_state.c
     source/injmessage.c
     source/input_device.c
+    source/button_map.c
     source/fake_wiimote.c
     source/fake_wiimote_mgr.c
     source/libc.c

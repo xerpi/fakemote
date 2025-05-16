@@ -51,7 +51,7 @@ void bm_map_wiimote(
 
 void bm_map_nunchuk(
     /* Inputs */
-    int num_buttons, u32 buttons, int num_analog_axis, const u8 *analog_axis, u16 ax, u16 ay,
+    int num_buttons, u32 buttons, int num_analog_axis, const s16 *analog_axis, u16 ax, u16 ay,
     u16 az,
     /* Mapping tables */
     const u8 *nunchuk_button_map, const u8 *nunchuk_analog_axis_map,
@@ -60,7 +60,7 @@ void bm_map_nunchuk(
 
 void bm_map_classic(
     /* Inputs */
-    int num_buttons, u32 buttons, int num_analog_axis, const u8 *analog_axis,
+    int num_buttons, u32 buttons, int num_analog_axis, const s16 *analog_axis,
     /* Mapping tables */
     const u16 *classic_button_map, const u8 *classic_analog_axis_map,
     /* Outputs */
@@ -68,16 +68,18 @@ void bm_map_classic(
 
 void bm_map_ir_direct(
     /* Inputs */
-    int num_coordinates, const u16 *x, const u16 *y, u16 max_x, u16 max_y,
+    s16 x, s16 y,
     /* Outputs */
     struct ir_dot_t ir_dots[static IR_MAX_DOTS]);
 
 void bm_map_ir_analog_axis(
     /* Inputs */
     enum bm_ir_emulation_mode_e mode, struct bm_ir_emulation_state_t *state, int num_analog_axis,
-    const u8 *analog_axis, const u8 *ir_analog_axis_map,
+    const s16 *analog_axis, const u8 *ir_analog_axis_map,
     /* Outputs */
     struct ir_dot_t ir_dots[static IR_MAX_DOTS]);
+
+void bm_set_sensor_bar_position_top(bool on_top);
 
 static inline bool bm_check_switch_mapping(u32 buttons, bool *switch_mapping,
                                            u32 switch_mapping_combo)

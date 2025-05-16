@@ -34,12 +34,12 @@
 #endif
 
 /* Data types */
-typedef char			s8;
+typedef signed char		s8;
 typedef short			s16;
-typedef int			s32;
+typedef int32_t			s32;
 typedef unsigned char		u8;
 typedef unsigned short		u16;
-typedef unsigned int		u32;
+typedef uint32_t		u32;
 typedef unsigned long long	u64;
 typedef volatile unsigned char	vu8;
 typedef volatile unsigned short	vu16;

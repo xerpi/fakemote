@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "types.h"
+#include "egc_types.h"
 
 #define le16toh(x) __builtin_bswap16(x)
 #define htole16(x) __builtin_bswap16(x)

@@ -1,6 +1,14 @@
 #include "button_map.h"
 
+#include "egc.h"
 #include "internals.h"
+
+static bool s_sensor_bar_position_top = false;
+
+static inline u8 s16_to_u8(s16 value)
+{
+    return 0x80 + (value >> 8);
+}
 
 void bm_map_wiimote(
     /* Inputs */
@@ -19,7 +27,7 @@ void bm_map_wiimote(
 
 void bm_map_nunchuk(
     /* Inputs */
-    int num_buttons, u32 buttons, int num_analog_axis, const u8 *analog_axis, u16 ax, u16 ay,
+    int num_buttons, u32 buttons, int num_analog_axis, const s16 *analog_axis, u16 ax, u16 ay,
     u16 az,
     /* Mapping tables */
     const u8 *nunchuk_button_map, const u8 *nunchuk_analog_axis_map,
@@ -37,7 +45,7 @@ void bm_map_nunchuk(
 
     for (int i = 0; i < num_analog_axis; i++) {
         if (nunchuk_analog_axis_map[i])
-            nunchuk_analog_axis[nunchuk_analog_axis_map[i] - 1] = analog_axis[i];
+            nunchuk_analog_axis[nunchuk_analog_axis_map[i] - 1] = s16_to_u8(analog_axis[i]);
     }
 
     bm_nunchuk_format(nunchuk, nunchuk_buttons, nunchuk_analog_axis, ax, ay, az);
@@ -45,7 +53,7 @@ void bm_map_nunchuk(
 
 void bm_map_classic(
     /* Inputs */
-    int num_buttons, u32 buttons, int num_analog_axis, const u8 *analog_axis,
+    int num_buttons, u32 buttons, int num_analog_axis, const s16 *analog_axis,
     /* Mapping tables */
     const u16 *classic_button_map, const u8 *classic_analog_axis_map,
     /* Outputs */
@@ -62,7 +70,7 @@ void bm_map_classic(
 
     for (int i = 0; i < num_analog_axis; i++) {
         if (classic_analog_axis_map[i])
-            classic_analog_axis[classic_analog_axis_map[i] - 1] = analog_axis[i];
+            classic_analog_axis[classic_analog_axis_map[i] - 1] = s16_to_u8(analog_axis[i]);
     }
 
     bm_classic_format(classic, classic_buttons, classic_analog_axis);
@@ -71,7 +79,7 @@ void bm_map_classic(
 static inline void map_ir_dot(struct ir_dot_t ir_dots[static IR_MAX_DOTS],
                               const struct ir_dot_t *dot)
 {
-    s16 vert_offset = _egc_sensor_bar_position_top ? IR_VERTICAL_OFFSET : -IR_VERTICAL_OFFSET;
+    s16 vert_offset = s_sensor_bar_position_top ? IR_VERTICAL_OFFSET : -IR_VERTICAL_OFFSET;
 
     ir_dots[0].x = (IR_DOT_CENTER_MIN_X + (IR_DOT_CENTER_MAX_X - dot->x)) - IR_HORIZONTAL_OFFSET;
     ir_dots[0].y = dot->y + vert_offset;
@@ -81,27 +89,26 @@ static inline void map_ir_dot(struct ir_dot_t ir_dots[static IR_MAX_DOTS],
 
 void bm_map_ir_direct(
     /* Inputs */
-    int num_coordinates, const u16 *x, const u16 *y, u16 max_x, u16 max_y,
+    s16 x, s16 y,
     /* Outputs */
     struct ir_dot_t ir_dots[static IR_MAX_DOTS])
 {
     struct ir_dot_t dot;
 
-    /* TODO: For now we only care about 1 reported coordinate... */
-    if (num_coordinates == 0) {
+    if (x < 0) {
         bm_ir_dots_set_out_of_screen(ir_dots);
         return;
     }
 
-    dot.x = IR_DOT_CENTER_MIN_X + (x[0] * (IR_DOT_CENTER_MAX_X - IR_DOT_CENTER_MIN_X)) / max_x;
-    dot.y = IR_DOT_CENTER_MIN_Y + (y[0] * (IR_DOT_CENTER_MAX_Y - IR_DOT_CENTER_MIN_Y)) / max_y;
+    dot.x = IR_DOT_CENTER_MIN_X + ((int)x * (IR_DOT_CENTER_MAX_X - IR_DOT_CENTER_MIN_X)) / EGC_GAMEPAD_TOUCH_RES;
+    dot.y = IR_DOT_CENTER_MIN_Y + ((int)y * (IR_DOT_CENTER_MAX_Y - IR_DOT_CENTER_MIN_Y)) / EGC_GAMEPAD_TOUCH_RES;
     map_ir_dot(ir_dots, &dot);
 }
 
 void bm_map_ir_analog_axis(
     /* Inputs */
     enum bm_ir_emulation_mode_e mode, struct bm_ir_emulation_state_t *state, int num_analog_axis,
-    const u8 *analog_axis, const u8 *ir_analog_axis_map,
+    const s16 *analog_axis, const u8 *ir_analog_axis_map,
     /* Outputs */
     struct ir_dot_t ir_dots[static IR_MAX_DOTS])
 {
@@ -109,7 +116,7 @@ void bm_map_ir_analog_axis(
 
     for (int i = 0; i < num_analog_axis; i++) {
         if (ir_analog_axis_map[i]) {
-            s16 val = (s16)analog_axis[i] - 128;
+            s16 val = analog_axis[i];
 
             if (mode == BM_IR_EMULATION_MODE_RELATIVE_ANALOG_AXIS) {
                 state->position[ir_analog_axis_map[i] - 1] += val / 16;
@@ -133,4 +140,9 @@ void bm_map_ir_analog_axis(
     dot.x = state->position[BM_IR_AXIS_X - 1];
     dot.y = IR_DOT_CENTER_MIN_Y + (IR_DOT_CENTER_MAX_Y - state->position[BM_IR_AXIS_Y - 1]);
     map_ir_dot(ir_dots, &dot);
+}
+
+void bm_set_sensor_bar_position_top(bool on_top)
+{
+    s_sensor_bar_position_top = on_top;
 }
