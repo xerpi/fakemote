@@ -84,9 +84,6 @@
 #define EGC_USB_ENDPOINT_IN        0x80
 #define EGC_USB_ENDPOINT_OUT       0x00
 
-#define EGC_USB_OH0_DEVICE_ID 0x00000000 // for completion
-#define EGC_USB_OH1_DEVICE_ID 0x00200000
-
 /* Structures */
 typedef struct egc_usb_endpointdesc_t {
     u8 bLength;
