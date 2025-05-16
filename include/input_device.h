@@ -5,6 +5,7 @@
 
 typedef struct fake_wiimote_t fake_wiimote_t;
 typedef struct input_device_t input_device_t;
+typedef struct egc_input_device_t egc_input_device_t;
 
 typedef struct input_device_ops_t {
     int (*resume)(void *usrdata, fake_wiimote_t *wiimote);
@@ -19,9 +20,9 @@ void input_devices_tick(void);
 
 /** Used by input devices **/
 
-bool input_devices_add(void *usrdata, const input_device_ops_t *ops,
-                       input_device_t **assigned_input_device);
-void input_devices_remove(input_device_t *input_device);
+void input_device_handle_added(egc_input_device_t *device, void *userdata);
+void input_device_handle_removed(egc_input_device_t *device, void *userdata);
+void input_device_handle_updated(egc_input_device_t *device, void *userdata);
 
 /** Used by fake Wiimotes and fake Wiimote manager **/
 
