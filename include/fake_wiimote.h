@@ -7,6 +7,8 @@
 #include "wiimote.h"
 #include "wiimote_crypto.h"
 
+#define MAX_FAKE_WIIMOTES 2
+
 typedef enum {
     BASEBAND_STATE_INACTIVE,
     BASEBAND_STATE_REQUEST_CONNECTION,
@@ -92,6 +94,15 @@ int fake_wiimote_disconnect(fake_wiimote_t *wiimote);
 void fake_wiimote_tick(fake_wiimote_t *wiimote);
 void fake_wiimote_handle_acl_data_out_request_from_host(fake_wiimote_t *wiimote,
                                                         const hci_acldata_hdr_t *acl);
+
+/* API for input devices  to receive and report controller events */
+void fake_wiimote_set_extension(fake_wiimote_t *wiimote, enum wiimote_ext_e ext);
+void fake_wiimote_report_input(fake_wiimote_t *wiimote, u16 buttons);
+void fake_wiimote_report_accelerometer(fake_wiimote_t *wiimote, u16 acc_x, u16 acc_y, u16 acc_z);
+void fake_wiimote_report_ir_dots(fake_wiimote_t *wiimote,
+                                 struct ir_dot_t ir_dots[static IR_MAX_DOTS]);
+void fake_wiimote_report_input_ext(fake_wiimote_t *wiimote, u16 buttons, const void *ext_data,
+                                   u8 ext_size);
 
 /* Helper functions */
 

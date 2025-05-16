@@ -1,7 +1,9 @@
-#include "button_map.h"
-#include "usb_device_drivers.h"
+#include "driver_api.h"
 #include "utils.h"
-#include "wiimote.h"
+
+#include <limits.h>
+
+#define SONY_VID 0x054c
 
 #define DS4_TOUCHPAD_W    1920
 #define DS4_TOUCHPAD_H    940
@@ -106,7 +108,7 @@ enum ds4_buttons_e {
     DS4_BUTTON_L1,
     DS4_BUTTON_TOUCHPAD,
     DS4_BUTTON_PS,
-    DS4_BUTTON__NUM
+    DS4_BUTTON_COUNT
 };
 
 enum ds4_analog_axis_e {
@@ -114,109 +116,74 @@ enum ds4_analog_axis_e {
     DS4_ANALOG_AXIS_LEFT_Y,
     DS4_ANALOG_AXIS_RIGHT_X,
     DS4_ANALOG_AXIS_RIGHT_Y,
-    DS4_ANALOG_AXIS__NUM
+    DS4_ANALOG_AXIS_COUNT
 };
 
 struct ds4_private_data_t {
-    struct {
-        u32 buttons;
-        u8 analog_axis[DS4_ANALOG_AXIS__NUM];
-        s16 acc_x, acc_y, acc_z;
-        struct {
-            u16 x, y;
-        } fingers[2];
-        u8 num_fingers;
-    } input;
-    enum bm_ir_emulation_mode_e ir_emu_mode;
-    struct bm_ir_emulation_state_t ir_emu_state;
-    u8 mapping;
-    u8 ir_emu_mode_idx;
-    u8 leds;
+    u8 led_color[3]; /* 0 - 32 */
     bool rumble_on;
-    bool switch_mapping;
-    bool switch_ir_emu_mode;
 };
-static_assert(sizeof(struct ds4_private_data_t) <= USB_INPUT_DEVICE_PRIVATE_DATA_SIZE);
+static_assert(sizeof(struct ds4_private_data_t) <= EGC_INPUT_DEVICE_PRIVATE_DATA_SIZE);
 
-#define SWITCH_MAPPING_COMBO     (BIT(DS4_BUTTON_L1) | BIT(DS4_BUTTON_L3))
-#define SWITCH_IR_EMU_MODE_COMBO (BIT(DS4_BUTTON_R1) | BIT(DS4_BUTTON_R3))
-
-static const struct {
-    enum wiimote_ext_e extension;
-    u16 wiimote_button_map[DS4_BUTTON__NUM];
-    u8 nunchuk_button_map[DS4_BUTTON__NUM];
-    u8 nunchuk_analog_axis_map[DS4_ANALOG_AXIS__NUM];
-    u16 classic_button_map[DS4_BUTTON__NUM];
-    u8 classic_analog_axis_map[DS4_ANALOG_AXIS__NUM];
-} input_mappings[] = {
-	{
-		.extension = WIIMOTE_EXT_NUNCHUK,
-		.wiimote_button_map = {
-			[DS4_BUTTON_TRIANGLE] = WIIMOTE_BUTTON_ONE,
-			[DS4_BUTTON_CIRCLE]   = WIIMOTE_BUTTON_B,
-			[DS4_BUTTON_CROSS]    = WIIMOTE_BUTTON_A,
-			[DS4_BUTTON_SQUARE]   = WIIMOTE_BUTTON_TWO,
-			[DS4_BUTTON_UP]       = WIIMOTE_BUTTON_UP,
-			[DS4_BUTTON_DOWN]     = WIIMOTE_BUTTON_DOWN,
-			[DS4_BUTTON_LEFT]     = WIIMOTE_BUTTON_LEFT,
-			[DS4_BUTTON_RIGHT]    = WIIMOTE_BUTTON_RIGHT,
-			[DS4_BUTTON_OPTIONS]  = WIIMOTE_BUTTON_PLUS,
-			[DS4_BUTTON_SHARE]    = WIIMOTE_BUTTON_MINUS,
-			[DS4_BUTTON_TOUCHPAD] = WIIMOTE_BUTTON_A,
-			[DS4_BUTTON_PS]       = WIIMOTE_BUTTON_HOME,
-		},
-		.nunchuk_button_map = {
-			[DS4_BUTTON_L1] = NUNCHUK_BUTTON_C,
-			[DS4_BUTTON_L2] = NUNCHUK_BUTTON_Z,
-		},
-		.nunchuk_analog_axis_map = {
-			[DS4_ANALOG_AXIS_LEFT_X] = BM_NUNCHUK_ANALOG_AXIS_X,
-			[DS4_ANALOG_AXIS_LEFT_Y] = BM_NUNCHUK_ANALOG_AXIS_Y,
-		},
-	},
-	{
-		.extension = WIIMOTE_EXT_CLASSIC,
-		.classic_button_map = {
-			[DS4_BUTTON_TRIANGLE] = CLASSIC_CTRL_BUTTON_X,
-			[DS4_BUTTON_CIRCLE]   = CLASSIC_CTRL_BUTTON_A,
-			[DS4_BUTTON_CROSS]    = CLASSIC_CTRL_BUTTON_B,
-			[DS4_BUTTON_SQUARE]   = CLASSIC_CTRL_BUTTON_Y,
-			[DS4_BUTTON_UP]       = CLASSIC_CTRL_BUTTON_UP,
-			[DS4_BUTTON_DOWN]     = CLASSIC_CTRL_BUTTON_DOWN,
-			[DS4_BUTTON_LEFT]     = CLASSIC_CTRL_BUTTON_LEFT,
-			[DS4_BUTTON_RIGHT]    = CLASSIC_CTRL_BUTTON_RIGHT,
-			[DS4_BUTTON_OPTIONS]  = CLASSIC_CTRL_BUTTON_PLUS,
-			[DS4_BUTTON_SHARE]    = CLASSIC_CTRL_BUTTON_MINUS,
-			[DS4_BUTTON_R2]       = CLASSIC_CTRL_BUTTON_ZR,
-			[DS4_BUTTON_L2]       = CLASSIC_CTRL_BUTTON_ZL,
-			[DS4_BUTTON_R1]       = CLASSIC_CTRL_BUTTON_FULL_R,
-			[DS4_BUTTON_L1]       = CLASSIC_CTRL_BUTTON_FULL_L,
-			[DS4_BUTTON_TOUCHPAD] = CLASSIC_CTRL_BUTTON_A,
-			[DS4_BUTTON_PS]       = CLASSIC_CTRL_BUTTON_HOME,
-		},
-		.classic_analog_axis_map = {
-			[DS4_ANALOG_AXIS_LEFT_X]  = BM_CLASSIC_ANALOG_AXIS_LEFT_X,
-			[DS4_ANALOG_AXIS_LEFT_Y]  = BM_CLASSIC_ANALOG_AXIS_LEFT_Y,
-			[DS4_ANALOG_AXIS_RIGHT_X] = BM_CLASSIC_ANALOG_AXIS_RIGHT_X,
-			[DS4_ANALOG_AXIS_RIGHT_Y] = BM_CLASSIC_ANALOG_AXIS_RIGHT_Y,
-		},
-	},
+/* Map each button of the controller to an egc_gamepad_button_e */
+static const egc_gamepad_button_e s_button_map[DS4_BUTTON_COUNT] = {
+    [DS4_BUTTON_UP] = EGC_GAMEPAD_BUTTON_DPAD_UP,
+    [DS4_BUTTON_DOWN] = EGC_GAMEPAD_BUTTON_DPAD_DOWN,
+    [DS4_BUTTON_LEFT] = EGC_GAMEPAD_BUTTON_DPAD_LEFT,
+    [DS4_BUTTON_RIGHT] = EGC_GAMEPAD_BUTTON_DPAD_RIGHT,
+    [DS4_BUTTON_TRIANGLE] = EGC_GAMEPAD_BUTTON_NORTH,
+    [DS4_BUTTON_CIRCLE] = EGC_GAMEPAD_BUTTON_EAST,
+    [DS4_BUTTON_CROSS] = EGC_GAMEPAD_BUTTON_SOUTH,
+    [DS4_BUTTON_SQUARE] = EGC_GAMEPAD_BUTTON_WEST,
+    [DS4_BUTTON_L1] = EGC_GAMEPAD_BUTTON_LEFT_SHOULDER,
+    [DS4_BUTTON_R1] = EGC_GAMEPAD_BUTTON_RIGHT_SHOULDER,
+    [DS4_BUTTON_L2] = EGC_GAMEPAD_BUTTON_LEFT_PADDLE1,
+    [DS4_BUTTON_R2] = EGC_GAMEPAD_BUTTON_RIGHT_PADDLE1,
+    [DS4_BUTTON_SHARE] = EGC_GAMEPAD_BUTTON_BACK,
+    [DS4_BUTTON_OPTIONS] = EGC_GAMEPAD_BUTTON_START,
+    [DS4_BUTTON_PS] = EGC_GAMEPAD_BUTTON_GUIDE,
+    [DS4_BUTTON_L3] = EGC_GAMEPAD_BUTTON_LEFT_STICK,
+    [DS4_BUTTON_R3] = EGC_GAMEPAD_BUTTON_RIGHT_STICK,
+    [DS4_BUTTON_TOUCHPAD] = EGC_GAMEPAD_BUTTON_TOUCHPAD,
 };
 
-static const u8 ir_analog_axis_map[DS4_ANALOG_AXIS__NUM] = {
-    [DS4_ANALOG_AXIS_RIGHT_X] = BM_IR_AXIS_X,
-    [DS4_ANALOG_AXIS_RIGHT_Y] = BM_IR_AXIS_Y,
+static const egc_device_description_t s_device_description = {
+    .vendor_id = SONY_VID,
+    // Product ID is set dynamically
+    .available_buttons =
+        BIT(EGC_GAMEPAD_BUTTON_DPAD_UP) |
+        BIT(EGC_GAMEPAD_BUTTON_DPAD_DOWN) |
+        BIT(EGC_GAMEPAD_BUTTON_DPAD_LEFT) |
+        BIT(EGC_GAMEPAD_BUTTON_DPAD_RIGHT) |
+        BIT(EGC_GAMEPAD_BUTTON_NORTH) |
+        BIT(EGC_GAMEPAD_BUTTON_EAST) |
+        BIT(EGC_GAMEPAD_BUTTON_SOUTH) |
+        BIT(EGC_GAMEPAD_BUTTON_WEST) |
+        BIT(EGC_GAMEPAD_BUTTON_LEFT_SHOULDER) |
+        BIT(EGC_GAMEPAD_BUTTON_RIGHT_SHOULDER) |
+        BIT(EGC_GAMEPAD_BUTTON_LEFT_PADDLE1) |
+        BIT(EGC_GAMEPAD_BUTTON_RIGHT_PADDLE1) |
+        BIT(EGC_GAMEPAD_BUTTON_BACK) |
+        BIT(EGC_GAMEPAD_BUTTON_START) |
+        BIT(EGC_GAMEPAD_BUTTON_GUIDE) |
+        BIT(EGC_GAMEPAD_BUTTON_LEFT_STICK) |
+        BIT(EGC_GAMEPAD_BUTTON_RIGHT_STICK),
+    .available_axes =
+        BIT(EGC_GAMEPAD_AXIS_LEFTX) |
+        BIT(EGC_GAMEPAD_AXIS_LEFTY) |
+        BIT(EGC_GAMEPAD_AXIS_RIGHTX) |
+        BIT(EGC_GAMEPAD_AXIS_RIGHTY),
+    .type = EGC_DEVICE_TYPE_GAMEPAD,
+    .num_touch_points = 2,
+    .num_leds = 4,
+    .num_accelerometers = 1,
+    .has_rumble = true,
 };
 
-static const enum bm_ir_emulation_mode_e ir_emu_modes[] = {
-    BM_IR_EMULATION_MODE_DIRECT,
-    BM_IR_EMULATION_MODE_RELATIVE_ANALOG_AXIS,
-    BM_IR_EMULATION_MODE_ABSOLUTE_ANALOG_AXIS,
-};
 
-static inline int ds4_request_data(usb_input_device_t *device);
+static inline int ds4_request_data(egc_input_device_t *device);
 
-static inline void ds4_get_buttons(const struct ds4_input_report *report, u32 *buttons)
+static inline u32 ds4_get_buttons(const struct ds4_input_report *report)
 {
     u32 mask = 0;
 
@@ -250,11 +217,11 @@ static inline void ds4_get_buttons(const struct ds4_input_report *report, u32 *b
     MAP(ps, DS4_BUTTON_PS)
 #undef MAP
 
-    *buttons = mask;
+    return mask;
 }
 
 static inline void ds4_get_analog_axis(const struct ds4_input_report *report,
-                                       u8 analog_axis[static DS4_ANALOG_AXIS__NUM])
+                                       u8 analog_axis[static DS4_ANALOG_AXIS_COUNT])
 {
     analog_axis[DS4_ANALOG_AXIS_LEFT_X] = report->left_x;
     analog_axis[DS4_ANALOG_AXIS_LEFT_Y] = 255 - report->left_y;
@@ -262,7 +229,7 @@ static inline void ds4_get_analog_axis(const struct ds4_input_report *report,
     analog_axis[DS4_ANALOG_AXIS_RIGHT_Y] = 255 - report->right_y;
 }
 
-static inline int ds4_set_leds_rumble(usb_input_device_t *device, u8 r, u8 g, u8 b, u8 rumble_small,
+static inline int ds4_set_leds_rumble(egc_input_device_t *device, u8 r, u8 g, u8 b, u8 rumble_small,
                                       u8 rumble_large)
 {
     u8 buf[] = {
@@ -280,118 +247,143 @@ static inline int ds4_set_leds_rumble(usb_input_device_t *device, u8 r, u8 g, u8
     };
 
     const egc_usb_transfer_t *transfer =
-        usb_device_driver_issue_intr_transfer_async(device, 1, buf, sizeof(buf), NULL);
+        egc_device_driver_issue_intr_transfer_async(device, 1, buf, sizeof(buf), NULL);
     return transfer != NULL ? 0 : -1;
 }
 
 static void ds4_request_data_cb(egc_usb_transfer_t *transfer)
 {
-    usb_input_device_t *device = egc_input_device_from_usb(transfer->device);
-    struct ds4_private_data_t *priv = (void *)device->private_data;
+    egc_input_device_t *device = transfer->device;
     struct ds4_input_report *report = (void *)transfer->data;
+    struct egc_input_state_t state;
 
     if (transfer->status == EGC_USB_TRANSFER_STATUS_COMPLETED && report->report_id == 0x01) {
-        ds4_get_buttons(report, &priv->input.buttons);
-        ds4_get_analog_axis(report, priv->input.analog_axis);
+        u32 buttons = ds4_get_buttons(report);
+        state.gamepad.buttons = egc_device_driver_map_buttons(buttons, DS4_BUTTON_COUNT, s_button_map);
 
-        priv->input.acc_x = (s16)le16toh(report->accel_x);
-        priv->input.acc_y = (s16)le16toh(report->accel_y);
-        priv->input.acc_z = (s16)le16toh(report->accel_z);
+        u8 axes[DS4_ANALOG_AXIS_COUNT];
+        ds4_get_analog_axis(report, axes);
+        state.gamepad.axes[EGC_GAMEPAD_AXIS_LEFTX] = egc_u8_to_s16(axes[DS4_ANALOG_AXIS_LEFT_X]);
+        state.gamepad.axes[EGC_GAMEPAD_AXIS_LEFTY] = egc_u8_to_s16(axes[DS4_ANALOG_AXIS_LEFT_Y]);
+        state.gamepad.axes[EGC_GAMEPAD_AXIS_RIGHTX] = egc_u8_to_s16(axes[DS4_ANALOG_AXIS_RIGHT_X]);
+        state.gamepad.axes[EGC_GAMEPAD_AXIS_RIGHTY] = egc_u8_to_s16(axes[DS4_ANALOG_AXIS_RIGHT_Y]);
 
-        priv->input.num_fingers = 0;
+#define MAP_ACCEL(v) ((s16)le16toh(v) * EGC_ACCELEROMETER_RES_PER_G / DS4_ACC_RES_PER_G)
+        state.gamepad.accelerometer[0].x = -MAP_ACCEL(report->accel_x);
+        state.gamepad.accelerometer[0].y = MAP_ACCEL(report->accel_y);
+        state.gamepad.accelerometer[0].z = MAP_ACCEL(report->accel_z);
+#undef MAP_ACCEL
 
+#define MAP_TOUCH_X(v) ((v) * EGC_GAMEPAD_TOUCH_RES / DS4_TOUCHPAD_W)
+#define MAP_TOUCH_Y(v) ((v) * EGC_GAMEPAD_TOUCH_RES / DS4_TOUCHPAD_H)
         if (!report->finger1_nactive) {
-            priv->input.fingers[0].x = report->finger1_x_lo | ((u16)report->finger1_x_hi << 8);
-            priv->input.fingers[0].y = report->finger1_y_lo | ((u16)report->finger1_y_hi << 4);
-            priv->input.num_fingers++;
+            state.gamepad.touch_points[0].x = MAP_TOUCH_X(report->finger1_x_lo | ((u16)report->finger1_x_hi << 8));
+            state.gamepad.touch_points[0].y = MAP_TOUCH_Y(report->finger1_y_lo | ((u16)report->finger1_y_hi << 4));
+        } else {
+            state.gamepad.touch_points[0].x = -1;
         }
 
         if (!report->finger2_nactive) {
-            priv->input.fingers[1].x = report->finger2_x_lo | ((u16)report->finger2_x_hi << 8);
-            priv->input.fingers[1].y = report->finger2_y_lo | ((u16)report->finger2_y_hi << 4);
-            priv->input.num_fingers++;
+            state.gamepad.touch_points[1].x = MAP_TOUCH_X(report->finger2_x_lo | ((u16)report->finger2_x_hi << 8));
+            state.gamepad.touch_points[1].y = MAP_TOUCH_Y(report->finger2_y_lo | ((u16)report->finger2_y_hi << 4));
+        } else {
+            state.gamepad.touch_points[1].x = -1;
         }
+#undef MAP_TOUCH_X
+#undef MAP_TOUCH_Y
+
+        egc_device_driver_report_input(device, &state);
     }
 
     ds4_request_data(device);
 }
 
-static inline int ds4_request_data(usb_input_device_t *device)
+static inline int ds4_request_data(egc_input_device_t *device)
 {
-    const egc_usb_transfer_t *transfer = usb_device_driver_issue_intr_transfer_async(
+    const egc_usb_transfer_t *transfer = egc_device_driver_issue_intr_transfer_async(
         device, EGC_USB_ENDPOINT_IN, NULL, 0, ds4_request_data_cb);
     return transfer != NULL ? 0 : -1;
 }
 
-static int ds4_driver_update_leds_rumble(usb_input_device_t *device)
+static int ds4_driver_update_leds_rumble(egc_input_device_t *device)
 {
     struct ds4_private_data_t *priv = (void *)device->private_data;
-    u8 index;
 
-    static const u8 colors[5][3] = {
-        {  0,  0,  0 },
-        {  0,  0, 32 },
-        { 32,  0,  0 },
-        {  0, 32,  0 },
-        { 32,  0, 32 },
-    };
-
-    index = priv->leds % ARRAY_SIZE(colors);
-
-    u8 r = colors[index][0], g = colors[index][1], b = colors[index][2];
+    u8 r = priv->led_color[0], g = priv->led_color[1], b = priv->led_color[2];
 
     return ds4_set_leds_rumble(device, r, g, b, priv->rumble_on * 192, 0);
 }
 
 bool ds4_driver_ops_probe(u16 vid, u16 pid)
 {
-    static const struct device_id_t compatible[] = {
+    static const egc_device_id_t compatible[] = {
         { SONY_VID, 0x05c4 },
         { SONY_VID, 0x09cc },
     };
 
-    return usb_driver_is_compatible(vid, pid, compatible, ARRAY_SIZE(compatible));
+    return egc_device_driver_is_compatible(vid, pid, compatible, ARRAY_SIZE(compatible));
 }
 
-int ds4_driver_ops_init(usb_input_device_t *device, u16 vid, u16 pid)
+int ds4_driver_ops_init(egc_input_device_t *device, u16 vid, u16 pid)
 {
     struct ds4_private_data_t *priv = (void *)device->private_data;
+    egc_device_description_t *desc = egc_device_driver_alloc_desc(device);
 
+    if (desc) {
+        memcpy(desc, &s_device_description, sizeof(*desc));
+        desc->product_id = pid;
+    }
     /* Init private state */
-    priv->ir_emu_mode_idx = 0;
-    bm_ir_emulation_state_reset(&priv->ir_emu_state);
-    priv->mapping = 0;
-    priv->leds = 0;
+    priv->led_color[0] = priv->led_color[1] = priv->led_color[2] = 0;
     priv->rumble_on = false;
-    priv->switch_mapping = false;
-    priv->switch_ir_emu_mode = false;
-
-    /* Set initial extension */
-    fake_wiimote_set_extension(device->wiimote, input_mappings[priv->mapping].extension);
 
     return ds4_request_data(device);
 }
 
-int ds4_driver_ops_disconnect(usb_input_device_t *device)
+int ds4_driver_ops_disconnect(egc_input_device_t *device)
 {
     struct ds4_private_data_t *priv = (void *)device->private_data;
 
-    priv->leds = 0;
+    priv->led_color[0] = priv->led_color[1] = priv->led_color[2] = 0;
     priv->rumble_on = false;
 
     return ds4_driver_update_leds_rumble(device);
 }
 
-int ds4_driver_ops_slot_changed(usb_input_device_t *device, u8 slot)
+static inline void add_color_component(struct ds4_private_data_t *priv, int component, u8 value)
+{
+    priv->led_color[component] += value;
+    if (priv->led_color[component] > 32) priv->led_color[component] = 32;
+}
+
+int ds4_driver_ops_set_leds(egc_input_device_t *device, u32 led_state)
 {
     struct ds4_private_data_t *priv = (void *)device->private_data;
 
-    priv->leds = slot;
+    priv->led_color[0] = priv->led_color[1] = priv->led_color[2] = 0;
+    if (led_state & 0x1) {
+        /* Player 1 is blue */
+        add_color_component(priv, 2, 32);
+    }
+    if (led_state & 0x2) {
+        /* Player 2 is red */
+        add_color_component(priv, 0, 32);
+    }
+    if (led_state & 0x4) {
+        /* Player 3 is green */
+        add_color_component(priv, 1, 32);
+    }
+    if (led_state & 0x8) {
+        /* Player 4 is pink */
+        add_color_component(priv, 0, 32);
+        add_color_component(priv, 2, 32);
+    }
+
 
     return ds4_driver_update_leds_rumble(device);
 }
 
-int ds4_driver_ops_set_rumble(usb_input_device_t *device, bool rumble_on)
+int ds4_driver_ops_set_rumble(egc_input_device_t *device, bool rumble_on)
 {
     struct ds4_private_data_t *priv = (void *)device->private_data;
 
@@ -400,80 +392,10 @@ int ds4_driver_ops_set_rumble(usb_input_device_t *device, bool rumble_on)
     return ds4_driver_update_leds_rumble(device);
 }
 
-bool ds4_report_input(usb_input_device_t *device)
-{
-    struct ds4_private_data_t *priv = (void *)device->private_data;
-    u16 wiimote_buttons = 0;
-    u16 acc_x, acc_y, acc_z;
-    union wiimote_extension_data_t extension_data;
-    struct ir_dot_t ir_dots[IR_MAX_DOTS];
-    enum bm_ir_emulation_mode_e ir_emu_mode;
-
-    if (bm_check_switch_mapping(priv->input.buttons, &priv->switch_mapping, SWITCH_MAPPING_COMBO)) {
-        priv->mapping = (priv->mapping + 1) % ARRAY_SIZE(input_mappings);
-        fake_wiimote_set_extension(device->wiimote, input_mappings[priv->mapping].extension);
-        return false;
-    } else if (bm_check_switch_mapping(priv->input.buttons, &priv->switch_ir_emu_mode,
-                                       SWITCH_IR_EMU_MODE_COMBO)) {
-        priv->ir_emu_mode_idx = (priv->ir_emu_mode_idx + 1) % ARRAY_SIZE(ir_emu_modes);
-        bm_ir_emulation_state_reset(&priv->ir_emu_state);
-    }
-
-    bm_map_wiimote(DS4_BUTTON__NUM, priv->input.buttons,
-                   input_mappings[priv->mapping].wiimote_button_map, &wiimote_buttons);
-
-    /* Normalize to accelerometer calibration configuration */
-    acc_x =
-        ACCEL_ZERO_G - ((s32)priv->input.acc_x * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS4_ACC_RES_PER_G;
-    acc_y =
-        ACCEL_ZERO_G + ((s32)priv->input.acc_z * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS4_ACC_RES_PER_G;
-    acc_z =
-        ACCEL_ZERO_G + ((s32)priv->input.acc_y * (ACCEL_ONE_G - ACCEL_ZERO_G)) / DS4_ACC_RES_PER_G;
-
-    fake_wiimote_report_accelerometer(device->wiimote, acc_x, acc_y, acc_z);
-
-    ir_emu_mode = ir_emu_modes[priv->ir_emu_mode_idx];
-    if (ir_emu_mode == BM_IR_EMULATION_MODE_NONE) {
-        bm_ir_dots_set_out_of_screen(ir_dots);
-    } else {
-        if (ir_emu_mode == BM_IR_EMULATION_MODE_DIRECT) {
-            bm_map_ir_direct(priv->input.num_fingers, &priv->input.fingers[0].x,
-                             &priv->input.fingers[0].y, DS4_TOUCHPAD_W - 1, DS4_TOUCHPAD_H - 1,
-                             ir_dots);
-        } else {
-            bm_map_ir_analog_axis(ir_emu_mode, &priv->ir_emu_state, DS4_ANALOG_AXIS__NUM,
-                                  priv->input.analog_axis, ir_analog_axis_map, ir_dots);
-        }
-    }
-
-    fake_wiimote_report_ir_dots(device->wiimote, ir_dots);
-
-    if (input_mappings[priv->mapping].extension == WIIMOTE_EXT_NONE) {
-        fake_wiimote_report_input(device->wiimote, wiimote_buttons);
-    } else if (input_mappings[priv->mapping].extension == WIIMOTE_EXT_NUNCHUK) {
-        bm_map_nunchuk(
-            DS4_BUTTON__NUM, priv->input.buttons, DS4_ANALOG_AXIS__NUM, priv->input.analog_axis, 0,
-            0, 0, input_mappings[priv->mapping].nunchuk_button_map,
-            input_mappings[priv->mapping].nunchuk_analog_axis_map, &extension_data.nunchuk);
-        fake_wiimote_report_input_ext(device->wiimote, wiimote_buttons, &extension_data,
-                                      sizeof(extension_data.nunchuk));
-    } else if (input_mappings[priv->mapping].extension == WIIMOTE_EXT_CLASSIC) {
-        bm_map_classic(DS4_BUTTON__NUM, priv->input.buttons, DS4_ANALOG_AXIS__NUM,
-                       priv->input.analog_axis, input_mappings[priv->mapping].classic_button_map,
-                       input_mappings[priv->mapping].classic_analog_axis_map,
-                       &extension_data.classic);
-        fake_wiimote_report_input_ext(device->wiimote, wiimote_buttons, &extension_data,
-                                      sizeof(extension_data.classic));
-    }
-
-    return true;
-}
-
-const usb_device_driver_t ds4_usb_device_driver = {
+const egc_device_driver_t ds4_usb_device_driver = {
     .probe = ds4_driver_ops_probe,
     .init = ds4_driver_ops_init,
     .disconnect = ds4_driver_ops_disconnect,
-    .slot_changed = ds4_driver_ops_slot_changed,
+    .set_leds = ds4_driver_ops_set_leds,
     .set_rumble = ds4_driver_ops_set_rumble,
-    .report_input = ds4_report_input,
 };

@@ -1,8 +1,7 @@
 add_library(embedded-game-controller STATIC
     backends/ogc.c
-    button_map.c
-    client.c
-    usb_hid.c
+    backends/ogc_arm.c
+    egc.c
     usb_drivers/dragonrise.c
     usb_drivers/sony_ds3.c
     usb_drivers/sony_ds4.c

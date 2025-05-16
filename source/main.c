@@ -4,8 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "button_map.h"
 #include "conf.h"
-#include "client.h"
+#include "egc.h"
 #include "fake_wiimote_mgr.h"
 #include "globals.h"
 #include "hci.h"
@@ -17,7 +18,6 @@
 #include "syscalls.h"
 #include "tools.h"
 #include "types.h"
-#include "usb_hid.h"
 #include "utils.h"
 
 /* OH1 module hook information */
@@ -326,6 +326,7 @@ static int OH1_IOS_ReceiveMessage_hook(int queueid, ipcmessage **ret_msg, u32 fl
             *ret_msg = (ipcmessage *)0xcafef00d;
             break;
         } else if (recv_data == (uintptr_t)&periodic_timer_cookie) {
+            egc_handle_events();
             input_devices_tick();
             fake_wiimote_mgr_tick_devices();
             fwd_to_usb = false;
@@ -442,7 +443,9 @@ static int ensure_initalized(void)
         hci_state_reset();
         input_devices_init();
         fake_wiimote_mgr_init();
-        usb_hid_init();
+        egc_initialize(input_device_handle_added,
+                       input_device_handle_removed,
+                       NULL);
 
         initialized = 1;
     }
@@ -585,7 +588,7 @@ int main(void)
                    sizeof(sensor_bar_position_top));
     if (ret != sizeof(sensor_bar_position_top))
         return IOS_EINVAL;
-    egc_set_sensor_bar_position_top(sensor_bar_position_top);
+    bm_set_sensor_bar_position_top(sensor_bar_position_top);
 
     /* Patch SYSCONF's BT.DINF */
     ret = patch_conf_bt_dinf(conf_buffer);

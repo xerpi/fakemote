@@ -1,7 +1,7 @@
 #ifndef EGC_USB_H
 #define EGC_USB_H
 
-#include "types.h"
+#include "egc_types.h"
 
 /* Constants */
 #define EGC_USB_MAXPATH 64
@@ -150,7 +150,7 @@ typedef struct egc_usb_hiddesc_t {
     } descr[1];
 } ATTRIBUTE_PACKED egc_usb_hiddesc_t;
 
-typedef struct egc_usb_device_t egc_usb_device_t;
+typedef struct egc_input_device_t egc_input_device_t;
 
 typedef enum egc_usb_transfer_type_e {
     EGC_USB_TRANSFER_CONTROL,
@@ -168,7 +168,7 @@ typedef enum egc_usb_transfer_status_e {
 typedef struct egc_usb_transfer_t egc_usb_transfer_t;
 
 struct egc_usb_transfer_t {
-    egc_usb_device_t *device;
+    egc_input_device_t *device;
     egc_usb_transfer_type_e transfer_type;
     egc_usb_transfer_status_e status;
     u8 endpoint;
