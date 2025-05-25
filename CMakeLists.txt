@@ -46,7 +46,7 @@ add_executable(fakemote
 )
 
 target_include_directories(fakemote PRIVATE
-    include
+    source
 )
 
 target_compile_definitions(fakemote PRIVATE
