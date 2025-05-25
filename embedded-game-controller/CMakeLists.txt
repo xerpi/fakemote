@@ -1,8 +1,19 @@
+find_package(PkgConfig)
+pkg_check_modules(LIBUSB IMPORTED_TARGET libusb-1.0)
+
 if(CMAKE_SYSTEM_NAME MATCHES "Starlet")
     set(PLATFORM_SOURCES
         backends/ogc.c
         backends/ogc_arm.c
     )
+elseif(LIBUSB_FOUND)
+    # Use the libusb backend
+    set(PLATFORM_SOURCES
+        backends/libusb.c
+    )
+    list(APPEND EXTRA_LIBS PkgConfig::LIBUSB)
+else()
+    message(FATAL_ERROR "No available platform backend")
 endif()
 
 add_library(embedded-game-controller STATIC

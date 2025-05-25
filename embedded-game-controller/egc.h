@@ -123,7 +123,7 @@ struct egc_input_device_t {
     /* The following fields are for EGC's internal use only */
     const egc_device_driver_t *driver;
     u8 private_data[EGC_INPUT_DEVICE_PRIVATE_DATA_SIZE];
-} ATTRIBUTE_PACKED;
+} ATTRIBUTE_PACKED ATTRIBUTE_ALIGN(8);
 
 typedef void (*egc_input_device_cb)(egc_input_device_t *device, void *userdata);
 
