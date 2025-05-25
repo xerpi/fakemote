@@ -168,7 +168,7 @@ static void intr_transfer_cb(egc_usb_transfer_t *transfer)
 static int dr_request_data(egc_input_device_t *device)
 {
     const egc_usb_transfer_t *transfer = egc_device_driver_issue_intr_transfer_async(
-        device, EGC_USB_ENDPOINT_IN, NULL, 0, intr_transfer_cb);
+        device, EGC_USB_ENDPOINT_IN | 1, NULL, 0, intr_transfer_cb);
     return transfer != NULL ? 0 : -1;
 }
 
