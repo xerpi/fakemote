@@ -1,6 +1,8 @@
 find_package(PkgConfig)
 pkg_check_modules(LIBUSB IMPORTED_TARGET libusb-1.0)
 
+option(BUILD_EXAMPLE "Build example program" OFF)
+
 if(CMAKE_SYSTEM_NAME MATCHES "Starlet")
     set(PLATFORM_SOURCES
         backends/ogc.c
@@ -37,3 +39,6 @@ target_link_libraries(embedded-game-controller PRIVATE
     gcc
 )
 
+if(BUILD_EXAMPLE)
+    add_subdirectory(example)
+endif()
