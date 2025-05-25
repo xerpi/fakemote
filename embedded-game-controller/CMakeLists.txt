@@ -1,6 +1,12 @@
+if(CMAKE_SYSTEM_NAME MATCHES "Starlet")
+    set(PLATFORM_SOURCES
+        backends/ogc.c
+        backends/ogc_arm.c
+    )
+endif()
+
 add_library(embedded-game-controller STATIC
-    backends/ogc.c
-    backends/ogc_arm.c
+    ${PLATFORM_SOURCES}
     egc.c
     usb_drivers/dragonrise.c
     usb_drivers/sony_ds3.c
@@ -12,11 +18,11 @@ target_include_directories(embedded-game-controller PUBLIC
 )
 
 target_link_options(embedded-game-controller PRIVATE
-    -nostdlib
+    ${EXTRA_LDFLAGS}
 )
 
 target_link_libraries(embedded-game-controller PRIVATE
-    cios-lib
+    ${EXTRA_LIBS}
     gcc
 )
 
