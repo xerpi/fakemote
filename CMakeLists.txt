@@ -15,7 +15,19 @@ project(
     LANGUAGES ASM C
 )
 
-set(ARCH -mcpu=arm926ej-s -mthumb -mthumb-interwork -mbig-endian)
+# This is a hack just to provide a more readable name to our target platform.
+# We could try to add a cmake toolchain file for Starlet in devkitPro.
+if(CMAKE_SYSTEM_NAME MATCHES "Generic-dkP")
+    set(CMAKE_SYSTEM_NAME "Starlet")
+endif()
+
+if(CMAKE_SYSTEM_NAME MATCHES "Starlet")
+    set(ARCH -mcpu=arm926ej-s -mthumb -mthumb-interwork -mbig-endian)
+    set(EXTRA_CFLAGS -fno-builtin)
+    set(EXTRA_LDFLAGS -nostdlib)
+    set(EXTRA_LIBS cios-lib)
+endif()
+
 set(CMAKE_C_STANDARD 11)
 
 add_compile_options(
@@ -29,6 +41,9 @@ add_compile_options(
     ${EXTRA_CFLAGS}
 )
 
-add_subdirectory(cios-lib)
 add_subdirectory(embedded-game-controller)
-add_subdirectory(source)
+
+if(CMAKE_SYSTEM_NAME MATCHES "Starlet")
+    add_subdirectory(cios-lib)
+    add_subdirectory(source)
+endif()
