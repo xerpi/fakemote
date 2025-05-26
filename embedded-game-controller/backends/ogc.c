@@ -620,6 +620,12 @@ static const egc_usb_devdesc_t *ogc_get_device_descriptor(egc_input_device_t *de
     return &dev->usb.desc;
 }
 
+static int ogc_set_suspended(egc_input_device_t *input_device, bool suspended)
+{
+    ogc_device_t *device = ogc_device_from_input_device(input_device);
+    return usb_hid_v5_suspend_resume(device->usb.host_fd, device->usb.dev_id, !suspended);
+}
+
 static int ogc_handle_events()
 {
     ogc_event_queue_t queue;
@@ -654,6 +660,7 @@ static int ogc_handle_events()
 const egc_platform_backend_t _egc_platform_backend = {
     .usb = {
         .get_device_descriptor = ogc_get_device_descriptor,
+        .set_suspended = ogc_set_suspended,
         .ctrl_transfer_async = ogc_ctrl_transfer_async,
         .intr_transfer_async = ogc_intr_transfer_async,
     },

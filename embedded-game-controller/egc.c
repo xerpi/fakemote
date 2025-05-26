@@ -204,6 +204,15 @@ int egc_initialize(egc_input_device_cb added_cb,
     return rc;
 }
 
+int egc_input_device_set_suspended(egc_input_device_t *device, bool suspended)
+{
+    if (device->connection == EGC_CONNECTION_USB) {
+        return _egc_platform_backend.usb.set_suspended ?
+            _egc_platform_backend.usb.set_suspended(device, suspended) : -1;
+    }
+    return -1;
+}
+
 int egc_handle_events()
 {
     return _egc_platform_backend.handle_events();

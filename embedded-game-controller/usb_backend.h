@@ -11,6 +11,9 @@ struct egc_usb_backend_t {
      * already retrieved. */
     const egc_usb_devdesc_t *(*get_device_descriptor)(egc_input_device_t *device);
 
+    /* This can be NULL if suspending is not supported */
+    int (*set_suspended)(egc_input_device_t *device, bool suspended);
+
     /* Add methods to return descriptors for configurations, HID, endpoints,
      * etc. - when needed. */
 

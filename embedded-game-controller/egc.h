@@ -136,6 +136,9 @@ int egc_input_device_resume(egc_input_device_t *device);
 int egc_input_device_set_leds(egc_input_device_t *device, u32 led_state);
 int egc_input_device_set_rumble(egc_input_device_t *device, u32 intensity);
 
+/* Note: suspending might not be supported by all backends */
+int egc_input_device_set_suspended(egc_input_device_t *device, bool suspended);
+
 /* Fetch events and invoke callbacks. */
 int egc_handle_events(void);
 
