@@ -12,6 +12,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3.5.2
+      with:
+        submodules: recursive
 
     - name: Install g++
       run: sudo apt-get update -y && sudo apt-get install g++ -y
