@@ -278,7 +278,7 @@ static int usb_hid_v5_release(int host_fd, u32 dev_id)
     return os_ioctl(host_fd, USBV5_IOCTL_RELEASE, buf, sizeof(buf), NULL, 0);
 }
 
-static int usb_hid_v5_suspend_resume(int host_fd, int dev_id, int resumed, u32 unk)
+static int usb_hid_v5_suspend_resume(int host_fd, int dev_id, int resumed)
 {
     u32 buf[8] ATTRIBUTE_ALIGN(32);
 
@@ -466,7 +466,7 @@ static void handle_device_change_reply(int host_fd, areply *reply)
             continue;
 
         /* We must resume the USB device before interacting with it */
-        ret = usb_hid_v5_suspend_resume(host_fd, dev_id, 1, 0);
+        ret = usb_hid_v5_suspend_resume(host_fd, dev_id, 1);
         if (ret != IOS_OK) {
             usb_hid_v5_release(host_fd, dev_id);
             continue;
