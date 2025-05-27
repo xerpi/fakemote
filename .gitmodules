@@ -1,0 +1,3 @@
+[submodule "embedded-game-controller"]
+	path = embedded-game-controller
+	url = https://github.com/embedded-game-controller/embedded-game-controller.git
