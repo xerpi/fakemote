@@ -1,5 +1,4 @@
 #include "button_map.h"
-
 #include "egc.h"
 #include "internals.h"
 
@@ -100,8 +99,10 @@ void bm_map_ir_direct(
         return;
     }
 
-    dot.x = IR_DOT_CENTER_MIN_X + ((int)x * (IR_DOT_CENTER_MAX_X - IR_DOT_CENTER_MIN_X)) / EGC_GAMEPAD_TOUCH_RES;
-    dot.y = IR_DOT_CENTER_MIN_Y + ((int)y * (IR_DOT_CENTER_MAX_Y - IR_DOT_CENTER_MIN_Y)) / EGC_GAMEPAD_TOUCH_RES;
+    dot.x = IR_DOT_CENTER_MIN_X +
+            ((int)x * (IR_DOT_CENTER_MAX_X - IR_DOT_CENTER_MIN_X)) / EGC_GAMEPAD_TOUCH_RES;
+    dot.y = IR_DOT_CENTER_MIN_Y +
+            ((int)y * (IR_DOT_CENTER_MAX_Y - IR_DOT_CENTER_MIN_Y)) / EGC_GAMEPAD_TOUCH_RES;
     map_ir_dot(ir_dots, &dot);
 }
 

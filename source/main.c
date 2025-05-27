@@ -443,9 +443,7 @@ static int ensure_initalized(void)
         hci_state_reset();
         input_devices_init();
         fake_wiimote_mgr_init();
-        egc_initialize(input_device_handle_added,
-                       input_device_handle_removed,
-                       NULL);
+        egc_initialize(input_device_handle_added, input_device_handle_removed, NULL);
 
         initialized = 1;
     }
@@ -584,8 +582,8 @@ int main(void)
 
     /* Read IR sensor bar position */
     u8 sensor_bar_position_top;
-    ret = conf_get(conf_buffer, "BT.BAR", &sensor_bar_position_top,
-                   sizeof(sensor_bar_position_top));
+    ret =
+        conf_get(conf_buffer, "BT.BAR", &sensor_bar_position_top, sizeof(sensor_bar_position_top));
     if (ret != sizeof(sensor_bar_position_top))
         return IOS_EINVAL;
     bm_set_sensor_bar_position_top(sensor_bar_position_top);
@@ -607,7 +605,7 @@ int main(void)
     return ret;
 }
 
-void my_assert_func(const char *file, int line, const char *func, const char *failedexpr)
+void NORETURN __assert_func(const char *file, int line, const char *func, const char *failedexpr)
 {
     printf("assertion \"%s\" failed: file \"%s\", line %d%s%s\n", failedexpr, file, line,
            func ? ", function: " : "", func ? func : "");

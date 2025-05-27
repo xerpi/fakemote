@@ -53,7 +53,6 @@ dkms.conf
 
 # VS Code
 .vscode
-.devcontainer
 
 # Other
 *.txt
