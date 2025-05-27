@@ -605,7 +605,7 @@ int main(void)
     return ret;
 }
 
-void my_assert_func(const char *file, int line, const char *func, const char *failedexpr)
+void NORETURN __assert_func(const char *file, int line, const char *func, const char *failedexpr)
 {
     printf("assertion \"%s\" failed: file \"%s\", line %d%s%s\n", failedexpr, file, line,
            func ? ", function: " : "", func ? func : "");
