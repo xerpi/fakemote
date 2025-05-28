@@ -900,7 +900,7 @@ static void handle_l2cap_signal_channel_request(fake_wiimote_t *wiimote, const v
 
 static void handle_hid_intr_data_output(fake_wiimote_t *wiimote, const u8 *data, u16 size)
 {
-    LOG_DEBUG("handle_hid_intr_data_output: size: 0x%x, 0x%x\n", size, *(u32 *)(data - 1));
+    LOG_DEBUG("handle_hid_intr_data_output: size: 0x%" PRIx16 "\n", size);
 
     if (size == 0)
         return;

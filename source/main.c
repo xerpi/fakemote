@@ -203,7 +203,7 @@ static int handle_oh1_dev_ioctlv(ipcmessage *recv_msg, ipcmessage **ret_msg, u32
     }
     default:
         /* Unhandled/unknown ioctls are forwarded to the OH1 module */
-        LOG_DEBUG("Unhandled IOCTL: 0x%x\n", cmd);
+        LOG_DEBUG("Unhandled IOCTL: 0x%" PRIx32 "\n", cmd);
         break;
     }
 
@@ -609,4 +609,7 @@ void NORETURN __assert_func(const char *file, int line, const char *func, const 
 {
     printf("assertion \"%s\" failed: file \"%s\", line %d%s%s\n", failedexpr, file, line,
            func ? ", function: " : "", func ? func : "");
+
+    while (1)
+        os_thread_yield();
 }
